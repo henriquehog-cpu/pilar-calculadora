@@ -799,7 +799,6 @@ function showCotacao() {
     <div class="cot-hdr">
       <div>
         <img src="web_Logo_sem assinatura_turquesa.png" style="height:50px">
-        <div style="margin-top:6px;font-size:12px;color:var(--cinza-med)">PILAR Imports LTDA — Minas Gerais</div>
       </div>
       <div class="cot-info">
         <strong>${cliente}</strong><br>
@@ -822,7 +821,7 @@ function showCotacao() {
     </div>
     <div class="cot-footer">
       <p>* Câmbio: USD 1 = R$ ${fmt(dolar)} (${dataFmt}). Frete internacional de referência: USD ${fmt(freteT, 0)}.</p>
-      <p>PILAR Imports — Preço competitivo. Produto superior. Pontualidade na entrega.</p>
+      <p style="text-align:center">www.pilarimports.com.br</p>
     </div>`;
 
   document.getElementById('calc-sec').style.display = 'none';
