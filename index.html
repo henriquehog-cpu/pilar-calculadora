@@ -34,6 +34,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .field input{padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza);width:100%;transition:border-color .15s}
 .field input:focus{outline:none;border-color:var(--turquesa)}
 .field input.ro{background:#F0FAFB;border-color:var(--turquesa);color:#006064;font-weight:600}
+.field input.bi{background:#FFFDE7;border-color:#F9A825;color:#5D4037;font-weight:600}
 .note{font-size:10px;color:var(--cinza-med);margin-top:2px}
 /* item */
 .item-card{border:2px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
@@ -317,6 +318,45 @@ function setEl(id, val) { const e = document.getElementById(id); if (e) e.textCo
 // ============================================================
 function onFreteChange() { updateAFRMM(); calcAll(); }
 
+// ============================================================
+// CAMPOS BIDIRECIONAIS: Margem ↔ PV USD
+// ============================================================
+
+// Usuário editou a Margem → recalcular e atualizar PV USD
+function onMargemChange(id) {
+  calcAll(); // calcAll já chama renderItemResult que sincroniza pvusd
+}
+
+// Usuário editou PV USD → derivar Margem e atualizar o campo
+function onPvUsdChange(id) {
+  const pvUSDval = parseFloat(document.getElementById('pvusd_' + id)?.value);
+  if (!isFinite(pvUSDval) || pvUSDval <= 0) { calcAll(); return; }
+
+  const dolar  = n('dolar');
+  const freteT = n('frete_total');
+  const comPct = n('comissao') / 100;
+
+  // FOB total do processo (necessário para rateio)
+  let fobTotal = 0;
+  itemIds.forEach(i => {
+    fobTotal += (parseFloat(document.getElementById('qtd_' + i)?.value) || 0)
+              * (parseFloat(document.getElementById('fob_' + i)?.value) || 0);
+  });
+
+  // Calcular custoImpUnit para este item (o pv resultante não importa aqui)
+  const r = calcItem(id, fobTotal, freteT, dolar, comPct);
+  if (!r || r.custoImpUnit <= 0) { calcAll(); return; }
+
+  // Derivar margem a partir do PV USD digitado
+  const pvRS   = pvUSDval * dolar;
+  const margem = (1 - r.custoImpUnit / pvRS) * 100; // em %
+
+  const margemEl = document.getElementById('margem_' + id);
+  if (margemEl) margemEl.value = Math.max(0, margem).toFixed(2);
+
+  calcAll(); // recalcula com a nova margem (pvusd será confirmado no renderItemResult)
+}
+
 function updateAFRMM() {
   const afrmm = n('frete_total') * n('dolar') * 0.08 + 20; // planilha: =(frete_RS)*8%+20
   document.getElementById('c_afrmm').value = afrmm.toFixed(2);
@@ -385,25 +425,24 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
 
-  // 13. Créditos IPI/PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
-  //     Planilha: K42 = K20(IPI) + K21(PIS) + K22(COFINS)
-  const credIPI    = ipi;      // = CIF × aliq.ipi  (crédito integral do IPI pago na importação)
+  // 13. Créditos PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo contábil)
+  //     IPI crédito NÃO é incluído aqui — só existe quando há IPI na venda,
+  //     e de qualquer forma não afeta o PV (ver ponto 16 abaixo).
   const credPIS    = pisImp;   // = CIF × aliq.pis_imp
   const credCOFINS = cofImp;   // = CIF × aliq.cof_imp
-  const credTotal  = credIPI + credPIS + credCOFINS;
+  const credTotal  = credPIS + credCOFINS;
 
-  // 14-15. Custo Importação Final e Unitário
+  // 14-15. Custo Importação Final e Unitário (custo contábil, após créditos)
+  //        Exibido nos resultados; NÃO é a base do PV.
   const custoImpTotal = custoProcesso - credTotal;
   const custoImpUnit  = custoImpTotal / qtd;
 
-  // cfRat para exibição (tudo exceto impostos e frete rodoviário)
+  // cfRat para exibição (fixos rateados, exceto frete rodo)
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteRat
               + agenteRat + armazItem + capatItem + oplogItem;
 
-  // 16. PV direto = Custo Total Unitário / (1 − margem)
-  //     Conforme planilha CALCULO GERAL: fórmula direta, NÃO iterativa.
-  //     Os impostos de venda (PIS/COFINS/ICMS/CSLL/IR) saem da margem,
-  //     não inflam o preço de venda.
+  // 16. PV = Custo Unitário (pós créditos PIS/COFINS) / (1 − margem)
+  //     Fórmula direta, NÃO iterativa.
   const pv = custoImpUnit / Math.max(0.001, 1 - margem);
 
   // 17-22. Impostos de venda
@@ -445,7 +484,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   return {
     qtd, fob, fobItem, prop, freteRat, cifRS,
     ii, ipi, pisImp, cofImp, icmsImp,
-    cfRat, frodTotal, credIPI, credTotal,
+    cfRat, frodTotal, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
     com, ipiV, pisV, cofV, icmsEf, csll, ir,
@@ -538,6 +577,12 @@ function renderItemResult(id, r) {
   s('pvT', fmtBRL(r.pvTotal));
   s('mrg', fmtPct(r.margemReal));
   s('luc', fmtBRL(r.lucroTotal));
+
+  // Sincronizar campo PV USD editável (não sobrescreve se o usuário está digitando nele)
+  const pvusdEl = document.getElementById('pvusd_' + id);
+  if (pvusdEl && document.activeElement !== pvusdEl) {
+    pvusdEl.value = r.pvUSD.toFixed(4);
+  }
 }
 
 // ============================================================
@@ -591,7 +636,7 @@ function itemHTML(id) {
         <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
       </div>
     </div>
-    <div class="g4" style="margin-bottom:14px">
+    <div class="g5" style="margin-bottom:14px">
       <div class="field">
         <label>Qtd. de Unidades</label>
         <input type="number" id="qtd_${id}" value="1000" min="1" oninput="calcAll()">
@@ -601,13 +646,21 @@ function itemHTML(id) {
         <input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()">
       </div>
       <div class="field">
+        <label>PV em USD</label>
+        <input type="number" id="pvusd_${id}" step="0.01" min="0" placeholder="0,00"
+               class="bi" oninput="onPvUsdChange(${id})">
+        <span class="note">↕ edite: atualiza Margem automaticamente</span>
+      </div>
+      <div class="field">
         <label>Frete Rodoviário (R$/container)</label>
         <input type="number" id="frod_${id}" value="0" step="100" min="0" oninput="calcAll()">
         <span class="note">×containers deste item</span>
       </div>
       <div class="field">
         <label>Margem Desejada (%)</label>
-        <input type="number" id="margem_${id}" value="20" step="1" min="0" max="99" oninput="calcAll()">
+        <input type="number" id="margem_${id}" value="20" step="1" min="0" max="99"
+               oninput="onMargemChange(${id})">
+        <span class="note">↕ edite: atualiza PV USD automaticamente</span>
       </div>
     </div>
 
