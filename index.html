@@ -162,12 +162,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="g4">
       <div class="field">
         <label>Siscomex (R$)</label>
-        <input type="number" id="c_siscomex" value="154.23" step="1" min="0" oninput="calcAll()">
+        <input type="number" id="c_siscomex" value="192.79" step="1" min="0" oninput="calcAll()">
       </div>
       <div class="field">
         <label>AFRMM (R$)</label>
         <input type="number" id="c_afrmm" step="1" min="0" readonly class="ro">
-        <span class="note">Auto: 8% × frete rateado × dólar · calculado por item</span>
+        <span class="note">Auto: (frete R$ × 8%) + R$20 fixo — planilha CALCULO GERAL</span>
       </div>
       <div class="field">
         <label>Despachante (R$)</label>
@@ -318,7 +318,7 @@ function setEl(id, val) { const e = document.getElementById(id); if (e) e.textCo
 function onFreteChange() { updateAFRMM(); calcAll(); }
 
 function updateAFRMM() {
-  const afrmm = n('frete_total') * n('dolar') * 0.08;
+  const afrmm = n('frete_total') * n('dolar') * 0.08 + 20; // planilha: =(frete_RS)*8%+20
   document.getElementById('c_afrmm').value = afrmm.toFixed(2);
 }
 
@@ -364,8 +364,9 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const bcIcms  = totalValAdu + siscomexRat;
   const icmsImp = bcIcms * aliq.icms_inter;      // não é por dentro
 
-  // 11. AFRMM = 8% × frete R$ rateado do item
-  const afrmmItem   = 0.08 * freteRS;
+  // 11. AFRMM = 8% × frete R$ rateado + R$20 fixo rateado por FOB
+  //     Planilha: =(frete_RS)*J27+20  →  frete_RS*8% + 20 por processo
+  const afrmmItem   = 0.08 * freteRS + 20 * prop;
 
   // Demais custos fixos rateados/por-container
   const despRat     = n('c_despachante') * prop;
@@ -384,10 +385,12 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
 
-  // 13. Créditos PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
-  const credPIS    = pisImp;   // = CIF × aliq.pis_imp  (crédito do que pagou na importação)
+  // 13. Créditos IPI/PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
+  //     Planilha: K42 = K20(IPI) + K21(PIS) + K22(COFINS)
+  const credIPI    = ipi;      // = CIF × aliq.ipi  (crédito integral do IPI pago na importação)
+  const credPIS    = pisImp;   // = CIF × aliq.pis_imp
   const credCOFINS = cofImp;   // = CIF × aliq.cof_imp
-  const credTotal  = credPIS + credCOFINS;
+  const credTotal  = credIPI + credPIS + credCOFINS;
 
   // 14-15. Custo Importação Final e Unitário
   const custoImpTotal = custoProcesso - credTotal;
@@ -397,53 +400,59 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteRat
               + agenteRat + armazItem + capatItem + oplogItem;
 
-  // 16-22. Preço de Venda via iteração (margem sobre PV)
-  let pv = custoImpUnit / Math.max(0.01, 1 - margem);
-  for (let i = 0; i < 120; i++) {
-    const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
-    const pvNew = op / Math.max(0.001, 1 - margem);
-    if (Math.abs(pvNew - pv) < 0.0005) { pv = pvNew; break; }
-    pv = pvNew;
-  }
+  // 16. PV direto = Custo Total Unitário / (1 − margem)
+  //     Conforme planilha CALCULO GERAL: fórmula direta, NÃO iterativa.
+  //     Os impostos de venda (PIS/COFINS/ICMS/CSLL/IR) saem da margem,
+  //     não inflam o preço de venda.
+  const pv = custoImpUnit / Math.max(0.001, 1 - margem);
 
-  const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
-  const lucroUnit  = pv - op;
-  const margemReal = pv > 0 ? lucroUnit / pv : 0;
-
-  // Breakdown venda para exibição
+  // 17-22. Impostos de venda
   const com    = pv * comissaoPct;
-  const pisV   = pv * 0.0165;                    // Lucro Real: PIS 1,65%
-  const cofV   = pv * 0.076;                     // Lucro Real: COFINS 7,60%
-  const icmsEf = pv * aliq.reg_espec_inter;      // ICMS: Reg. Especial 1,5%
+
+  // IPI venda: BC = PV / (1 + aliq.ipi);  IPI_v = aliq.ipi × BC
+  //   (IPI é cobrado por fora, mas entra na BC de PIS/COFINS como dedução)
+  const ipiVbc = pv / (1 + aliq.ipi);
+  const ipiV   = aliq.ipi * ipiVbc;
+
+  // ICMS Efetivo (Regime Especial MG 1,5%) — custo real recolhido
+  const icmsEf = pv * aliq.reg_espec_inter;
+
+  // BC PIS/COFINS venda = PV − IPI_venda − ICMS destacado NF (4%)
+  //   Planilha deduz IPI e ICMS da base tributável do PIS/COFINS
+  const icmsNF   = pv * aliq.icms_inter;    // ICMS destacado em NF (4%)
+  const bcVenda  = Math.max(0, pv - ipiV - icmsNF);
+  const pisV     = bcVenda * 0.0165;        // Lucro Real: PIS 1,65%
+  const cofV     = bcVenda * 0.076;         // Lucro Real: COFINS 7,60%
+
+  // Lucro bruto = PV − Custo Final Unitário − Comissão − PIS − COFINS − ICMS
+  //   (IPI venda é pass-through do comprador — não reduz o lucro da empresa)
   const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
+
+  // 5-6. CSLL = 9% e IR = 15% sobre lucro bruto
   const csll = Math.max(0, lucroAntes) * 0.09;
   const ir   = Math.max(0, lucroAntes) * 0.15;
+
+  // 7. Adicional IR: 10% sobre lucro total do item acima de R$20.000
+  const lucroItemTotal = lucroAntes * qtd;
+  const irAdic = Math.max(0, lucroItemTotal - 20000) * 0.10 / qtd;
+
+  // 9. Lucro líquido e margem real
+  const lucroUnit  = lucroAntes - csll - ir - irAdic;
+  const margemReal = pv > 0 ? lucroUnit / pv : 0;
+
+  const custoOpUnitVal = custoImpUnit + com + pisV + cofV + icmsEf + csll + ir + irAdic;
 
   return {
     qtd, fob, fobItem, prop, freteRat, cifRS,
     ii, ipi, pisImp, cofImp, icmsImp,
-    cfRat, frodTotal, credTotal,
+    cfRat, frodTotal, credIPI, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
-    com, pisV, cofV, icmsEf, csll, ir,
-    custoOpTotal: op * qtd,
+    com, ipiV, pisV, cofV, icmsEf, csll, ir,
+    custoOpTotal: custoOpUnitVal * qtd,
     lucroUnit, lucroTotal: lucroUnit * qtd,
     margemReal
   };
-}
-
-function custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd) {
-  const com    = pv * comissaoPct;
-  const pisV   = pv * 0.0165;                 // Lucro Real não-cumulativo: PIS 1,65%
-  const cofV   = pv * 0.076;                  // Lucro Real não-cumulativo: COFINS 7,60%
-  const icmsEf = pv * aliq.reg_espec_inter;   // ICMS Reg. Especial MG: 1,5%
-  const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
-  const csll = Math.max(0, lucroAntes) * 0.09;
-  const ir   = Math.max(0, lucroAntes) * 0.15;
-  // Adicional IR: 10% sobre lucro total do item acima de R$20.000
-  const lucroItemTotal = lucroAntes * qtd;
-  const irAdic = Math.max(0, lucroItemTotal - 20000) * 0.10 / qtd;
-  return custoImpUnit + com + pisV + cofV + icmsEf + csll + ir + irAdic;
 }
 
 function defaultAliq() {
@@ -503,7 +512,7 @@ function renderItemResult(id, r) {
   const s = (suf, val) => setEl('r_' + suf + '_' + id, val);
   if (!r) {
     ['cif','ii','ipi','piI','coI','icI','cfR','frd','crd','ciT','ciU',
-     'com','piV','coV','icE','csl','ir_','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
+     'com','ipV','piV','coV','icE','csl','ir_','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
     return;
   }
   s('cif', fmtBRL(r.cifRS));
@@ -518,6 +527,7 @@ function renderItemResult(id, r) {
   s('ciT', fmtBRL(r.custoImpTotal));
   s('ciU', fmtBRL(r.custoImpUnit));
   s('com', fmtBRL(r.com * r.qtd));
+  s('ipV', fmtBRL(r.ipiV * r.qtd));
   s('piV', fmtBRL(r.pisV * r.qtd));
   s('coV', fmtBRL(r.cofV * r.qtd));
   s('icE', fmtBRL(r.icmsEf * r.qtd));
@@ -613,7 +623,7 @@ function itemHTML(id) {
           <tr><td>ICMS Importação (informativo)</td><td id="r_icI_${id}">—</td></tr>
           <tr><td>Desembaraço + Log. (fixos rateados)</td><td id="r_cfR_${id}">—</td></tr>
           <tr><td>Frete Rodoviário</td><td id="r_frd_${id}">—</td></tr>
-          <tr><td style="color:#2e7d32">(-) Créditos PIS/COFINS</td><td id="r_crd_${id}" style="color:#2e7d32">—</td></tr>
+          <tr><td style="color:#2e7d32">(-) Créditos IPI/PIS/COFINS</td><td id="r_crd_${id}" style="color:#2e7d32">—</td></tr>
           <tr class="tot"><td>Custo Total Importação</td><td id="r_ciT_${id}">—</td></tr>
           <tr><td>Custo Unitário Importação</td><td id="r_ciU_${id}">—</td></tr>
         </table>
@@ -622,8 +632,9 @@ function itemHTML(id) {
         <div class="sec-div">Custos de Venda (totais) &amp; Resultado</div>
         <table class="rt">
           <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
-          <tr><td>PIS Venda (1,65%)</td><td id="r_piV_${id}">—</td></tr>
-          <tr><td>COFINS Venda (7,60%)</td><td id="r_coV_${id}">—</td></tr>
+          <tr><td>IPI Venda (por fora)</td><td id="r_ipV_${id}">—</td></tr>
+          <tr><td>PIS Venda (1,65% × BC)</td><td id="r_piV_${id}">—</td></tr>
+          <tr><td>COFINS Venda (7,60% × BC)</td><td id="r_coV_${id}">—</td></tr>
           <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
           <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
           <tr><td>IR (15% + adic. 10%)</td><td id="r_ir_${id}">—</td></tr>
