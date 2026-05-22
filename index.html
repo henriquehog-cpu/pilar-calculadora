@@ -166,12 +166,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="field">
         <label>AFRMM (R$)</label>
-        <input type="number" id="c_afrmm" step="1" min="0" oninput="calcAll()">
-        <span class="note">Auto: 8% × frete × dólar &nbsp;·&nbsp; ×containers/item</span>
+        <input type="number" id="c_afrmm" step="1" min="0" readonly class="ro">
+        <span class="note">Auto: 8% × frete rateado × dólar · calculado por item</span>
       </div>
       <div class="field">
         <label>Despachante (R$)</label>
         <input type="number" id="c_despachante" value="2500" step="100" min="0" oninput="calcAll()">
+        <span class="note">Fixo por processo (rateado pelo FOB)</span>
+      </div>
+      <div class="field">
+        <label>Dif. Frete Intl (R$)</label>
+        <input type="number" id="c_difrete" value="0" step="100" min="0" oninput="calcAll()">
         <span class="note">Fixo por processo (rateado pelo FOB)</span>
       </div>
       <div class="field">
@@ -321,7 +326,7 @@ function updateAFRMM() {
 // FIXED COSTS
 // ============================================================
 function totalCF() {
-  return n('c_siscomex') + n('c_afrmm') + n('c_despachante') +
+  return n('c_siscomex') + n('c_afrmm') + n('c_despachante') + n('c_difrete') +
          n('c_agente') + n('c_armazenagem') + n('c_capatazia') + n('c_oplog');
 }
 
@@ -338,34 +343,61 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 
   if (qtd <= 0 || fob <= 0) return null;
 
-  const fobItem   = fob * qtd;
-  const prop      = fobTotalProcesso > 0 ? fobItem / fobTotalProcesso : 0;
-  const freteRat  = freteTotalUSD * prop;
-  const cifRS     = (fobItem + freteRat) * dolar;
+  // 1-3. FOB, frete rateado e CIF
+  const fobItem  = fob * qtd;
+  const prop     = fobTotalProcesso > 0 ? fobItem / fobTotalProcesso : 0;
+  const freteRat = freteTotalUSD * prop;          // frete USD rateado pro item
+  const freteRS  = freteRat * dolar;              // frete R$ rateado pro item
+  const cifRS    = fobItem * dolar + freteRS;     // Total FOB R$ + Frete Internacional R$
 
-  // Impostos importação
-  const ii        = cifRS * aliq.ii;
-  const ipi       = (cifRS + ii) * aliq.ipi;
-  const pisImp    = (cifRS + ii + ipi) * aliq.pis_imp;
-  const cofImp    = (cifRS + ii + ipi) * aliq.cof_imp;
-  // ICMS por dentro
-  const baseIcms  = cifRS + ii + ipi + pisImp + cofImp;
-  const icmsImp   = baseIcms * aliq.icms_inter / (1 - aliq.icms_inter);
+  // 4-7. Impostos sobre o CIF (base = CIF em todos)
+  const ii     = cifRS * aliq.ii;
+  const ipi    = cifRS * aliq.ipi;               // base = CIF (não CIF+II)
+  const pisImp = cifRS * aliq.pis_imp;           // base = CIF
+  const cofImp = cifRS * aliq.cof_imp;           // base = CIF
 
-  // Custos fixos:
-  // Per-container × qtd containers do item: AFRMM, Armazenagem, Capatazia, Op. Logístico
-  const cfContainer = cont * (n('c_afrmm') + n('c_armazenagem') + n('c_capatazia') + n('c_oplog'));
-  // FOB-rateados por processo (fixos independente de container): Siscomex, Despachante, Agente
-  const cfRationed  = (n('c_siscomex') + n('c_despachante') + n('c_agente')) * prop;
-  const cfRat       = cfContainer + cfRationed;
+  // 8. Total Valor Aduaneiro (sem ICMS — Lucro Real crédita ICMS na importação)
+  const totalValAdu = cifRS + ii + ipi + pisImp + cofImp;
 
-  // Frete rodoviário: valor por container × qtd containers do item
-  const frodTotal   = frod * cont;
+  // 9-10. BC ICMS e ICMS importação (informativo — NÃO por dentro, NÃO entra no custo)
+  const siscomexRat = n('c_siscomex') * prop;
+  const bcIcms  = totalValAdu + siscomexRat;
+  const icmsImp = bcIcms * aliq.icms_inter;      // não é por dentro
 
-  const custoImpTotal = cifRS + ii + ipi + pisImp + cofImp + icmsImp + cfRat + frodTotal;
+  // 11. AFRMM = 8% × frete R$ rateado do item
+  const afrmmItem   = 0.08 * freteRS;
+
+  // Demais custos fixos rateados/por-container
+  const despRat     = n('c_despachante') * prop;
+  const difFreteRat = n('c_difrete') * prop;
+  const agenteRat   = n('c_agente') * prop;
+  const armazItem   = n('c_armazenagem') * cont; // por container
+  const capatItem   = n('c_capatazia') * cont;   // por container
+  const oplogItem   = n('c_oplog') * cont;       // por container
+  const frodTotal   = frod * cont;               // frete rodoviário por container
+
+  // 11. Custo Desembaraço = Total Val. Aduaneiro + Siscomex + AFRMM + Despachante
+  //     + Dif.Frete + Agente + Armazenagem + Capatazia
+  const custoDesembaraco = totalValAdu + siscomexRat + afrmmItem + despRat
+                         + difFreteRat + agenteRat + armazItem + capatItem;
+
+  // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
+  const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
+
+  // 13. Créditos PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
+  const credPIS    = pisImp;   // = CIF × aliq.pis_imp  (crédito do que pagou na importação)
+  const credCOFINS = cofImp;   // = CIF × aliq.cof_imp
+  const credTotal  = credPIS + credCOFINS;
+
+  // 14-15. Custo Importação Final e Unitário
+  const custoImpTotal = custoProcesso - credTotal;
   const custoImpUnit  = custoImpTotal / qtd;
 
-  // Iterative PV — converge: custo_op_unit / (1 - margem) = PV
+  // cfRat para exibição (tudo exceto impostos e frete rodoviário)
+  const cfRat = siscomexRat + afrmmItem + despRat + difFreteRat
+              + agenteRat + armazItem + capatItem + oplogItem;
+
+  // 16-22. Preço de Venda via iteração (margem sobre PV)
   let pv = custoImpUnit / Math.max(0.01, 1 - margem);
   for (let i = 0; i < 120; i++) {
     const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
@@ -375,24 +407,25 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   }
 
   const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
-  const lucroUnit   = pv - op;
-  const margemReal  = pv > 0 ? lucroUnit / pv : 0;
+  const lucroUnit  = pv - op;
+  const margemReal = pv > 0 ? lucroUnit / pv : 0;
 
-  // Breakdown for display
-  const com  = pv * comissaoPct;
-  const pv_  = pv * aliq.pis_venda;
-  const cv_  = pv * aliq.cof_venda;
-  const icmsEf = pv * aliq.reg_espec_inter;
-  const lucroAntes = pv - custoImpUnit - com - pv_ - cv_ - icmsEf;
+  // Breakdown venda para exibição
+  const com    = pv * comissaoPct;
+  const pisV   = pv * 0.0165;                    // Lucro Real: PIS 1,65%
+  const cofV   = pv * 0.076;                     // Lucro Real: COFINS 7,60%
+  const icmsEf = pv * aliq.reg_espec_inter;      // ICMS: Reg. Especial 1,5%
+  const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
   const csll = Math.max(0, lucroAntes) * 0.09;
   const ir   = Math.max(0, lucroAntes) * 0.15;
 
   return {
     qtd, fob, fobItem, prop, freteRat, cifRS,
-    ii, ipi, pisImp, cofImp, icmsImp, cfRat, frodTotal,
+    ii, ipi, pisImp, cofImp, icmsImp,
+    cfRat, frodTotal, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
-    com, pisV: pv_, cofV: cv_, icmsEf, csll, ir,
+    com, pisV, cofV, icmsEf, csll, ir,
     custoOpTotal: op * qtd,
     lucroUnit, lucroTotal: lucroUnit * qtd,
     margemReal
@@ -400,10 +433,10 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 }
 
 function custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd) {
-  const com  = pv * comissaoPct;
-  const pisV = pv * aliq.pis_venda;
-  const cofV = pv * aliq.cof_venda;
-  const icmsEf = pv * aliq.reg_espec_inter;
+  const com    = pv * comissaoPct;
+  const pisV   = pv * 0.0165;                 // Lucro Real não-cumulativo: PIS 1,65%
+  const cofV   = pv * 0.076;                  // Lucro Real não-cumulativo: COFINS 7,60%
+  const icmsEf = pv * aliq.reg_espec_inter;   // ICMS Reg. Especial MG: 1,5%
   const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
   const csll = Math.max(0, lucroAntes) * 0.09;
   const ir   = Math.max(0, lucroAntes) * 0.15;
@@ -469,7 +502,7 @@ function calcAll() {
 function renderItemResult(id, r) {
   const s = (suf, val) => setEl('r_' + suf + '_' + id, val);
   if (!r) {
-    ['cif','ii','ipi','piI','coI','icI','cfR','frd','ciT','ciU',
+    ['cif','ii','ipi','piI','coI','icI','cfR','frd','crd','ciT','ciU',
      'com','piV','coV','icE','csl','ir_','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
     return;
   }
@@ -481,6 +514,7 @@ function renderItemResult(id, r) {
   s('icI', fmtBRL(r.icmsImp));
   s('cfR', fmtBRL(r.cfRat));
   s('frd', fmtBRL(r.frodTotal));
+  s('crd', '- ' + fmtBRL(r.credTotal));
   s('ciT', fmtBRL(r.custoImpTotal));
   s('ciU', fmtBRL(r.custoImpUnit));
   s('com', fmtBRL(r.com * r.qtd));
@@ -576,9 +610,10 @@ function itemHTML(id) {
           <tr><td>IPI</td><td id="r_ipi_${id}">—</td></tr>
           <tr><td>PIS Importação</td><td id="r_piI_${id}">—</td></tr>
           <tr><td>COFINS Importação</td><td id="r_coI_${id}">—</td></tr>
-          <tr><td>ICMS Importação (por dentro)</td><td id="r_icI_${id}">—</td></tr>
-          <tr><td>Custos Fixos Rateados</td><td id="r_cfR_${id}">—</td></tr>
+          <tr><td>ICMS Importação (informativo)</td><td id="r_icI_${id}">—</td></tr>
+          <tr><td>Desembaraço + Log. (fixos rateados)</td><td id="r_cfR_${id}">—</td></tr>
           <tr><td>Frete Rodoviário</td><td id="r_frd_${id}">—</td></tr>
+          <tr><td style="color:#2e7d32">(-) Créditos PIS/COFINS</td><td id="r_crd_${id}" style="color:#2e7d32">—</td></tr>
           <tr class="tot"><td>Custo Total Importação</td><td id="r_ciT_${id}">—</td></tr>
           <tr><td>Custo Unitário Importação</td><td id="r_ciU_${id}">—</td></tr>
         </table>
@@ -587,8 +622,8 @@ function itemHTML(id) {
         <div class="sec-div">Custos de Venda (totais) &amp; Resultado</div>
         <table class="rt">
           <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
-          <tr><td>PIS Venda (0,65%)</td><td id="r_piV_${id}">—</td></tr>
-          <tr><td>COFINS Venda (3,00%)</td><td id="r_coV_${id}">—</td></tr>
+          <tr><td>PIS Venda (1,65%)</td><td id="r_piV_${id}">—</td></tr>
+          <tr><td>COFINS Venda (7,60%)</td><td id="r_coV_${id}">—</td></tr>
           <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
           <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
           <tr><td>IR (15% + adic. 10%)</td><td id="r_ir_${id}">—</td></tr>
