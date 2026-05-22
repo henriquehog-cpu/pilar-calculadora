@@ -471,8 +471,10 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     pv = custoImpUnit / Math.max(0.001, 1 - margem); // estimativa inicial
     for (let _i = 0; _i < 300; _i++) {
       const _com    = pv * comissaoPct;
-      const _pisV   = pv * 0.0165;   // BC = PV direto (conforme planilha)
-      const _cofV   = pv * 0.076;
+      const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
+      const _bcV    = Math.max(0, pv - _ipiV);  // BC = PV − IPI venda (planilha)
+      const _pisV   = _bcV * 0.0165;
+      const _cofV   = _bcV * 0.076;
       const _icmsEf = pv * aliq.reg_espec_inter;
       const _lucro  = pv - custoImpUnit - _com - _pisV - _cofV - _icmsEf;
       const _csll   = Math.max(0, _lucro) * 0.09;
@@ -486,11 +488,12 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   }
 
   // Impostos finais calculados com PV convergido
-  const com    = pv * comissaoPct;
-  const ipiV   = pv * aliq.ipi / (1 + aliq.ipi);  // IPI venda (por fora, pass-through)
-  const pisV   = pv * 0.0165;   // Lucro Real: PIS 1,65% — BC = PV direto (planilha)
-  const cofV   = pv * 0.076;    // Lucro Real: COFINS 7,60% — BC = PV direto
-  const icmsEf = pv * aliq.reg_espec_inter;          // ICMS efetivo recolhido (1,5%)
+  const com     = pv * comissaoPct;
+  const ipiV    = pv * aliq.ipi / (1 + aliq.ipi);          // IPI venda (por fora, pass-through)
+  const bcVenda = Math.max(0, pv - ipiV);                    // BC PIS/COFINS = PV − IPI venda
+  const pisV    = bcVenda * 0.0165;                          // Lucro Real: PIS 1,65%
+  const cofV    = bcVenda * 0.076;                           // Lucro Real: COFINS 7,60%
+  const icmsEf  = pv * aliq.reg_espec_inter;                 // ICMS efetivo recolhido (1,5%)
 
   const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
   const csll = Math.max(0, lucroAntes) * 0.09;
@@ -504,13 +507,14 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 
   const custoOpUnitVal = custoImpUnit + com + pisV + cofV + icmsEf + csll + ir + irAdic;
 
-  // Diagnóstico no console (abra DevTools → Console para verificar)
+  // Diagnóstico no console (F12 → Console)
   console.log(
     `[Item ${id}] PV=${pv.toFixed(2)} custoUnit=${custoImpUnit.toFixed(2)} ` +
-    `com=${com.toFixed(2)} PIS=${pisV.toFixed(2)} COFINS=${cofV.toFixed(2)} ` +
-    `ICMS=${icmsEf.toFixed(2)} lucroAntes=${lucroAntes.toFixed(2)} ` +
-    `CSLL=${csll.toFixed(2)} IR=${ir.toFixed(2)} ` +
-    `lucroUnit=${lucroUnit.toFixed(2)} lucroTotal=${(lucroUnit*qtd).toFixed(2)}`
+    `ipiV=${ipiV.toFixed(2)} BC=${bcVenda.toFixed(2)} ` +
+    `PIS=${pisV.toFixed(2)} COFINS=${cofV.toFixed(2)} ICMS=${icmsEf.toFixed(2)} ` +
+    `lucroAntes/u=${lucroAntes.toFixed(2)} base_CSLL_IR=${(lucroAntes*qtd).toFixed(2)} ` +
+    `CSLL=${(csll*qtd).toFixed(2)} IR=${(ir*qtd).toFixed(2)} ` +
+    `lucroLíq=${(lucroUnit*qtd).toFixed(2)}`
   );
 
   return {
