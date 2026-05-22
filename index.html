@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PILAR Imports — Calculadora de Importação</title>
+<style>
+:root {
+  --turquesa: #00BCD4;
+  --turquesa-dark: #0097A7;
+  --cinza: #37474F;
+  --cinza-med: #607D8B;
+  --cinza-light: #ECEFF1;
+  --border: #CFD8DC;
+  --bg: #F5F7F8;
+  --white: #fff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--cinza);font-size:14px}
+.header{background:var(--cinza);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
+.logo{background:var(--turquesa);color:#fff;font-size:22px;font-weight:900;padding:8px 20px;border-radius:4px;letter-spacing:4px}
+.header h1{font-size:16px;font-weight:400;opacity:.9}
+.container{max-width:1400px;margin:0 auto;padding:24px}
+.card{background:var(--white);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);margin-bottom:20px;overflow:hidden}
+.card-hd{background:var(--cinza);color:#fff;padding:10px 20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.card-hd.tq{background:var(--turquesa)}
+.card-bd{padding:20px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px}
+.g5{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med)}
+.field input{padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza);width:100%;transition:border-color .15s}
+.field input:focus{outline:none;border-color:var(--turquesa)}
+.field input.ro{background:#F0FAFB;border-color:var(--turquesa);color:#006064;font-weight:600}
+.note{font-size:10px;color:var(--cinza-med);margin-top:2px}
+/* item */
+.item-card{border:2px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.item-hd{background:var(--cinza);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+.item-hd h3{font-size:13px;font-weight:700}
+.btn-rm{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+.btn-rm:hover{background:#c62828}
+.item-bd{padding:16px}
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.sec-div{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--cinza-med);padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.rt{width:100%;border-collapse:collapse;font-size:13px}
+.rt td{padding:3px 4px}
+.rt td:first-child{color:var(--cinza-med)}
+.rt td:last-child{text-align:right;font-weight:500;white-space:nowrap}
+.rt tr.hl td{color:var(--turquesa-dark);font-weight:700;font-size:14px;border-top:1px solid var(--border);padding-top:6px}
+.rt tr.tot td{font-weight:700;border-top:2px solid var(--cinza);padding-top:5px}
+.icms-badge{background:#E0F7FA;border:1px solid var(--turquesa);border-radius:4px;padding:6px 10px;font-size:12px;color:#006064;text-align:center;margin:8px 0}
+/* summary */
+.sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.sum-item{text-align:center;padding:14px;background:var(--cinza-light);border-radius:8px}
+.sum-item .val{font-size:18px;font-weight:700;color:var(--turquesa-dark)}
+.sum-item .lbl{font-size:11px;color:var(--cinza-med);margin-top:4px;text-transform:uppercase}
+.sum-item.dk{background:var(--cinza)}
+.sum-item.dk .val{color:var(--turquesa)}
+.sum-item.dk .lbl{color:rgba(255,255,255,.6)}
+/* buttons */
+.btn{padding:10px 22px;border-radius:6px;border:none;cursor:pointer;font-size:14px;font-weight:600;transition:all .15s}
+.btn-p{background:var(--turquesa);color:#fff}
+.btn-p:hover{background:var(--turquesa-dark)}
+.btn-s{background:var(--cinza-light);color:var(--cinza);border:1px solid var(--border)}
+.btn-s:hover{background:var(--border)}
+/* autocomplete */
+.ac-wrap{position:relative}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:220px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none}
+.ac-item{padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--cinza-light);font-size:13px}
+.ac-item:hover,.ac-item.act{background:var(--cinza-light)}
+.ac-ncm{font-size:11px;color:var(--cinza-med);margin-left:8px}
+/* aliquotas mini-display */
+.aliq-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.aliq-tag{background:var(--cinza-light);border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:11px;color:var(--cinza-med)}
+.aliq-tag b{color:var(--cinza)}
+/* cotação */
+#cotacao-sec{display:none}
+.cot-wrap{max-width:1020px;margin:40px auto;padding:40px;background:#fff;box-shadow:0 0 20px rgba(0,0,0,.1)}
+.cot-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+.cot-info{text-align:right;font-size:14px;color:var(--cinza-med);line-height:1.8}
+.cot-title{font-size:22px;font-weight:700;border-bottom:3px solid var(--turquesa);padding-bottom:8px;margin-bottom:10px}
+.cot-desc{color:var(--cinza-med);font-size:14px;margin-bottom:22px}
+.cot-sec-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;background:var(--cinza);color:#fff;padding:7px 12px;border-radius:4px 4px 0 0;margin-bottom:0}
+.cot-table{width:100%;border-collapse:collapse;margin-bottom:6px}
+.cot-table th{background:var(--cinza-med);color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;white-space:nowrap}
+.cot-table td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px}
+.cot-table tr:nth-child(even) td{background:var(--cinza-light)}
+.cot-table .tot-row td{font-weight:700;border-top:2px solid var(--cinza);background:#E0F7FA}
+.cot-nota{font-size:12px;color:var(--cinza-med);font-style:italic;margin-bottom:22px;padding:4px 2px}
+.cot-lbl{font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-med);display:block;margin:14px 0 4px}
+.cot-ta{width:100%;border:1px solid var(--border);border-radius:4px;padding:8px 12px;font-size:14px;font-family:inherit;color:var(--cinza);resize:vertical}
+.cot-footer{border-top:1px solid var(--border);padding-top:14px;color:var(--cinza-med);font-size:12px;line-height:1.7;margin-top:24px}
+.cot-footer p:last-child{text-align:center;font-style:italic;margin-top:6px}
+@media(max-width:900px){
+  .g4,.g5{grid-template-columns:1fr 1fr}
+  .sum-grid{grid-template-columns:1fr 1fr}
+  .res-grid{grid-template-columns:1fr}
+  .g3{grid-template-columns:1fr 1fr}
+}
+@media(max-width:560px){
+  .g2,.g3,.g4,.g5{grid-template-columns:1fr}
+  .sum-grid{grid-template-columns:1fr 1fr}
+}
+@media print{
+  #calc-sec{display:none!important}
+  #cotacao-sec{display:block!important}
+  .no-print{display:none!important}
+  .cot-ta{border:none;padding:0}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     CALCULADORA
+═══════════════════════════════════════════════════════ -->
+<div id="calc-sec">
+
+<div class="header">
+  <img src="web_Logo_sem assinatura_turquesa.png" style="height:50px">
+  <h1>Calculadora de Importação — Lucro Real | MG | Venda Interestadual</h1>
+</div>
+
+<div class="container">
+
+<!-- Informações do Processo -->
+<div class="card">
+  <div class="card-hd tq">Informações do Processo</div>
+  <div class="card-bd">
+    <div class="g5">
+      <div class="field">
+        <label>Nome do Cliente</label>
+        <input type="text" id="cliente" placeholder="Ex.: Distribuidora XYZ" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>Data</label>
+        <input type="date" id="data_proc" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>Dólar Fiscal (R$)</label>
+        <input type="number" id="dolar" value="5.80" step="0.01" min="0" oninput="onFreteChange()">
+      </div>
+      <div class="field">
+        <label>Frete Internacional Total (USD)</label>
+        <input type="number" id="frete_total" value="3500" step="100" min="0" oninput="onFreteChange()">
+      </div>
+      <div class="field">
+        <label>Comissão de Vendas (%)</label>
+        <input type="number" id="comissao" value="0.5" step="0.1" min="0" max="100" oninput="calcAll()">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custos Fixos -->
+<div class="card">
+  <div class="card-hd">Custos Fixos do Processo</div>
+  <div class="card-bd">
+    <div class="g4">
+      <div class="field">
+        <label>Siscomex (R$)</label>
+        <input type="number" id="c_siscomex" value="154.23" step="1" min="0" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>AFRMM (R$)</label>
+        <input type="number" id="c_afrmm" step="1" min="0" oninput="calcAll()">
+        <span class="note">Auto: 8% × frete × dólar &nbsp;·&nbsp; ×containers/item</span>
+      </div>
+      <div class="field">
+        <label>Despachante (R$)</label>
+        <input type="number" id="c_despachante" value="2500" step="100" min="0" oninput="calcAll()">
+        <span class="note">Fixo por processo (rateado pelo FOB)</span>
+      </div>
+      <div class="field">
+        <label>Agente de Cargas (R$)</label>
+        <input type="number" id="c_agente" value="1800" step="100" min="0" oninput="calcAll()">
+        <span class="note">Fixo por processo (rateado pelo FOB)</span>
+      </div>
+      <div class="field">
+        <label>Armazenagem Porto (R$/container)</label>
+        <input type="number" id="c_armazenagem" value="2600" step="100" min="0" oninput="calcAll()">
+        <span class="note">×containers/item</span>
+      </div>
+      <div class="field">
+        <label>Capatazia (R$/container)</label>
+        <input type="number" id="c_capatazia" value="1010" step="10" min="0" oninput="calcAll()">
+        <span class="note">×containers/item</span>
+      </div>
+      <div class="field">
+        <label>Operador Logístico (R$/container)</label>
+        <input type="number" id="c_oplog" value="1000" step="100" min="0" oninput="calcAll()">
+        <span class="note">×containers/item</span>
+      </div>
+      <div class="field">
+        <label>Total Custos Fixos (R$)</label>
+        <input id="total_cf" class="ro" readonly>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Items -->
+<div id="items-container"></div>
+
+<div style="margin-bottom:20px">
+  <button class="btn btn-p" onclick="addItem()">+ Adicionar Item</button>
+</div>
+
+<!-- Configuração da Cotação -->
+<div class="card">
+  <div class="card-hd">Configuração da Cotação</div>
+  <div class="card-bd">
+    <div class="g3" style="margin-bottom:12px">
+      <div class="field" style="grid-column:span 2">
+        <label>Título da Operação</label>
+        <input type="text" id="cot_titulo" placeholder="Ex.: Tecidos Fleece — Coral e Flanel">
+      </div>
+      <div class="field">
+        <label>Acréscimo a Prazo (%)</label>
+        <input type="number" id="cot_acrescimo" value="0" step="0.5" min="0">
+        <span class="note">0 = sem opção a prazo na cotação</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Descrição Resumida</label>
+      <input type="text" id="cot_descricao" placeholder="Ex.: Coral Fleece e Flanel Fleece · Liso e Estampado · Origem: China">
+    </div>
+  </div>
+</div>
+
+<!-- Resumo -->
+<div class="card">
+  <div class="card-hd tq">Resumo Geral do Processo</div>
+  <div class="card-bd">
+    <div class="sum-grid">
+      <div class="sum-item"><div class="val" id="s_fob">—</div><div class="lbl">Total FOB (USD)</div></div>
+      <div class="sum-item"><div class="val" id="s_cif">—</div><div class="lbl">Total CIF (R$)</div></div>
+      <div class="sum-item"><div class="val" id="s_impostos">—</div><div class="lbl">Impostos Importação (R$)</div></div>
+      <div class="sum-item"><div class="val" id="s_custo_imp">—</div><div class="lbl">Custo Total Importação (R$)</div></div>
+      <div class="sum-item dk"><div class="val" id="s_venda">—</div><div class="lbl">Total Preço de Venda (R$)</div></div>
+      <div class="sum-item dk"><div class="val" id="s_lucro">—</div><div class="lbl">Lucro Total (R$)</div></div>
+      <div class="sum-item dk"><div class="val" id="s_margem">—</div><div class="lbl">Margem Média</div></div>
+      <div class="sum-item"><div class="val" id="s_custo_op">—</div><div class="lbl">Custo Total Operação (R$)</div></div>
+    </div>
+    <div style="text-align:center;margin-top:22px">
+      <button class="btn btn-p" onclick="showCotacao()" style="font-size:15px;padding:12px 36px">
+        📄 Gerar Cotação para o Cliente
+      </button>
+    </div>
+  </div>
+</div>
+
+</div><!-- container -->
+</div><!-- calc-sec -->
+
+<!-- ═══════════════════════════════════════════════════════
+     COTAÇÃO
+═══════════════════════════════════════════════════════ -->
+<div id="cotacao-sec">
+  <div class="cot-wrap" id="cot-content"></div>
+  <div class="no-print" style="text-align:center;padding:20px;display:flex;justify-content:center;gap:12px">
+    <button class="btn btn-p" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+    <button class="btn btn-s" onclick="hideCotacao()">← Voltar à Calculadora</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// BANCO DE DADOS
+// ============================================================
+let produtos = [];
+let itemIds = [];
+let itemCounter = 0;
+let itemAliq = {};   // alíquotas por item id
+
+fetch('produtos.json')
+  .then(r => r.json())
+  .then(data => { produtos = data; init(); })
+  .catch(() => alert('Erro ao carregar produtos.json.\nAbra via servidor local (ex: python3 -m http.server 8080) ou use Live Server no VS Code.'));
+
+function init() {
+  document.getElementById('data_proc').value = today();
+  updateAFRMM();
+  addItem();
+  addItem();
+}
+
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function n(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+
+function fmt(v, decimals = 2) {
+  if (!isFinite(v) || isNaN(v)) return '—';
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function fmtBRL(v) { return isFinite(v) && !isNaN(v) ? 'R$ ' + fmt(v) : '—'; }
+function fmtUSD(v) { return isFinite(v) && !isNaN(v) ? 'USD ' + fmt(v, 4) : '—'; }
+function fmtPct(v) { return isFinite(v) && !isNaN(v) ? fmt(v * 100, 2) + '%' : '—'; }
+
+function setEl(id, val) { const e = document.getElementById(id); if (e) e.textContent = val; }
+
+// ============================================================
+// AFRMM
+// ============================================================
+function onFreteChange() { updateAFRMM(); calcAll(); }
+
+function updateAFRMM() {
+  const afrmm = n('frete_total') * n('dolar') * 0.08;
+  document.getElementById('c_afrmm').value = afrmm.toFixed(2);
+}
+
+// ============================================================
+// FIXED COSTS
+// ============================================================
+function totalCF() {
+  return n('c_siscomex') + n('c_afrmm') + n('c_despachante') +
+         n('c_agente') + n('c_armazenagem') + n('c_capatazia') + n('c_oplog');
+}
+
+// ============================================================
+// CORE CALCULATIONS
+// ============================================================
+function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
+  const aliq = itemAliq[id] || defaultAliq();
+  const qtd  = parseFloat(document.getElementById('qtd_' + id)?.value) || 0;
+  const fob  = parseFloat(document.getElementById('fob_' + id)?.value) || 0;
+  const frod = parseFloat(document.getElementById('frod_' + id)?.value) || 0;
+  const cont = parseFloat(document.getElementById('cont_' + id)?.value) || 1;
+  const margem = (parseFloat(document.getElementById('margem_' + id)?.value) || 20) / 100;
+
+  if (qtd <= 0 || fob <= 0) return null;
+
+  const fobItem   = fob * qtd;
+  const prop      = fobTotalProcesso > 0 ? fobItem / fobTotalProcesso : 0;
+  const freteRat  = freteTotalUSD * prop;
+  const cifRS     = (fobItem + freteRat) * dolar;
+
+  // Impostos importação
+  const ii        = cifRS * aliq.ii;
+  const ipi       = (cifRS + ii) * aliq.ipi;
+  const pisImp    = (cifRS + ii + ipi) * aliq.pis_imp;
+  const cofImp    = (cifRS + ii + ipi) * aliq.cof_imp;
+  // ICMS por dentro
+  const baseIcms  = cifRS + ii + ipi + pisImp + cofImp;
+  const icmsImp   = baseIcms * aliq.icms_inter / (1 - aliq.icms_inter);
+
+  // Custos fixos:
+  // Per-container × qtd containers do item: AFRMM, Armazenagem, Capatazia, Op. Logístico
+  const cfContainer = cont * (n('c_afrmm') + n('c_armazenagem') + n('c_capatazia') + n('c_oplog'));
+  // FOB-rateados por processo (fixos independente de container): Siscomex, Despachante, Agente
+  const cfRationed  = (n('c_siscomex') + n('c_despachante') + n('c_agente')) * prop;
+  const cfRat       = cfContainer + cfRationed;
+
+  // Frete rodoviário: valor por container × qtd containers do item
+  const frodTotal   = frod * cont;
+
+  const custoImpTotal = cifRS + ii + ipi + pisImp + cofImp + icmsImp + cfRat + frodTotal;
+  const custoImpUnit  = custoImpTotal / qtd;
+
+  // Iterative PV — converge: custo_op_unit / (1 - margem) = PV
+  let pv = custoImpUnit / Math.max(0.01, 1 - margem);
+  for (let i = 0; i < 120; i++) {
+    const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
+    const pvNew = op / Math.max(0.001, 1 - margem);
+    if (Math.abs(pvNew - pv) < 0.0005) { pv = pvNew; break; }
+    pv = pvNew;
+  }
+
+  const op = custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd);
+  const lucroUnit   = pv - op;
+  const margemReal  = pv > 0 ? lucroUnit / pv : 0;
+
+  // Breakdown for display
+  const com  = pv * comissaoPct;
+  const pv_  = pv * aliq.pis_venda;
+  const cv_  = pv * aliq.cof_venda;
+  const icmsEf = pv * aliq.reg_espec_inter;
+  const lucroAntes = pv - custoImpUnit - com - pv_ - cv_ - icmsEf;
+  const csll = Math.max(0, lucroAntes) * 0.09;
+  const ir   = Math.max(0, lucroAntes) * 0.15;
+
+  return {
+    qtd, fob, fobItem, prop, freteRat, cifRS,
+    ii, ipi, pisImp, cofImp, icmsImp, cfRat, frodTotal,
+    custoImpTotal, custoImpUnit,
+    pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
+    com, pisV: pv_, cofV: cv_, icmsEf, csll, ir,
+    custoOpTotal: op * qtd,
+    lucroUnit, lucroTotal: lucroUnit * qtd,
+    margemReal
+  };
+}
+
+function custoOpUnit(pv, custoImpUnit, aliq, comissaoPct, qtd) {
+  const com  = pv * comissaoPct;
+  const pisV = pv * aliq.pis_venda;
+  const cofV = pv * aliq.cof_venda;
+  const icmsEf = pv * aliq.reg_espec_inter;
+  const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
+  const csll = Math.max(0, lucroAntes) * 0.09;
+  const ir   = Math.max(0, lucroAntes) * 0.15;
+  // Adicional IR: 10% sobre lucro total do item acima de R$20.000
+  const lucroItemTotal = lucroAntes * qtd;
+  const irAdic = Math.max(0, lucroItemTotal - 20000) * 0.10 / qtd;
+  return custoImpUnit + com + pisV + cofV + icmsEf + csll + ir + irAdic;
+}
+
+function defaultAliq() {
+  return { ii:0, ipi:0, pis_imp:0.021, cof_imp:0.0965,
+           pis_venda:0.0065, cof_venda:0.03,
+           icms_intra:0.18, icms_inter:0.04,
+           reg_espec_intra:0.14, reg_espec_inter:0.015 };
+}
+
+// ============================================================
+// CALC ALL
+// ============================================================
+function calcAll() {
+  const cf  = totalCF();
+  document.getElementById('total_cf').value = 'R$ ' + fmt(cf);
+
+  const dolar   = n('dolar');
+  const freteT  = n('frete_total');
+  const comPct  = n('comissao') / 100;
+
+  // FOB total do processo
+  let fobTotal = 0;
+  itemIds.forEach(id => {
+    const qtd = parseFloat(document.getElementById('qtd_' + id)?.value) || 0;
+    const fob = parseFloat(document.getElementById('fob_' + id)?.value) || 0;
+    fobTotal += qtd * fob;
+  });
+
+  let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0;
+
+  itemIds.forEach(id => {
+    const r = calcItem(id, fobTotal, freteT, dolar, comPct);
+    renderItemResult(id, r);
+    if (r) {
+      sFob      += r.fobItem;
+      sCif      += r.cifRS;
+      sImp      += r.ii + r.ipi + r.pisImp + r.cofImp + r.icmsImp;
+      sCustoImp += r.custoImpTotal;
+      sVenda    += r.pvTotal;
+      sLucro    += r.lucroTotal;
+      sCustoOp  += r.custoOpTotal;
+    }
+  });
+
+  const margemMedia = sVenda > 0 ? sLucro / sVenda : 0;
+  setEl('s_fob',      fmt(sFob) + ' USD');
+  setEl('s_cif',      fmtBRL(sCif));
+  setEl('s_impostos', fmtBRL(sImp));
+  setEl('s_custo_imp',fmtBRL(sCustoImp));
+  setEl('s_venda',    fmtBRL(sVenda));
+  setEl('s_lucro',    fmtBRL(sLucro));
+  setEl('s_margem',   fmtPct(margemMedia));
+  setEl('s_custo_op', fmtBRL(sCustoOp));
+}
+
+function renderItemResult(id, r) {
+  const s = (suf, val) => setEl('r_' + suf + '_' + id, val);
+  if (!r) {
+    ['cif','ii','ipi','piI','coI','icI','cfR','frd','ciT','ciU',
+     'com','piV','coV','icE','csl','ir_','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
+    return;
+  }
+  s('cif', fmtBRL(r.cifRS));
+  s('ii',  fmtBRL(r.ii));
+  s('ipi', fmtBRL(r.ipi));
+  s('piI', fmtBRL(r.pisImp));
+  s('coI', fmtBRL(r.cofImp));
+  s('icI', fmtBRL(r.icmsImp));
+  s('cfR', fmtBRL(r.cfRat));
+  s('frd', fmtBRL(r.frodTotal));
+  s('ciT', fmtBRL(r.custoImpTotal));
+  s('ciU', fmtBRL(r.custoImpUnit));
+  s('com', fmtBRL(r.com * r.qtd));
+  s('piV', fmtBRL(r.pisV * r.qtd));
+  s('coV', fmtBRL(r.cofV * r.qtd));
+  s('icE', fmtBRL(r.icmsEf * r.qtd));
+  s('csl', fmtBRL(r.csll * r.qtd));
+  s('ir_', fmtBRL(r.ir * r.qtd));
+  s('pvU', fmtBRL(r.pv));
+  s('pvD', fmtUSD(r.pvUSD));
+  s('pvT', fmtBRL(r.pvTotal));
+  s('mrg', fmtPct(r.margemReal));
+  s('luc', fmtBRL(r.lucroTotal));
+}
+
+// ============================================================
+// ITEMS UI
+// ============================================================
+function addItem() {
+  itemCounter++;
+  const id = itemCounter;
+  itemIds.push(id);
+  itemAliq[id] = defaultAliq();
+
+  const div = document.createElement('div');
+  div.className = 'item-card';
+  div.id = 'item_' + id;
+  div.innerHTML = itemHTML(id);
+  document.getElementById('items-container').appendChild(div);
+  calcAll();
+}
+
+function removeItem(id) {
+  if (itemIds.length <= 1) { alert('Deve haver ao menos 1 item.'); return; }
+  itemIds = itemIds.filter(i => i !== id);
+  delete itemAliq[id];
+  document.getElementById('item_' + id).remove();
+  calcAll();
+}
+
+function itemHTML(id) {
+  return `
+  <div class="item-hd">
+    <h3>ITEM ${id}</h3>
+    <button class="btn-rm" onclick="removeItem(${id})">✕ Remover</button>
+  </div>
+  <div class="item-bd">
+    <div class="g4" style="margin-bottom:14px">
+      <div class="field" style="grid-column:span 2">
+        <label>Produto</label>
+        <div class="ac-wrap">
+          <input type="text" id="prod_${id}" placeholder="Digite para buscar produto..."
+                 oninput="filterAC(${id})" onkeydown="acKey(event,${id})" autocomplete="off">
+          <div class="ac-list" id="ac_${id}"></div>
+        </div>
+        <div class="aliq-row" id="aliq_${id}"></div>
+      </div>
+      <div class="field">
+        <label>NCM</label>
+        <input type="text" id="ncm_${id}" placeholder="0000.00.00" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>Qtd. Containers</label>
+        <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
+      </div>
+    </div>
+    <div class="g4" style="margin-bottom:14px">
+      <div class="field">
+        <label>Qtd. de Unidades</label>
+        <input type="number" id="qtd_${id}" value="1000" min="1" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>FOB Unitário (USD)</label>
+        <input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()">
+      </div>
+      <div class="field">
+        <label>Frete Rodoviário (R$/container)</label>
+        <input type="number" id="frod_${id}" value="0" step="100" min="0" oninput="calcAll()">
+        <span class="note">×containers deste item</span>
+      </div>
+      <div class="field">
+        <label>Margem Desejada (%)</label>
+        <input type="number" id="margem_${id}" value="20" step="1" min="0" max="99" oninput="calcAll()">
+      </div>
+    </div>
+
+    <div class="res-grid">
+      <div>
+        <div class="sec-div">Custos de Importação (totais do processo)</div>
+        <table class="rt">
+          <tr><td>CIF (R$)</td><td id="r_cif_${id}">—</td></tr>
+          <tr><td>II — Imposto de Importação</td><td id="r_ii_${id}">—</td></tr>
+          <tr><td>IPI</td><td id="r_ipi_${id}">—</td></tr>
+          <tr><td>PIS Importação</td><td id="r_piI_${id}">—</td></tr>
+          <tr><td>COFINS Importação</td><td id="r_coI_${id}">—</td></tr>
+          <tr><td>ICMS Importação (por dentro)</td><td id="r_icI_${id}">—</td></tr>
+          <tr><td>Custos Fixos Rateados</td><td id="r_cfR_${id}">—</td></tr>
+          <tr><td>Frete Rodoviário</td><td id="r_frd_${id}">—</td></tr>
+          <tr class="tot"><td>Custo Total Importação</td><td id="r_ciT_${id}">—</td></tr>
+          <tr><td>Custo Unitário Importação</td><td id="r_ciU_${id}">—</td></tr>
+        </table>
+      </div>
+      <div>
+        <div class="sec-div">Custos de Venda (totais) &amp; Resultado</div>
+        <table class="rt">
+          <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
+          <tr><td>PIS Venda (0,65%)</td><td id="r_piV_${id}">—</td></tr>
+          <tr><td>COFINS Venda (3,00%)</td><td id="r_coV_${id}">—</td></tr>
+          <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
+          <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
+          <tr><td>IR (15% + adic. 10%)</td><td id="r_ir_${id}">—</td></tr>
+        </table>
+        <div class="icms-badge">
+          ICMS destacado em NF: <strong>4%</strong> &nbsp;|&nbsp; ICMS efetivo recolhido (Reg. Espec. MG): <strong>1,5%</strong>
+        </div>
+        <table class="rt" style="margin-top:10px">
+          <tr class="hl"><td>Preço de Venda Unitário (R$)</td><td id="r_pvU_${id}">—</td></tr>
+          <tr><td>Preço de Venda Unitário (USD)</td><td id="r_pvD_${id}">—</td></tr>
+          <tr class="hl"><td>Preço de Venda Total (R$)</td><td id="r_pvT_${id}">—</td></tr>
+          <tr><td>Margem Real</td><td id="r_mrg_${id}">—</td></tr>
+          <tr class="hl"><td>Lucro Líquido Total (R$)</td><td id="r_luc_${id}">—</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// AUTOCOMPLETE
+// ============================================================
+const acActive = {};
+
+function filterAC(id) {
+  const q = (document.getElementById('prod_' + id)?.value || '').toLowerCase().trim();
+  const list = document.getElementById('ac_' + id);
+  if (q.length < 1) { list.style.display = 'none'; return; }
+
+  const matches = produtos.filter(p => p.produto.toLowerCase().includes(q)).slice(0, 60);
+  if (!matches.length) { list.style.display = 'none'; return; }
+
+  list.innerHTML = matches.map((p, i) =>
+    `<div class="ac-item" data-i="${i}" onmousedown="selectProd(${id},${produtos.indexOf(p)})">
+       ${p.produto}<span class="ac-ncm">${p.ncm}</span>
+     </div>`
+  ).join('');
+  acActive[id] = -1;
+  list.style.display = 'block';
+}
+
+function acKey(e, id) {
+  const list = document.getElementById('ac_' + id);
+  if (list.style.display === 'none') return;
+  const items = list.querySelectorAll('.ac-item');
+  if (!items.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acActive[id] = Math.min((acActive[id] ?? -1) + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acActive[id] = Math.max((acActive[id] ?? 0) - 1, 0);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const idx = acActive[id] >= 0 ? acActive[id] : 0;
+    if (items[idx]) items[idx].dispatchEvent(new MouseEvent('mousedown'));
+    return;
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none'; return;
+  } else { return; }
+
+  items.forEach((el, i) => el.classList.toggle('act', i === acActive[id]));
+  items[acActive[id]]?.scrollIntoView({ block: 'nearest' });
+}
+
+function selectProd(itemId, prodIdx) {
+  const p = produtos[prodIdx];
+  if (!p) return;
+  document.getElementById('prod_' + itemId).value = p.produto;
+  document.getElementById('ncm_' + itemId).value  = p.ncm;
+  if (p.menor_fob != null) document.getElementById('fob_' + itemId).value = p.menor_fob;
+  document.getElementById('ac_' + itemId).style.display = 'none';
+
+  itemAliq[itemId] = {
+    ii:           p.ii || 0,
+    ipi:          p.ipi || 0,
+    pis_imp:      p.pis_importacao || 0,
+    cof_imp:      p.cofins_importacao || 0,
+    pis_venda:    p.pis_venda || 0.0065,
+    cof_venda:    p.cofins_venda || 0.03,
+    icms_intra:   p.icms_intra || 0.18,
+    icms_inter:   p.icms_inter || 0.04,
+    reg_espec_intra:  p.reg_espec_intra || 0.14,
+    reg_espec_inter:  p.reg_espec_inter || 0.015
+  };
+
+  // Show alíquotas tags
+  const a = itemAliq[itemId];
+  document.getElementById('aliq_' + itemId).innerHTML = [
+    ['II', fmtPct(a.ii)], ['IPI', fmtPct(a.ipi)],
+    ['PIS imp', fmtPct(a.pis_imp)], ['COFINS imp', fmtPct(a.cof_imp)],
+    ['ICMS inter', fmtPct(a.icms_inter)], ['Reg.Espec', fmtPct(a.reg_espec_inter)]
+  ].map(([k,v]) => `<span class="aliq-tag">${k}: <b>${v}</b></span>`).join('');
+
+  calcAll();
+}
+
+document.addEventListener('click', e => {
+  itemIds.forEach(id => {
+    const ac  = document.getElementById('ac_' + id);
+    const inp = document.getElementById('prod_' + id);
+    if (ac && inp && !inp.contains(e.target) && !ac.contains(e.target))
+      ac.style.display = 'none';
+  });
+});
+
+// ============================================================
+// COTAÇÃO
+// ============================================================
+function showCotacao() {
+  const dolar      = n('dolar');
+  const freteT     = n('frete_total');
+  const comPct     = n('comissao') / 100;
+  const acrescimo  = n('cot_acrescimo') / 100;
+  const titulo     = document.getElementById('cot_titulo')?.value.trim() || 'Proposta Comercial';
+  const descricao  = document.getElementById('cot_descricao')?.value.trim() || '';
+
+  let fobTotal = 0;
+  itemIds.forEach(id => {
+    fobTotal += (parseFloat(document.getElementById('fob_' + id)?.value)||0) *
+                (parseFloat(document.getElementById('qtd_' + id)?.value)||0);
+  });
+
+  const cliente = document.getElementById('cliente').value || 'Cliente';
+  const dataVal = document.getElementById('data_proc').value;
+  const dataFmt = dataVal ? new Date(dataVal + 'T12:00').toLocaleDateString('pt-BR') : '—';
+  let validade = '—';
+  if (dataVal) {
+    const d = new Date(dataVal + 'T12:00'); d.setDate(d.getDate() + 30);
+    validade = d.toLocaleDateString('pt-BR');
+  }
+
+  const thRow = `<thead><tr>
+    <th>Produto</th>
+    <th style="text-align:right">Quantidade</th>
+    <th style="text-align:right">Unit. USD</th>
+    <th style="text-align:right">Unit. BRL</th>
+    <th style="text-align:right">Total USD</th>
+    <th style="text-align:right">Total BRL</th>
+  </tr></thead>`;
+
+  let rows1 = '', rows2 = '';
+  let totUSD1 = 0, totBRL1 = 0, totUSD2 = 0, totBRL2 = 0;
+
+  itemIds.forEach(id => {
+    const r = calcItem(id, fobTotal, freteT, dolar, comPct);
+    if (!r || r.qtd <= 0) return;
+
+    const prod = document.getElementById('prod_' + id)?.value || 'Item ' + id;
+    const totU1 = r.pvUSD * r.qtd;
+    const totB1 = r.pvTotal;
+    totUSD1 += totU1;
+    totBRL1 += totB1;
+
+    rows1 += `<tr>
+      <td>${prod}</td>
+      <td style="text-align:right">${fmt(r.qtd, 0)}</td>
+      <td style="text-align:right">USD ${fmt(r.pvUSD, 2)}</td>
+      <td style="text-align:right">R$ ${fmt(r.pv)}</td>
+      <td style="text-align:right">USD ${fmt(totU1, 2)}</td>
+      <td style="text-align:right">R$ ${fmt(totB1)}</td>
+    </tr>`;
+
+    if (acrescimo > 0) {
+      const pvUSD2 = r.pvUSD * (1 + acrescimo);
+      const pvBRL2 = r.pv   * (1 + acrescimo);
+      const totU2  = pvUSD2  * r.qtd;
+      const totB2  = pvBRL2  * r.qtd;
+      totUSD2 += totU2;
+      totBRL2 += totB2;
+      rows2 += `<tr>
+        <td>${prod}</td>
+        <td style="text-align:right">${fmt(r.qtd, 0)}</td>
+        <td style="text-align:right">USD ${fmt(pvUSD2, 2)}</td>
+        <td style="text-align:right">R$ ${fmt(pvBRL2)}</td>
+        <td style="text-align:right">USD ${fmt(totU2, 2)}</td>
+        <td style="text-align:right">R$ ${fmt(totB2)}</td>
+      </tr>`;
+    }
+  });
+
+  rows1 += `<tr class="tot-row">
+    <td colspan="4" style="text-align:right">TOTAL GERAL</td>
+    <td style="text-align:right">USD ${fmt(totUSD1, 2)}</td>
+    <td style="text-align:right">R$ ${fmt(totBRL1)}</td>
+  </tr>`;
+
+  // Formatar percentual de acréscimo para exibição (sem zeros desnecessários)
+  const acrDisp = n('cot_acrescimo') % 1 === 0
+    ? fmt(n('cot_acrescimo'), 0)
+    : fmt(n('cot_acrescimo'), 1);
+
+  let op2Html = '';
+  if (acrescimo > 0) {
+    rows2 += `<tr class="tot-row">
+      <td colspan="4" style="text-align:right">TOTAL GERAL</td>
+      <td style="text-align:right">USD ${fmt(totUSD2, 2)}</td>
+      <td style="text-align:right">R$ ${fmt(totBRL2)}</td>
+    </tr>`;
+    op2Html = `
+      <div class="cot-sec-title" style="margin-top:22px">OPÇÃO 2 — PAGAMENTO A PRAZO</div>
+      <table class="cot-table">${thRow}<tbody>${rows2}</tbody></table>
+      <p class="cot-nota">* Acréscimo de ${acrDisp}% sobre os preços à vista.</p>`;
+  }
+
+  document.getElementById('cot-content').innerHTML = `
+    <div class="cot-hdr">
+      <div>
+        <img src="web_Logo_sem assinatura_turquesa.png" style="height:50px">
+        <div style="margin-top:6px;font-size:12px;color:var(--cinza-med)">PILAR Imports LTDA — Minas Gerais</div>
+      </div>
+      <div class="cot-info">
+        <strong>${cliente}</strong><br>
+        Data: ${dataFmt}<br>
+        Validade: ${validade}
+      </div>
+    </div>
+    <div class="cot-title">${titulo}</div>
+    ${descricao ? `<p class="cot-desc">${descricao}</p>` : ''}
+    <div class="cot-sec-title">OPÇÃO 1 — PAGAMENTO À VISTA</div>
+    <table class="cot-table">${thRow}<tbody>${rows1}</tbody></table>
+    ${op2Html}
+    <div style="margin-top:${acrescimo > 0 ? '0' : '22px'}">
+      <label class="cot-lbl">Prazo de Entrega Estimado</label>
+      <textarea class="cot-ta" rows="2" placeholder="Ex.: 60 dias após confirmação do pedido"></textarea>
+      <label class="cot-lbl">Condições de Pagamento</label>
+      <textarea class="cot-ta" rows="2" placeholder="Ex.: 30% antecipado, 70% contra embarque"></textarea>
+      <label class="cot-lbl">Observações</label>
+      <textarea class="cot-ta" rows="3" placeholder="Observações adicionais..."></textarea>
+    </div>
+    <div class="cot-footer">
+      <p>* Câmbio: USD 1 = R$ ${fmt(dolar)} (${dataFmt}). Frete internacional de referência: USD ${fmt(freteT, 0)}.</p>
+      <p>PILAR Imports — Preço competitivo. Produto superior. Pontualidade na entrega.</p>
+    </div>`;
+
+  document.getElementById('calc-sec').style.display = 'none';
+  document.getElementById('cotacao-sec').style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+function hideCotacao() {
+  document.getElementById('calc-sec').style.display = 'block';
+  document.getElementById('cotacao-sec').style.display = 'none';
+}
+</script>
+</body>
+</html>
