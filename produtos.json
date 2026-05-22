@@ -1357,7 +1357,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 3.69,
-    "valor_fob": 3.9
+    "valor_fob": 3.9000000000000004
   },
   {
     "produto": "PILLOW TOP POLIESTER CASAL",
@@ -1389,7 +1389,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 5.99,
-    "valor_fob": 6.19
+    "valor_fob": 6.1899999999999995
   },
   {
     "produto": "PILLOW TOP POLIESTER KING",
@@ -1405,7 +1405,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 6.95,
-    "valor_fob": 7.265
+    "valor_fob": 7.265000000000001
   },
   {
     "produto": "MOTO A COMBUSTAO 110CC",
@@ -1533,7 +1533,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "COOLER DE BEBIDAS ELETRICO",
@@ -1565,7 +1565,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "CARPETE QUADRADO",
@@ -1581,7 +1581,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "EMPILHADEIRA",
@@ -1597,7 +1597,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "EMPILHADEIRA 2",
@@ -1613,7 +1613,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "CADEIRA DE MASSAGEM",
@@ -1645,7 +1645,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "FITA ADESIVA 5CM LARGURA",
@@ -1661,7 +1661,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "TAPETE HIGIENICO",
@@ -1916,8 +1916,8 @@
     "icms_inter": 0.04,
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
-    "menor_fob": null,
-    "valor_fob": null
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
   },
   {
     "produto": "ETIQUETA TERMICA",
@@ -1981,7 +1981,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0486,
-    "valor_fob": 9.9493
+    "valor_fob": 9.949300000000001
   },
   {
     "produto": "PAINEL RIPADO - 2,90 X 21,9 X 3MM",
@@ -2242,8 +2242,8 @@
   {
     "produto": "GRADIL METALICO",
     "ncm": "7326.90.90",
-    "ii": 0.14,
-    "ipi": 0,
+    "ii": 0.18,
+    "ipi": 0.059,
     "pis_importacao": 0.021,
     "cofins_importacao": 0.0965,
     "pis_venda": 0.0065,
@@ -2258,8 +2258,8 @@
   {
     "produto": "TENDA DUAS AGUAS",
     "ncm": "9406.90.20",
-    "ii": 0.14,
-    "ipi": 0.065,
+    "ii": 0.162,
+    "ipi": 0.0,
     "pis_importacao": 0.021,
     "cofins_importacao": 0.0965,
     "pis_venda": 0.0065,
@@ -2274,8 +2274,8 @@
   {
     "produto": "PEDESTAL ORGANIZADOR DE FILAS",
     "ncm": "9403.20.00",
-    "ii": 0.14,
-    "ipi": 0.065,
+    "ii": 0.162,
+    "ipi": 0.0377,
     "pis_importacao": 0.021,
     "cofins_importacao": 0.0965,
     "pis_venda": 0.0065,
@@ -2290,8 +2290,8 @@
   {
     "produto": "PISO INTERLOCK",
     "ncm": "3926.90.90",
-    "ii": 0.14,
-    "ipi": 0.15,
+    "ii": 0.18,
+    "ipi": 0.115,
     "pis_importacao": 0.021,
     "cofins_importacao": 0.0965,
     "pis_venda": 0.0065,
@@ -2509,7 +2509,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 2.36,
-    "valor_fob": 2.43
+    "valor_fob": 2.4299999999999997
   },
   {
     "produto": "TEC BLACKOUT 240GSM 280CM",
@@ -2637,7 +2637,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "TEC POLY SATIN JACQUARD DOBBY 150GSM 280CM - CATONIC",
@@ -2653,7 +2653,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "TEC HELANCA 105GSM ESTAMPADO 180CM",
@@ -2717,7 +2717,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 1.75,
-    "valor_fob": 1.785
+    "valor_fob": 1.7850000000000001
   },
   {
     "produto": "TEC HELANCA 130GSM LISO 180CM",
@@ -2781,7 +2781,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 1.88,
-    "valor_fob": 2.0667
+    "valor_fob": 2.066666666666667
   },
   {
     "produto": "TEC MALHA LIGANETE 210GSM LISO 160CM",
@@ -2797,7 +2797,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 2.22,
-    "valor_fob": 2.38
+    "valor_fob": 2.3800000000000003
   },
   {
     "produto": "TEC MICROFIBRA TOWEL 200GSM 80% POLIÉSTER 20% POLIAMIDA 145CM",
@@ -2924,8 +2924,8 @@
     "icms_inter": 0.04,
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
-    "menor_fob": 2.3,
-    "valor_fob": 2.3
+    "menor_fob": 2.3000000000000003,
+    "valor_fob": 2.3000000000000003
   },
   {
     "produto": "TEC 100% ALGODÃO 300FIOS 280CM - DOBBY",
@@ -3021,7 +3021,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.28,
-    "valor_fob": 0.2967
+    "valor_fob": 0.2966666666666667
   },
   {
     "produto": "TEC MIC 60GSM ESTAMPADO 240CM",
@@ -3037,7 +3037,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.31,
-    "valor_fob": 0.3525
+    "valor_fob": 0.35250000000000004
   },
   {
     "produto": "TEC MIC 65GSM ESTAMPADO 225CM",
@@ -3053,7 +3053,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.31,
-    "valor_fob": 0.3567
+    "valor_fob": 0.35666666666666663
   },
   {
     "produto": "TEC MIC 65GSM ESTAMPADO 240CM",
@@ -3069,7 +3069,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.32,
-    "valor_fob": 0.3708
+    "valor_fob": 0.3708333333333333
   },
   {
     "produto": "TEC MIC 65GSM ESTAMPADO 250CM",
@@ -3085,7 +3085,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.34,
-    "valor_fob": 0.3808
+    "valor_fob": 0.38083333333333336
   },
   {
     "produto": "TEC MIC 65GSM ESTAMPADO 280CM",
@@ -3117,7 +3117,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.315,
-    "valor_fob": 0.347
+    "valor_fob": 0.34700000000000003
   },
   {
     "produto": "TEC MIC 65GSM TINTO 240CM",
@@ -3213,7 +3213,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.37,
-    "valor_fob": 0.4242
+    "valor_fob": 0.42416666666666664
   },
   {
     "produto": "TEC MIC 70GSM TINTO 225CM",
@@ -3277,7 +3277,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.41,
-    "valor_fob": 0.4542
+    "valor_fob": 0.4541666666666666
   },
   {
     "produto": "TEC MIC 75GSM ESTAMPADO 250CM",
@@ -3421,7 +3421,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.47,
-    "valor_fob": 0.5092
+    "valor_fob": 0.5091666666666667
   },
   {
     "produto": "TEC MIC 85GSM ESTAMPADO 250CM",
@@ -3453,7 +3453,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.44,
-    "valor_fob": 0.4557
+    "valor_fob": 0.4557142857142857
   },
   {
     "produto": "TEC MIC 85GSM TINTO 250CM",
@@ -3469,7 +3469,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.455,
-    "valor_fob": 0.4894
+    "valor_fob": 0.48937500000000006
   },
   {
     "produto": "TEC MIC 90GSM ESTAMPADO 250CM",
@@ -3485,7 +3485,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.51,
-    "valor_fob": 0.5469
+    "valor_fob": 0.546875
   },
   {
     "produto": "TEC MIC 90GSM ESTAMPADO 280CM",
@@ -3501,7 +3501,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.595,
-    "valor_fob": 0.6883
+    "valor_fob": 0.6883333333333334
   },
   {
     "produto": "TEC MIC 90GSM TINTO 250CM",
@@ -3549,7 +3549,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.58,
-    "valor_fob": 0.6393
+    "valor_fob": 0.6392857142857142
   },
   {
     "produto": "TEC MIC 90GSM TINTO 250CM - SEERSUCKER",
@@ -3597,7 +3597,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.49,
-    "valor_fob": 0.5292
+    "valor_fob": 0.5291666666666667
   },
   {
     "produto": "TEC MIC 100GSM ESTAMPADO 240CM",
@@ -3613,7 +3613,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.51,
-    "valor_fob": 0.5508
+    "valor_fob": 0.5508333333333334
   },
   {
     "produto": "TEC MIC 100GSM ESTAMPADO 250CM",
@@ -3645,7 +3645,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.34,
-    "valor_fob": 0.3742
+    "valor_fob": 0.3741666666666667
   },
   {
     "produto": "TEC MIC 100GSM TINTO 225CM",
@@ -3661,7 +3661,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.51,
-    "valor_fob": 0.5264
+    "valor_fob": 0.5264285714285715
   },
   {
     "produto": "TEC MIC 100GSM TINTO 240CM",
@@ -3677,7 +3677,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.53,
-    "valor_fob": 0.5464
+    "valor_fob": 0.5464285714285715
   },
   {
     "produto": "TEC MIC 100GSM TINTO 250CM",
@@ -3693,7 +3693,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.54,
-    "valor_fob": 0.5636
+    "valor_fob": 0.5635714285714285
   },
   {
     "produto": "TEC MIC 120GSM TINTO 250CM",
@@ -3901,7 +3901,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.47,
-    "valor_fob": 0.485
+    "valor_fob": 0.48500000000000004
   },
   {
     "produto": "TEC OXFORD 140GSM TINTO 150CM",
@@ -4077,7 +4077,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 1.7,
-    "valor_fob": 1.8233
+    "valor_fob": 1.8233333333333333
   },
   {
     "produto": "TEC SHERPA TINTO",
@@ -4093,7 +4093,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 2.25,
-    "valor_fob": 2.2733
+    "valor_fob": 2.2733333333333334
   },
   {
     "produto": "TEC SHERPA BONDED BRANCO E CORES 180+180GSM - 250CM",
@@ -4141,7 +4141,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.85,
-    "valor_fob": 0.9275
+    "valor_fob": 0.9275000000000001
   },
   {
     "produto": "TEC VELOUR 250G/M2 - 142CM",
@@ -4157,7 +4157,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.82,
-    "valor_fob": 0.925
+    "valor_fob": 0.9249999999999999
   },
   {
     "produto": "TEC VELVET 190G/M2 - 142CM",
@@ -4173,7 +4173,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.645,
-    "valor_fob": 0.7262
+    "valor_fob": 0.72625
   },
   {
     "produto": "TEC VOIL LISO 45G/M2",
@@ -4253,7 +4253,7 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
   },
   {
     "produto": "TEC PATCHWORK ULTRASSONICO",
@@ -4269,6 +4269,966 @@
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
     "menor_fob": 0.0,
-    "valor_fob": null
+    "valor_fob": 0.0
+  },
+  {
+    "produto": "ESCORA 20kN 1700 - 3200 AÇO GALVANIZADO",
+    "ncm": "7308.40.00",
+    "ii": 0.25,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 13.1,
+    "valor_fob": 13.1
+  },
+  {
+    "produto": "ESCORA 32kN 1710 - 3000 - ALUMINIO",
+    "ncm": "7308.40.00",
+    "ii": 0.25,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 39.0,
+    "valor_fob": 39.0
+  },
+  {
+    "produto": "MALHA DE AÇO 6CM X 50CM",
+    "ncm": "7314.41.00",
+    "ii": 0.13,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 7.5,
+    "valor_fob": 7.5
+  },
+  {
+    "produto": "MALHA DE AÇO 7,50CM X 50CM",
+    "ncm": "7314.41.00",
+    "ii": 0.13,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 7.25,
+    "valor_fob": 7.28625
+  },
+  {
+    "produto": "MALHA DE AÇO 12CM X 50CM",
+    "ncm": "7314.41.00",
+    "ii": 0.13,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 7.28,
+    "valor_fob": 7.3164
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO TORCIDO 1,25MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 7.35,
+    "valor_fob": 7.386749999999999
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 1,25MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.696,
+    "valor_fob": 0.696
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 2,11MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.685,
+    "valor_fob": 0.685
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 2,77MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.685,
+    "valor_fob": 0.685
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 1,25MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.682,
+    "valor_fob": 0.682
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 2,11MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.622,
+    "valor_fob": 0.622
+  },
+  {
+    "produto": "ARAME DE AÇO RECOZIDO 2,77MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.615,
+    "valor_fob": 0.615
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 1,25MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.612,
+    "valor_fob": 0.612
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 2,11MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.694,
+    "valor_fob": 0.694
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 2,77MM - ROLO 1KG CAIXA COM 20 ROLOS",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.673,
+    "valor_fob": 0.673
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 2,11MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.673,
+    "valor_fob": 0.673
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 2,77MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.879,
+    "valor_fob": 0.879
+  },
+  {
+    "produto": "ARAME DE AÇO GALVANIZADO 3,4MM - ROLO 50KG",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.771,
+    "valor_fob": 0.771
+  },
+  {
+    "produto": "ARAME FARPADO 1,60MM - FARPA 1,54MM - DISTANCIA 125MM - CARGA DE TORAÇÃO 250KG - ROLO 100M",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.745,
+    "valor_fob": 0.745
+  },
+  {
+    "produto": "ARAME FARPADO 1,60MM - FARPA 1,54MM - DISTANCIA 125MM - CARGA DE TORAÇÃO 250KG - ROLO 250M",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.095,
+    "valor_fob": 1.095
+  },
+  {
+    "produto": "ARAME FARPADO 1,60MM - FARPA 1,54MM - DISTANCIA 125MM - CARGA DE TORAÇÃO 250KG - ROLO 500M",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.038,
+    "valor_fob": 1.038
+  },
+  {
+    "produto": "ARAME FARPADO 1,60MM - FARPA 1,54MM - DISTANCIA 125MM - CARGA DE TORAÇÃO 350KG - ROLO 250M",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.998,
+    "valor_fob": 0.998
+  },
+  {
+    "produto": "ARAME FARPADO 1,60MM - FARPA 1,54MM - DISTANCIA 125MM - CARGA DE TORAÇÃO 350KG - ROLO 500M",
+    "ncm": "7313.00.00",
+    "ii": 0.13,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.104,
+    "valor_fob": 1.104
+  },
+  {
+    "produto": "DECK WPC 140X22 AL-GS140-22C",
+    "ncm": "3918.90.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.07,
+    "valor_fob": 1.07
+  },
+  {
+    "produto": "DECK WPC 140X23 AL-K140-23C",
+    "ncm": "3918.90.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 2.88,
+    "valor_fob": 2.88
+  },
+  {
+    "produto": "DECK WPC 148X23 AL-K148-23A",
+    "ncm": "3918.90.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 2.66,
+    "valor_fob": 2.66
+  },
+  {
+    "produto": "DECK WPC 140X23 AL-S148-23A",
+    "ncm": "3918.90.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 2.68,
+    "valor_fob": 2.68
+  },
+  {
+    "produto": "RODAPÉ PVC",
+    "ncm": "3925.20.00",
+    "ii": 0.16,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 3.68,
+    "valor_fob": 3.68
+  },
+  {
+    "produto": "BARROTE WPC",
+    "ncm": "3918.90.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.61,
+    "valor_fob": 0.61
+  },
+  {
+    "produto": "GUINDASTE DE TORRE 80MTS",
+    "ncm": "8426.20.00",
+    "ii": 0.13,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.088,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.8,
+    "valor_fob": 0.8
+  },
+  {
+    "produto": "ELEVADOR CREMALHEIRA 60MTS",
+    "ncm": "8428.10.00",
+    "ii": 0.11,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 87000.0,
+    "valor_fob": 87000.0
+  },
+  {
+    "produto": "PREGOS",
+    "ncm": "7317.00.90",
+    "ii": 0.11,
+    "ipi": 0.07,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 19500.0,
+    "valor_fob": 19500.0
+  },
+  {
+    "produto": "TORNEIRA LAVANDERIA - LATÃO REVESTIDA DE ZINCO",
+    "ncm": "8481.80.00",
+    "ii": 0.13,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.702,
+    "valor_fob": 0.702
+  },
+  {
+    "produto": "TORNEIRA COZINHA - LATÃO REVESTIDA DE ZINCO",
+    "ncm": "8481.80.00",
+    "ii": 0.13,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 48.0,
+    "valor_fob": 48.0
+  },
+  {
+    "produto": "TORNEIRA BANHEIRO - LATÃO REVESTIDA DE ZINCO",
+    "ncm": "8481.80.00",
+    "ii": 0.13,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 3.95,
+    "valor_fob": 3.95
+  },
+  {
+    "produto": "REGISTRO - LATÃO REVESTIDA DE ZINCO",
+    "ncm": "8481.80.00",
+    "ii": 0.13,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 4.3,
+    "valor_fob": 4.3
+  },
+  {
+    "produto": "CONTAINERS PARA ÁREA DE VIVÊNCIA - 14M²",
+    "ncm": "8609.00.00",
+    "ii": 0.11,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 4.1,
+    "valor_fob": 4.1
+  },
+  {
+    "produto": "DISCO DE CORTAR FERRO",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 4.8,
+    "valor_fob": 4.8
+  },
+  {
+    "produto": "DISCO DE MADEIRA DE 9. 1/4 36 DENTES",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 900.0,
+    "valor_fob": 900.0
+  },
+  {
+    "produto": "DISCO DIAMANTADO 180MM SEGMENTADO MTX",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.26,
+    "valor_fob": 0.26
+  },
+  {
+    "produto": "DISCO DIAMANTADO DE CONCRETO 110X20MM",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.57,
+    "valor_fob": 1.57
+  },
+  {
+    "produto": "DISCO DIAMANTADO DE CONCRETO 350X10MM",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.27,
+    "valor_fob": 1.27
+  },
+  {
+    "produto": "DISCO DIAMANTADO SEGMENTADO 105 MM PARA MÁRMORES E GRANITO",
+    "ncm": "6804.21.19",
+    "ii": 0.05,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.59,
+    "valor_fob": 0.59
+  },
+  {
+    "produto": "ABRAÇADEIRA NYLON - 7,6X400MM",
+    "ncm": "3926.90.90",
+    "ii": 0.18,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 7.54,
+    "valor_fob": 7.54
+  },
+  {
+    "produto": "PISO LAMINADO",
+    "ncm": "4411.13.91",
+    "ii": 0.09,
+    "ipi": 0.04,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.58,
+    "valor_fob": 0.58
+  },
+  {
+    "produto": "PALLET",
+    "ncm": "4415.20.00",
+    "ii": 0.18,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.39,
+    "valor_fob": 1.39
+  },
+  {
+    "produto": "CUBA INOX RETANGULAR 40X34X14",
+    "ncm": "7324.10.00",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 5.68,
+    "valor_fob": 5.68
+  },
+  {
+    "produto": "SIFÃO PIA AMERIC 1 1/2\"X 2\"X 40 CM TE 30",
+    "ncm": "3917.40.90",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 1.2,
+    "valor_fob": 1.2
+  },
+  {
+    "produto": "SIFÃO TANQUE/PIA 1 1/2\"X1 1/2\" X30 CM BRANCO",
+    "ncm": "3917.40.90",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
+  },
+  {
+    "produto": "VÁLVULA LAVATÓRIO 2 3/8\" X 1\" S/ LADR.",
+    "ncm": "8481.80.11",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.59,
+    "valor_fob": 0.59
+  },
+  {
+    "produto": "VÁLVULA P/ TANQUE 1 1/4\" CROMADO",
+    "ncm": "8481.80.11",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.7,
+    "valor_fob": 0.7
+  },
+  {
+    "produto": "VÁLVULA PIA AMERICANA 3 1/2\" X 1 1/2\"",
+    "ncm": "8481.80.11",
+    "ii": 0.16,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.24,
+    "valor_fob": 0.24
+  },
+  {
+    "produto": "FECHADURA EXTERNA - FECHADURA CONCEPT ZC 40MM 401-30",
+    "ncm": "8301.40.00",
+    "ii": 0.14,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.24,
+    "valor_fob": 0.24
+  },
+  {
+    "produto": "FECHADURA INTERNA - FECHADURA CONCEPT",
+    "ncm": "8301.40.00",
+    "ii": 0.14,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.46,
+    "valor_fob": 0.46
+  },
+  {
+    "produto": "FECHADURA BANHEIRO - FECHADURA CONCEPT",
+    "ncm": "8301.40.00",
+    "ii": 0.14,
+    "ipi": 0.0,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 6.5,
+    "valor_fob": 6.5
+  },
+  {
+    "produto": "DOBRADIÇA - 3X2 ½ CROMADA PINO E BOLA COM PARAFUSO",
+    "ncm": "8302.21.00",
+    "ii": 0.14,
+    "ipi": 0.03,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.0965,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
+  },
+  {
+    "produto": "VASO SANITARIO C/ CAIXA ACOPLADA",
+    "ncm": "6910.10.00",
+    "ii": 0.16,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
+  },
+  {
+    "produto": "LAVATÓRIO COM COLUNA",
+    "ncm": "6910.10.00",
+    "ii": 0.16,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.28,
+    "valor_fob": 0.28
+  },
+  {
+    "produto": "LAVATÓRIO SEM COLUNA AZALEA BR - 0,47 (L) x 0,385 (P)",
+    "ncm": "6910.10.00",
+    "ii": 0.16,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
+  },
+  {
+    "produto": "TANQUE P FASL CELITE BR (20 litros)/ 1512030010300 - COM COLUNA P/TANQUE CELITE BR - 0,265 ( A ) x 0,51 ( L ) x 0,38 ( P )",
+    "ncm": "6910.10.00",
+    "ii": 0.16,
+    "ipi": 0.1,
+    "pis_importacao": 0.021,
+    "cofins_importacao": 0.1065,
+    "pis_venda": 0.0065,
+    "cofins_venda": 0.03,
+    "icms_intra": 0.18,
+    "icms_inter": 0.04,
+    "reg_espec_intra": 0.14,
+    "reg_espec_inter": 0.015,
+    "menor_fob": 0.0,
+    "valor_fob": 0.0
   }
 ]
