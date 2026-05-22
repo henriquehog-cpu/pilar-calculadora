@@ -620,8 +620,8 @@ function renderItemResult(id, r) {
   s('piV', fmtBRL(r.pisV * r.qtd));
   s('coV', fmtBRL(r.cofV * r.qtd));
   s('icE', fmtBRL(r.icmsEf * r.qtd));
-  s('csl', fmtBRL(r.csll * r.qtd));
-  s('ir_', fmtBRL(r.ir * r.qtd));
+  s('csl', fmtBRL(r.csll));          // já é total (base × 9%)
+  s('ir_', fmtBRL(r.ir));
   s('pvU', fmtBRL(r.pv));
   s('pvD', fmtUSD(r.pvUSD));
   s('pvT', fmtBRL(r.pvTotal));
