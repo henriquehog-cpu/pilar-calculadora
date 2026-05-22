@@ -177,8 +177,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="field">
         <label>Dif. Frete Intl (R$)</label>
-        <input type="number" id="c_difrete" value="0" step="100" min="0" oninput="calcAll()">
-        <span class="note">Fixo por processo (rateado pelo FOB)</span>
+        <input type="number" id="c_difrete" step="0.01" min="0" class="bi" oninput="calcAll()">
+        <span class="note">Auto: frete R$ × 2,5% — editável para ajuste manual</span>
       </div>
       <div class="field">
         <label>Agente de Cargas (R$)</label>
@@ -280,7 +280,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 let produtos = [];
 let itemIds = [];
 let itemCounter = 0;
-let itemAliq = {};   // alíquotas por item id
+let itemAliq  = {};   // alíquotas por item id
+let pvManual  = {};   // true quando o usuário digitou PV USD manualmente
 
 fetch('produtos.json')
   .then(r => r.json())
@@ -290,6 +291,7 @@ fetch('produtos.json')
 function init() {
   document.getElementById('data_proc').value = today();
   updateAFRMM();
+  updateDifFrete();
   addItem();
   addItem();
 }
@@ -316,21 +318,26 @@ function setEl(id, val) { const e = document.getElementById(id); if (e) e.textCo
 // ============================================================
 // AFRMM
 // ============================================================
-function onFreteChange() { updateAFRMM(); calcAll(); }
+function onFreteChange() { updateAFRMM(); updateDifFrete(); calcAll(); }
 
 // ============================================================
 // CAMPOS BIDIRECIONAIS: Margem ↔ PV USD
 // ============================================================
 
-// Usuário editou a Margem → recalcular e atualizar PV USD
+// Usuário editou a Margem → modo iterativo
 function onMargemChange(id) {
-  calcAll(); // calcAll já chama renderItemResult que sincroniza pvusd
+  pvManual[id] = false; // libera o loop iterativo
+  calcAll();            // calcAll → renderItemResult sincroniza pvusd
 }
 
-// Usuário editou PV USD → derivar Margem e atualizar o campo
+// Usuário editou PV USD → PV fixo, derivar Margem (informativo)
 function onPvUsdChange(id) {
   const pvUSDval = parseFloat(document.getElementById('pvusd_' + id)?.value);
-  if (!isFinite(pvUSDval) || pvUSDval <= 0) { calcAll(); return; }
+  if (!isFinite(pvUSDval) || pvUSDval <= 0) {
+    pvManual[id] = false;
+    calcAll();
+    return;
+  }
 
   const dolar  = n('dolar');
   const freteT = n('frete_total');
@@ -343,23 +350,33 @@ function onPvUsdChange(id) {
               * (parseFloat(document.getElementById('fob_' + i)?.value) || 0);
   });
 
-  // Calcular custoImpUnit para este item (o pv resultante não importa aqui)
+  // Obter custoImpUnit (independente de pv): rodar calcItem sem pvManual
+  pvManual[id] = false;
   const r = calcItem(id, fobTotal, freteT, dolar, comPct);
+  pvManual[id] = true;  // fixar PV DEPOIS de calcItem auxiliar
+
   if (!r || r.custoImpUnit <= 0) { calcAll(); return; }
 
-  // Derivar margem a partir do PV USD digitado
+  // Atualizar campo Margem com o valor implícito (informativo)
   const pvRS   = pvUSDval * dolar;
-  const margem = (1 - r.custoImpUnit / pvRS) * 100; // em %
-
+  const margem = (1 - r.custoImpUnit / pvRS) * 100;
   const margemEl = document.getElementById('margem_' + id);
   if (margemEl) margemEl.value = Math.max(0, margem).toFixed(2);
 
-  calcAll(); // recalcula com a nova margem (pvusd será confirmado no renderItemResult)
+  calcAll(); // calcItem usará pvManual[id]=true → PV fixo
 }
 
 function updateAFRMM() {
   const afrmm = n('frete_total') * n('dolar') * 0.08 + 20; // planilha: =(frete_RS)*8%+20
   document.getElementById('c_afrmm').value = afrmm.toFixed(2);
+}
+
+function updateDifFrete() {
+  const el = document.getElementById('c_difrete');
+  if (!el) return;
+  // Só sobrescreve se o campo não estiver sendo editado manualmente pelo usuário
+  if (document.activeElement === el) return;
+  el.value = (n('frete_total') * n('dolar') * 0.025).toFixed(2); // 2,5% do frete R$
 }
 
 // ============================================================
@@ -441,27 +458,34 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteRat
               + agenteRat + armazItem + capatItem + oplogItem;
 
-  // 16. PV ITERATIVO
-  //     custo_antes_nota (O24 planilha) = custoImpUnit + todos os impostos de venda
-  //     PV = custo_antes_nota / (1 − margem)
-  //     Como os impostos dependem do PV, resolve por substituição sucessiva até convergir.
-  let pv = custoImpUnit / Math.max(0.001, 1 - margem); // estimativa inicial
-  for (let _i = 0; _i < 300; _i++) {
-    const _com    = pv * comissaoPct;
-    const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
-    const _icmsNF = pv * aliq.icms_inter;
-    const _bcV    = Math.max(0, pv - _ipiV - _icmsNF);
-    const _pisV   = _bcV * 0.0165;
-    const _cofV   = _bcV * 0.076;
-    const _icmsEf = pv * aliq.reg_espec_inter;
-    const _lucro  = pv - custoImpUnit - _com - _pisV - _cofV - _icmsEf;
-    const _csll   = Math.max(0, _lucro) * 0.09;
-    const _ir     = Math.max(0, _lucro) * 0.15;
-    const _irAd   = Math.max(0, _lucro * qtd - 20000) * 0.10 / qtd;
-    const _cnota  = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _csll + _ir + _irAd;
-    const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
-    if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
-    pv = _pvNovo;
+  // 16. PV — dois modos:
+  //   a) pvManual[id]=true  → usuário fixou PV USD: usar diretamente, só calcular impostos
+  //   b) pvManual[id]=false → usar loop iterativo: PV = custo_antes_nota / (1-margem)
+  let pv;
+  if (pvManual[id]) {
+    // Modo manual: PV fixado pelo campo "PV em USD"
+    const _pvUSD = parseFloat(document.getElementById('pvusd_' + id)?.value) || 0;
+    pv = _pvUSD > 0 ? _pvUSD * dolar : custoImpUnit / Math.max(0.001, 1 - margem);
+  } else {
+    // Modo iterativo: custo_antes_nota = custoImpUnit + todos impostos de venda
+    pv = custoImpUnit / Math.max(0.001, 1 - margem); // estimativa inicial
+    for (let _i = 0; _i < 300; _i++) {
+      const _com    = pv * comissaoPct;
+      const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
+      const _icmsNF = pv * aliq.icms_inter;
+      const _bcV    = Math.max(0, pv - _ipiV - _icmsNF);
+      const _pisV   = _bcV * 0.0165;
+      const _cofV   = _bcV * 0.076;
+      const _icmsEf = pv * aliq.reg_espec_inter;
+      const _lucro  = pv - custoImpUnit - _com - _pisV - _cofV - _icmsEf;
+      const _csll   = Math.max(0, _lucro) * 0.09;
+      const _ir     = Math.max(0, _lucro) * 0.15;
+      const _irAd   = Math.max(0, _lucro * qtd - 20000) * 0.10 / qtd;
+      const _cnota  = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _csll + _ir + _irAd;
+      const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
+      if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
+      pv = _pvNovo;
+    }
   }
 
   // Impostos finais calculados com PV convergido
@@ -582,9 +606,11 @@ function renderItemResult(id, r) {
   s('mrg', fmtPct(r.margemReal));
   s('luc', fmtBRL(r.lucroTotal));
 
-  // Sincronizar campo PV USD editável (não sobrescreve se o usuário está digitando nele)
+  // Sincronizar campo PV USD editável:
+  //   • não sobrescreve se o usuário está digitando nele (activeElement)
+  //   • não sobrescreve se pvManual[id]=true (usuário fixou o PV)
   const pvusdEl = document.getElementById('pvusd_' + id);
-  if (pvusdEl && document.activeElement !== pvusdEl) {
+  if (pvusdEl && document.activeElement !== pvusdEl && !pvManual[id]) {
     pvusdEl.value = r.pvUSD.toFixed(4);
   }
 }
@@ -596,7 +622,8 @@ function addItem() {
   itemCounter++;
   const id = itemCounter;
   itemIds.push(id);
-  itemAliq[id] = defaultAliq();
+  itemAliq[id]  = defaultAliq();
+  pvManual[id]  = false;
 
   const div = document.createElement('div');
   div.className = 'item-card';
@@ -610,6 +637,7 @@ function removeItem(id) {
   if (itemIds.length <= 1) { alert('Deve haver ao menos 1 item.'); return; }
   itemIds = itemIds.filter(i => i !== id);
   delete itemAliq[id];
+  delete pvManual[id];
   document.getElementById('item_' + id).remove();
   calcAll();
 }
