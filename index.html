@@ -467,55 +467,69 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     const _pvUSD = parseFloat(document.getElementById('pvusd_' + id)?.value) || 0;
     pv = _pvUSD > 0 ? _pvUSD * dolar : custoImpUnit / Math.max(0.001, 1 - margem);
   } else {
-    // Modo iterativo: custo_antes_nota = custoImpUnit + todos impostos de venda
+    // Modo iterativo: custo_antes_nota (O24) = custoImpUnit + impostos de venda + ipiV
     pv = custoImpUnit / Math.max(0.001, 1 - margem); // estimativa inicial
     for (let _i = 0; _i < 300; _i++) {
       const _com    = pv * comissaoPct;
       const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
-      const _bcV    = Math.max(0, pv - _ipiV);  // BC = PV − IPI venda (planilha)
+      const _icmsEf = pv * aliq.reg_espec_inter;             // [A] BC usa icmsEf (1,5%)
+      const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
       const _pisV   = _bcV * 0.0165;
       const _cofV   = _bcV * 0.076;
-      const _icmsEf = pv * aliq.reg_espec_inter;
-      const _lucro  = pv - custoImpUnit - _com - _pisV - _cofV - _icmsEf;
-      const _csll   = Math.max(0, _lucro) * 0.09;
-      const _ir     = Math.max(0, _lucro) * 0.15;
-      const _irAd   = Math.max(0, _lucro * qtd - 20000) * 0.10 / qtd;
-      const _cnota  = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _csll + _ir + _irAd;
+      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] inclui ipiV
+      const _o26    = pv - _o24;                             // lucro unitário antes IR
+      const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
+      const _ir     = Math.max(0, _o26) * 0.15;
+      const _irAd   = Math.max(0, _o26 * qtd - 60000) * 0.10 / qtd;  // threshold 60k
+      const _cnota  = _o24 + _csll + _ir + _irAd;
       const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
       if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
       pv = _pvNovo;
     }
   }
 
-  // Impostos finais calculados com PV convergido
+  // ── Impostos finais calculados com PV convergido ──────────────────────────
   const com     = pv * comissaoPct;
-  const ipiV    = pv * aliq.ipi / (1 + aliq.ipi);          // IPI venda (por fora, pass-through)
-  const bcVenda = Math.max(0, pv - ipiV);                    // BC PIS/COFINS = PV − IPI venda
-  const pisV    = bcVenda * 0.0165;                          // Lucro Real: PIS 1,65%
-  const cofV    = bcVenda * 0.076;                           // Lucro Real: COFINS 7,60%
-  const icmsEf  = pv * aliq.reg_espec_inter;                 // ICMS efetivo recolhido (1,5%)
+  const ipiV    = pv * aliq.ipi / (1 + aliq.ipi);            // IPI venda
+  const icmsEf  = pv * aliq.reg_espec_inter;                  // ICMS efetivo 1,5%
+  // [A] BC PIS/COFINS = PV − IPI − icmsEf (1,5%), espelho de O27 da planilha
+  const bcVenda = Math.max(0, pv - ipiV - icmsEf);
+  const pisV    = bcVenda * 0.0165;                            // PIS 1,65%
+  const cofV    = bcVenda * 0.076;                             // COFINS 7,60%
 
-  const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
-  const csll = Math.max(0, lucroAntes) * 0.09;
-  const ir   = Math.max(0, lucroAntes) * 0.15;
+  // [B] O24 = custo total unitário antes da nota (inclui ipiV — planilha O24)
+  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
+  // [C] O26 = lucro unitário antes IR; base = markup × receita (planilha N26 × P39)
+  const o26       = pv - o24;
+  const baseTotal = o24 > 0 ? (o26 / o24) * (pv * qtd) : 0;
 
-  const lucroItemTotal = lucroAntes * qtd;
-  const irAdic = Math.max(0, lucroItemTotal - 20000) * 0.10 / qtd;
+  const csll   = Math.max(0, baseTotal) * 0.09;               // [C]
+  const ir     = Math.max(0, baseTotal) * 0.15;               // [C]
+  // [D] Adicional IR: threshold R$ 60.000 trimestral (total do item, não por unidade)
+  const irAdic = Math.max(0, baseTotal - 60000) * 0.10;
 
-  const lucroUnit  = lucroAntes - csll - ir - irAdic;
-  const margemReal = pv > 0 ? lucroUnit / pv : 0;
+  // [E] lucroLiq = lucro real (O26×qty) − impostos sobre base
+  const lucroLiqTotal = o26 * qtd - csll - ir - irAdic;
+  const lucroUnit     = lucroLiqTotal / qtd;
+  const margemReal    = pv > 0 ? lucroUnit / pv : 0;
 
-  const custoOpUnitVal = custoImpUnit + com + pisV + cofV + icmsEf + csll + ir + irAdic;
+  const custoOpUnitVal = o24 + (csll + ir + irAdic) / qtd;
 
   // Diagnóstico no console (F12 → Console)
-  console.log(
-    `[Item ${id}] PV=${pv.toFixed(2)} custoUnit=${custoImpUnit.toFixed(2)} ` +
-    `ipiV=${ipiV.toFixed(2)} BC=${bcVenda.toFixed(2)} ` +
-    `PIS=${pisV.toFixed(2)} COFINS=${cofV.toFixed(2)} ICMS=${icmsEf.toFixed(2)} ` +
-    `lucroAntes/u=${lucroAntes.toFixed(2)} base_CSLL_IR=${(lucroAntes*qtd).toFixed(2)} ` +
-    `CSLL=${(csll*qtd).toFixed(2)} IR=${(ir*qtd).toFixed(2)} ` +
-    `lucroLíq=${(lucroUnit*qtd).toFixed(2)}`
-  );
+  console.log({
+    pvTotal:       pv * qtd,
+    o24Total:      o24 * qtd,
+    o26Total:      o26 * qtd,
+    baseTotal,
+    ipiVTotal:     ipiV * qtd,
+    pisVTotal:     pisV * qtd,
+    cofVTotal:     cofV * qtd,
+    icmsEfTotal:   icmsEf * qtd,
+    csllTotal:     csll,
+    irTotal:       ir,
+    irAdicTotal:   irAdic,
+    lucroLiqTotal
+  });
 
   return {
     qtd, fob, fobItem, prop, freteRat, cifRS,
