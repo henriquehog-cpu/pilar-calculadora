@@ -718,7 +718,7 @@ function showCotacao() {
   const dataFmt = dataVal ? new Date(dataVal + 'T12:00').toLocaleDateString('pt-BR') : '—';
   let validade = '—';
   if (dataVal) {
-    const d = new Date(dataVal + 'T12:00'); d.setDate(d.getDate() + 30);
+    const d = new Date(dataVal + 'T12:00'); d.setDate(d.getDate() + 7);
     validade = d.toLocaleDateString('pt-BR');
   }
 
