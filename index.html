@@ -425,12 +425,12 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
 
-  // 13. Créditos PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo contábil)
-  //     IPI crédito NÃO é incluído aqui — só existe quando há IPI na venda,
-  //     e de qualquer forma não afeta o PV (ver ponto 16 abaixo).
+  // 13. Créditos IPI/PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
+  //     Planilha: K42 = K20(IPI) + K21(PIS) + K22(COFINS)
+  const credIPI    = ipi;      // = CIF × aliq.ipi  (crédito s/ insumos)
   const credPIS    = pisImp;   // = CIF × aliq.pis_imp
   const credCOFINS = cofImp;   // = CIF × aliq.cof_imp
-  const credTotal  = credPIS + credCOFINS;
+  const credTotal  = credIPI + credPIS + credCOFINS;
 
   // 14-15. Custo Importação Final e Unitário (custo contábil, após créditos)
   //        Exibido nos resultados; NÃO é a base do PV.
@@ -441,41 +441,45 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteRat
               + agenteRat + armazItem + capatItem + oplogItem;
 
-  // 16. PV = Custo Unitário (pós créditos PIS/COFINS) / (1 − margem)
-  //     Fórmula direta, NÃO iterativa.
-  const pv = custoImpUnit / Math.max(0.001, 1 - margem);
+  // 16. PV ITERATIVO
+  //     custo_antes_nota (O24 planilha) = custoImpUnit + todos os impostos de venda
+  //     PV = custo_antes_nota / (1 − margem)
+  //     Como os impostos dependem do PV, resolve por substituição sucessiva até convergir.
+  let pv = custoImpUnit / Math.max(0.001, 1 - margem); // estimativa inicial
+  for (let _i = 0; _i < 300; _i++) {
+    const _com    = pv * comissaoPct;
+    const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
+    const _icmsNF = pv * aliq.icms_inter;
+    const _bcV    = Math.max(0, pv - _ipiV - _icmsNF);
+    const _pisV   = _bcV * 0.0165;
+    const _cofV   = _bcV * 0.076;
+    const _icmsEf = pv * aliq.reg_espec_inter;
+    const _lucro  = pv - custoImpUnit - _com - _pisV - _cofV - _icmsEf;
+    const _csll   = Math.max(0, _lucro) * 0.09;
+    const _ir     = Math.max(0, _lucro) * 0.15;
+    const _irAd   = Math.max(0, _lucro * qtd - 20000) * 0.10 / qtd;
+    const _cnota  = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _csll + _ir + _irAd;
+    const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
+    if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
+    pv = _pvNovo;
+  }
 
-  // 17-22. Impostos de venda
+  // Impostos finais calculados com PV convergido
   const com    = pv * comissaoPct;
+  const ipiV   = pv * aliq.ipi / (1 + aliq.ipi);  // IPI venda (por fora, pass-through)
+  const icmsNF = pv * aliq.icms_inter;              // ICMS destacado em NF (4%)
+  const bcVenda = Math.max(0, pv - ipiV - icmsNF); // BC PIS/COFINS venda
+  const pisV   = bcVenda * 0.0165;                  // Lucro Real: PIS 1,65%
+  const cofV   = bcVenda * 0.076;                   // Lucro Real: COFINS 7,60%
+  const icmsEf = pv * aliq.reg_espec_inter;          // ICMS efetivo recolhido (1,5%)
 
-  // IPI venda: BC = PV / (1 + aliq.ipi);  IPI_v = aliq.ipi × BC
-  //   (IPI é cobrado por fora, mas entra na BC de PIS/COFINS como dedução)
-  const ipiVbc = pv / (1 + aliq.ipi);
-  const ipiV   = aliq.ipi * ipiVbc;
-
-  // ICMS Efetivo (Regime Especial MG 1,5%) — custo real recolhido
-  const icmsEf = pv * aliq.reg_espec_inter;
-
-  // BC PIS/COFINS venda = PV − IPI_venda − ICMS destacado NF (4%)
-  //   Planilha deduz IPI e ICMS da base tributável do PIS/COFINS
-  const icmsNF   = pv * aliq.icms_inter;    // ICMS destacado em NF (4%)
-  const bcVenda  = Math.max(0, pv - ipiV - icmsNF);
-  const pisV     = bcVenda * 0.0165;        // Lucro Real: PIS 1,65%
-  const cofV     = bcVenda * 0.076;         // Lucro Real: COFINS 7,60%
-
-  // Lucro bruto = PV − Custo Final Unitário − Comissão − PIS − COFINS − ICMS
-  //   (IPI venda é pass-through do comprador — não reduz o lucro da empresa)
   const lucroAntes = pv - custoImpUnit - com - pisV - cofV - icmsEf;
-
-  // 5-6. CSLL = 9% e IR = 15% sobre lucro bruto
   const csll = Math.max(0, lucroAntes) * 0.09;
   const ir   = Math.max(0, lucroAntes) * 0.15;
 
-  // 7. Adicional IR: 10% sobre lucro total do item acima de R$20.000
   const lucroItemTotal = lucroAntes * qtd;
   const irAdic = Math.max(0, lucroItemTotal - 20000) * 0.10 / qtd;
 
-  // 9. Lucro líquido e margem real
   const lucroUnit  = lucroAntes - csll - ir - irAdic;
   const margemReal = pv > 0 ? lucroUnit / pv : 0;
 
