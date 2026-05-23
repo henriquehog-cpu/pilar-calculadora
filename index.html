@@ -145,7 +145,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <input type="number" id="dolar" value="5.80" step="0.01" min="0" oninput="onFreteChange()">
       </div>
       <div class="field">
-        <label>Frete Internacional Total (USD)</label>
+        <label>Frete por Container (USD)</label>
         <input type="number" id="frete_total" value="3500" step="100" min="0" oninput="onFreteChange()">
       </div>
       <div class="field">
@@ -367,16 +367,26 @@ function onPvUsdChange(id) {
 }
 
 function updateAFRMM() {
-  const afrmm = n('frete_total') * n('dolar') * 0.08 + 20; // planilha: =(frete_RS)*8%+20
+  // Total containers do processo = soma dos containers de cada item
+  let totalCont = 0;
+  itemIds.forEach(id => {
+    totalCont += parseFloat(document.getElementById('cont_' + id)?.value) || 1;
+  });
+  const freteTotalRS = n('frete_total') * totalCont * n('dolar');
+  const afrmm = freteTotalRS * 0.08 + 20; // planilha: =(frete_RS)*8%+20
   document.getElementById('c_afrmm').value = afrmm.toFixed(2);
 }
 
 function updateDifFrete() {
   const el = document.getElementById('c_difrete');
   if (!el) return;
-  // Só sobrescreve se o campo não estiver sendo editado manualmente pelo usuário
   if (document.activeElement === el) return;
-  el.value = (n('frete_total') * n('dolar') * 0.025).toFixed(2); // 2,5% do frete R$
+  // Estimativa total = frete/container × total_containers × dólar × 2,5%
+  let totalCont = 0;
+  itemIds.forEach(id => {
+    totalCont += parseFloat(document.getElementById('cont_' + id)?.value) || 1;
+  });
+  el.value = (n('frete_total') * totalCont * n('dolar') * 0.025).toFixed(2);
 }
 
 // ============================================================
@@ -400,11 +410,11 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 
   if (qtd <= 0 || fob <= 0) return null;
 
-  // 1-3. FOB, frete rateado e CIF
+  // 1-3. FOB, frete por container e CIF
   const fobItem  = fob * qtd;
-  const prop     = fobTotalProcesso > 0 ? fobItem / fobTotalProcesso : 0;
-  const freteRat = freteTotalUSD * prop;          // frete USD rateado pro item
-  const freteRS  = freteRat * dolar;              // frete R$ rateado pro item
+  const prop     = fobTotalProcesso > 0 ? fobItem / fobTotalProcesso : 0; // rateio p/ Siscomex/Despachante/Agente
+  const freteRat = freteTotalUSD * cont;          // frete USD = frete/container × containers do item
+  const freteRS  = freteRat * dolar;              // frete R$ do item
   const cifRS    = fobItem * dolar + freteRS;     // Total FOB R$ + Frete Internacional R$
 
   // 4-7. Impostos sobre o CIF (base = CIF em todos)
@@ -421,13 +431,13 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const bcIcms  = totalValAdu + siscomexRat;
   const icmsImp = bcIcms * aliq.icms_inter;      // não é por dentro
 
-  // 11. AFRMM = 8% × frete R$ rateado + R$20 fixo rateado por FOB
-  //     Planilha: =(frete_RS)*J27+20  →  frete_RS*8% + 20 por processo
-  const afrmmItem   = 0.08 * freteRS + 20 * prop;
+  // 11. AFRMM = 8% × frete R$ do item + R$20 fixo por item
+  //     Planilha: =(frete_RS)*J27+20
+  const afrmmItem   = 0.08 * freteRS + 20;
 
-  // Demais custos fixos rateados/por-container
+  // Demais custos fixos: Despachante/Siscomex/Agente rateados por FOB; Dif.Frete 2,5% do frete do item
   const despRat     = n('c_despachante') * prop;
-  const difFreteRat = n('c_difrete') * prop;
+  const difFreteItem = freteRS * 0.025;           // 2,5% do frete R$ deste item
   const agenteRat   = n('c_agente') * prop;
   const armazItem   = n('c_armazenagem') * cont; // por container
   const capatItem   = n('c_capatazia') * cont;   // por container
@@ -437,7 +447,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 11. Custo Desembaraço = Total Val. Aduaneiro + Siscomex + AFRMM + Despachante
   //     + Dif.Frete + Agente + Armazenagem + Capatazia
   const custoDesembaraco = totalValAdu + siscomexRat + afrmmItem + despRat
-                         + difFreteRat + agenteRat + armazItem + capatItem;
+                         + difFreteItem + agenteRat + armazItem + capatItem;
 
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
@@ -555,6 +565,8 @@ function defaultAliq() {
 // CALC ALL
 // ============================================================
 function calcAll() {
+  updateAFRMM();    // recalcula quando containers ou dólar mudam
+  updateDifFrete(); // idem
   const cf  = totalCF();
   document.getElementById('total_cf').value = 'R$ ' + fmt(cf);
 
