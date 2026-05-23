@@ -548,6 +548,20 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const custoOpUnitVal = o24 + (csll + ir + irAdic) / qtd;
 
   // Diagnóstico no console (F12 → Console)
+  console.log('O24/O26 unitários:', {
+    pv_unit:        +pv.toFixed(6),
+    custoImpUnit:   +custoImpUnit.toFixed(6),
+    com_unit:       +com.toFixed(6),
+    ipiV_unit:      +ipiV.toFixed(6),
+    icmsEf_unit:    +icmsEf.toFixed(6),
+    pisV_unit:      +pisV.toFixed(6),
+    cofV_unit:      +cofV.toFixed(6),
+    o24_unit:       +o24.toFixed(6),
+    o26_unit:       +o26.toFixed(6),
+    markup_pct:     +(o24 > 0 ? (o26 / o24) * 100 : 0).toFixed(6),
+    pvTotal:        +(pv * qtd).toFixed(2),
+    baseTotal_calc: +(o24 > 0 ? (o26 / o24) * (pv * qtd) : 0).toFixed(2),
+  });
   console.log({
     pvTotal:       pv * qtd,
     o24Total:      o24 * qtd,
