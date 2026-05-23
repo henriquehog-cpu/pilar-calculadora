@@ -509,7 +509,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
       const _pisV   = _bcV * 0.0165;
       const _cofV   = _bcV * 0.076;
-      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] inclui ipiV
+      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV + oplogItem / qtd;  // [B] inclui ipiV e oplog/u
       const _o26    = pv - _o24;                             // lucro unitário antes IR
       const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
       const _ir     = Math.max(0, _o26) * 0.15;
@@ -530,8 +530,8 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const pisV    = bcVenda * 0.0165;                            // PIS 1,65%
   const cofV    = bcVenda * 0.076;                             // COFINS 7,60%
 
-  // [B] O24 = custo total unitário antes da nota (inclui ipiV — planilha O24)
-  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
+  // [B] O24 = custo total unitário antes da nota (inclui ipiV e oplog/u — planilha O24)
+  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV + oplogItem / qtd;
   // [C] O26 = lucro unitário antes IR; base = markup × receita (planilha N26 × P39)
   const o26       = pv - o24;
   const baseTotal = o24 > 0 ? (o26 / o24) * (pv * qtd) : 0;
@@ -567,6 +567,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     '+cofV_unit':       +cofV.toFixed(6),
     '+icmsEf_unit':     +icmsEf.toFixed(6),
     '+ipiV_unit':       +ipiV.toFixed(6),
+    '+oplog_unit':      +(oplogItem    / qtd).toFixed(6),
     '=o24_unit':        +o24.toFixed(6),
     '=o26_unit':        +o26.toFixed(6),
     'pv_unit':          +pv.toFixed(6),
