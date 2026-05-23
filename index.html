@@ -367,21 +367,23 @@ function onPvUsdChange(id) {
 }
 
 function updateAFRMM() {
-  // Somar containers de todos os itens existentes
+  // Só conta containers de itens com qtd > 0 e fob > 0 (preenchidos)
   let totalContainers = 0;
   itemIds.forEach(id => {
-    totalContainers += parseInt(document.getElementById('cont_' + id)?.value) || 0;
+    const qtd  = parseFloat(document.getElementById('qtd_'  + id)?.value) || 0;
+    const fob  = parseFloat(document.getElementById('fob_'  + id)?.value) || 0;
+    const cont = parseInt(  document.getElementById('cont_' + id)?.value) || 0;
+    if (qtd > 0 && fob > 0) totalContainers += cont;
   });
-  // Se não há containers, usar 1 como padrão para exibição
-  if (totalContainers === 0) totalContainers = 1;
+  if (totalContainers === 0) totalContainers = 1; // padrão de exibição
 
   const freteRS = n('frete_total') * totalContainers * n('dolar');
-  const afrmm = freteRS * 0.08 + 20;
-  document.getElementById('c_afrmm').value = afrmm.toFixed(2);
+  document.getElementById('c_afrmm').value = (freteRS * 0.08 + 20).toFixed(2);
 
-  // Mesma lógica para Dif. Frete
-  const difFrete = freteRS * 0.025;
-  document.getElementById('c_difrete').value = difFrete.toFixed(2);
+  const difEl = document.getElementById('c_difrete');
+  if (difEl && document.activeElement !== difEl) {
+    difEl.value = (freteRS * 0.025).toFixed(2);
+  }
 }
 
 function updateDifFrete() {
@@ -435,13 +437,13 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   //     Planilha: =(frete_RS)*J27+20
   const afrmmItem   = 0.08 * freteRS + 20;
 
-  // Demais custos fixos: Despachante/Siscomex/Agente rateados por FOB; Dif.Frete 2,5% do frete do item
-  const despRat     = n('c_despachante') * prop;
-  const difFreteItem = freteRS * 0.025;           // 2,5% do frete R$ deste item
-  const agenteRat   = n('c_agente') * prop;
-  const armazItem   = n('c_armazenagem') * cont; // por container
-  const capatItem   = n('c_capatazia') * cont;   // por container
-  const oplogItem   = n('c_oplog') * cont;       // por container
+  // Custos fixos por container; Despachante/Siscomex rateados por FOB; Dif.Frete 2,5% do frete do item
+  const despRat      = n('c_despachante') * prop;
+  const difFreteItem = freteRS * 0.025;            // 2,5% do frete R$ deste item
+  const agenteRat    = n('c_agente')      * cont;  // por container
+  const armazItem    = n('c_armazenagem') * cont;  // por container
+  const capatItem    = n('c_capatazia')   * cont;  // por container
+  const oplogItem    = n('c_oplog')       * cont;  // por container
   const frodTotal   = frod * cont;               // frete rodoviário por container
 
   // 11. Custo Desembaraço = Total Val. Aduaneiro + Siscomex + AFRMM + Despachante
