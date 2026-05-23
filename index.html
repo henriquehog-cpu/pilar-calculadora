@@ -470,6 +470,26 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteItem
               + agenteRat + armazItem + capatItem + oplogItem;
 
+  // Diagnóstico custo desembaraço (F12 → Console)
+  console.log('── Custo Desembaraço ──────────────────────────────');
+  console.log({
+    siscomexRat:    +siscomexRat.toFixed(2),
+    afrmmItem:      +afrmmItem.toFixed(2),
+    despRat:        +despRat.toFixed(2),
+    difFreteItem:   +difFreteItem.toFixed(2),
+    agenteRat:      +agenteRat.toFixed(2),
+    armazItem:      +armazItem.toFixed(2),
+    capatItem:      +capatItem.toFixed(2),
+    oplogItem:      +oplogItem.toFixed(2),
+    frodTotal:      +frodTotal.toFixed(2),
+    totalValAdu:    +totalValAdu.toFixed(2),
+    custoDesembaraco: +custoDesembaraco.toFixed(2),
+    custoProcesso:  +custoProcesso.toFixed(2),
+    credTotal:      +credTotal.toFixed(2),
+    custoImpTotal:  +custoImpTotal.toFixed(2),
+    custoImpUnit:   +custoImpUnit.toFixed(4),
+  });
+
   // 16. PV — dois modos:
   //   a) pvManual[id]=true  → usuário fixou PV USD: usar diretamente, só calcular impostos
   //   b) pvManual[id]=false → usar loop iterativo: PV = custo_antes_nota / (1-margem)
@@ -541,6 +561,16 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     irTotal:       ir,
     irAdicTotal:   irAdic,
     lucroLiqTotal
+  });
+
+  console.log('CSLL/IR diagnóstico:', {
+    o26Total:      (o26 * qtd).toFixed(2),
+    baseTotal:     baseTotal.toFixed(2),
+    csll:          csll.toFixed(2),
+    ir:            ir.toFixed(2),
+    irAdic:        irAdic.toFixed(2),
+    lucroLiqTotal: (lucroUnit * qtd).toFixed(2),
+    threshold60k:  Math.max(0, baseTotal - 60000).toFixed(2)
   });
 
   return {
