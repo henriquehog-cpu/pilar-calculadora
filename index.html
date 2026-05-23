@@ -367,26 +367,26 @@ function onPvUsdChange(id) {
 }
 
 function updateAFRMM() {
-  // Total containers do processo = soma dos containers de cada item
-  let totalCont = 0;
+  // Somar containers de todos os itens existentes
+  let totalContainers = 0;
   itemIds.forEach(id => {
-    totalCont += parseFloat(document.getElementById('cont_' + id)?.value) || 1;
+    totalContainers += parseInt(document.getElementById('cont_' + id)?.value) || 0;
   });
-  const freteTotalRS = n('frete_total') * totalCont * n('dolar');
-  const afrmm = freteTotalRS * 0.08 + 20; // planilha: =(frete_RS)*8%+20
+  // Se não há containers, usar 1 como padrão para exibição
+  if (totalContainers === 0) totalContainers = 1;
+
+  const freteRS = n('frete_total') * totalContainers * n('dolar');
+  const afrmm = freteRS * 0.08 + 20;
   document.getElementById('c_afrmm').value = afrmm.toFixed(2);
+
+  // Mesma lógica para Dif. Frete
+  const difFrete = freteRS * 0.025;
+  document.getElementById('c_difrete').value = difFrete.toFixed(2);
 }
 
 function updateDifFrete() {
-  const el = document.getElementById('c_difrete');
-  if (!el) return;
-  if (document.activeElement === el) return;
-  // Estimativa total = frete/container × total_containers × dólar × 2,5%
-  let totalCont = 0;
-  itemIds.forEach(id => {
-    totalCont += parseFloat(document.getElementById('cont_' + id)?.value) || 1;
-  });
-  el.value = (n('frete_total') * totalCont * n('dolar') * 0.025).toFixed(2);
+  // Delegado para updateAFRMM() — ambos usam a mesma base de cálculo
+  updateAFRMM();
 }
 
 // ============================================================
