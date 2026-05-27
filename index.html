@@ -411,6 +411,9 @@ function applySimState(state) {
     set('cont_'  + id, it.cont || 1);
     set('frod_'  + id, it.frod);
     set('margem_'+ id, it.margem || 20);
+    // Garantir que PV USD não fique com valor residual
+    set('pvusd_' + id, '');
+    pvManual[id] = false;
     if (it.prod) {
       const match = produtos.find(p => p.produto === it.prod);
       if (match) setAliq(id, match);
