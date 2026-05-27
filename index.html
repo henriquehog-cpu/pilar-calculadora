@@ -659,18 +659,19 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   //     oplogItem entra no custo processo para exibição mas NÃO compõe a base do PV
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
 
-  // 13. Créditos — seguindo lógica da planilha TABELA MATRIZ MG:
-  //     planilha NÃO deduz crédito PIS/COFINS do custo (cols 42 e 43 = 0)
-  //     mantemos credTotal = 0 para fidelidade à planilha
-  const credIPI    = 0;
-  const credPIS    = 0;
-  const credCOFINS = 0;
-  const credTotal  = 0;
+  // 13. Créditos PIS/COFINS/IPI — lógica exata da planilha TABELA MATRIZ MG:
+  //     Col45 = CIF + II + IPI + PIS_imp + COFINS_imp + todos_op + cred_PIS(neg) + cred_COFINS(neg)
+  //     = CIF + II + todos_op (PIS/COFINS se cancelam; IPI também se creditável)
+  //     oplogItem É incluído no custo unitário (não excluir)
+  const credIPI    = ipi;
+  const credPIS    = pisImp;
+  const credCOFINS = cofImp;
+  const credTotal  = credIPI + credPIS + credCOFINS;
 
-  // 14-15. Custo Importação Final e Unitário (igual à planilha)
-  //        oplogItem excluído do custo base (entra separado no PV)
-  const custoImpTotal = custoProcesso - oplogItem;
-  const custoImpUnit  = custoImpTotal / qtd;
+  // 14-15. Custo Importação Final e Unitário (igual à col45 e col46 da planilha)
+  //        oplogItem INCLUIDO (planilha inclui oplog no custo unitário)
+  const custoImpTotal = custoProcesso - credTotal;   // = col45
+  const custoImpUnit  = custoImpTotal / qtd;          // = col46
 
   // cfRat para exibição (fixos rateados, exceto frete rodo)
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteItem
@@ -714,7 +715,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
       const _pisV   = _bcV * 0.0165;
       const _cofV   = _bcV * 0.076;
-      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV + oplogItem / qtd;  // [B] inclui ipiV e oplog/u
+      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] oplog já incluído no custoImpUnit
       const _o26    = pv - _o24;                             // lucro unitário antes IR
       const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
       const _ir     = Math.max(0, _o26) * 0.15;
@@ -735,8 +736,8 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const pisV    = bcVenda * 0.0165;                            // PIS 1,65%
   const cofV    = bcVenda * 0.076;                             // COFINS 7,60%
 
-  // [B] O24 = custo total unitário antes da nota (inclui ipiV e oplog/u — planilha O24)
-  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV + oplogItem / qtd;
+  // [B] O24 = custo total unitário antes da nota (oplog já dentro do custoImpUnit)
+  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
   // [C] O26 = lucro unitário antes IR; base = markup × receita (planilha N26 × P39)
   const o26       = pv - o24;
   const baseTotal = o24 > 0 ? (o26 / o24) * (pv * qtd) : 0;
@@ -772,7 +773,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     '+cofV_unit':       +cofV.toFixed(6),
     '+icmsEf_unit':     +icmsEf.toFixed(6),
     '+ipiV_unit':       +ipiV.toFixed(6),
-    '+oplog_unit':      +(oplogItem    / qtd).toFixed(6),
+    // oplog já dentro do custoImpUnit
     '=o24_unit':        +o24.toFixed(6),
     '=o26_unit':        +o26.toFixed(6),
     'pv_unit':          +pv.toFixed(6),
