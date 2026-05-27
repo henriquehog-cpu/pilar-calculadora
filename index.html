@@ -659,16 +659,17 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   //     oplogItem entra no custo processo para exibição mas NÃO compõe a base do PV
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
 
-  // 13. Créditos IPI/PIS/COFINS (Lucro Real não-cumulativo — reduzem o custo final)
-  //     Planilha: K42 = K20(IPI) + K21(PIS) + K22(COFINS)
-  const credIPI    = ipi;      // = CIF × aliq.ipi  (crédito s/ insumos)
-  const credPIS    = pisImp;   // = CIF × aliq.pis_imp
-  const credCOFINS = cofImp;   // = CIF × aliq.cof_imp
-  const credTotal  = credIPI + credPIS + credCOFINS;
+  // 13. Créditos — seguindo lógica da planilha TABELA MATRIZ MG:
+  //     planilha NÃO deduz crédito PIS/COFINS do custo (cols 42 e 43 = 0)
+  //     mantemos credTotal = 0 para fidelidade à planilha
+  const credIPI    = 0;
+  const credPIS    = 0;
+  const credCOFINS = 0;
+  const credTotal  = 0;
 
-  // 14-15. Custo Importação Final e Unitário (custo contábil, após créditos)
-  //        oplogItem excluído: é custo separado, não entra na base de impostos nem no PV
-  const custoImpTotal = custoProcesso - credTotal - oplogItem;
+  // 14-15. Custo Importação Final e Unitário (igual à planilha)
+  //        oplogItem excluído do custo base (entra separado no PV)
+  const custoImpTotal = custoProcesso - oplogItem;
   const custoImpUnit  = custoImpTotal / qtd;
 
   // cfRat para exibição (fixos rateados, exceto frete rodo)
