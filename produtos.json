@@ -5308,7 +5308,7 @@
     "icms_inter": 0.04,
     "reg_espec_intra": 0.14,
     "reg_espec_inter": 0.015,
-    "menor_fob": 0.0,
-    "valor_fob": 0.0
+    "menor_fob": 442.0,
+    "valor_fob": 442.0
   }
 ]
