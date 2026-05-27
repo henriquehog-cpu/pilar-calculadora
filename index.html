@@ -141,8 +141,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <input type="date" id="data_proc" oninput="calcAll()">
       </div>
       <div class="field">
-        <label>Dólar Fiscal (R$)</label>
+        <label>Dólar Fiscal (R$) <span id="ptax-badge" style="font-size:10px;color:var(--turquesa);font-weight:normal"></span></label>
         <input type="number" id="dolar" value="5.80" step="0.01" min="0" oninput="onFreteChange()">
+        <span class="note" id="ptax-note">Carregando PTAX...</span>
       </div>
       <div class="field">
         <label>Frete por Container (USD)</label>
@@ -211,8 +212,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <!-- Items -->
 <div id="items-container"></div>
 
-<div style="margin-bottom:20px">
+<div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
   <button class="btn btn-p" onclick="addItem()">+ Adicionar Item</button>
+  <button class="btn btn-s" onclick="saveSimulacao()">💾 Salvar Simulação</button>
+  <button class="btn btn-s" onclick="toggleSimulacoes()">📋 Simulações Salvas</button>
+  <button class="btn btn-s" onclick="copySimUrl()">🔗 Copiar Link</button>
+</div>
+<div id="sim-panel" style="display:none;margin-bottom:20px">
+  <div class="card">
+    <div class="card-hd">📋 Simulações Salvas</div>
+    <div class="card-bd" id="sim-list"></div>
+  </div>
 </div>
 
 <!-- Configuração da Cotação -->
@@ -292,8 +302,199 @@ function init() {
   document.getElementById('data_proc').value = today();
   updateAFRMM();
   updateDifFrete();
-  addItem();
-  addItem();
+  loadPTAX();
+  if (!loadFromURL()) {
+    addItem();
+    addItem();
+  }
+}
+
+// ============================================================
+// PTAX — Banco Central do Brasil
+// ============================================================
+function loadPTAX() {
+  const hoje = new Date();
+  const datas = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(hoje);
+    d.setDate(hoje.getDate() - i);
+    const mm   = String(d.getMonth()+1).padStart(2,'0');
+    const dd   = String(d.getDate()).padStart(2,'0');
+    const yyyy = d.getFullYear();
+    datas.push({ str: `${mm}-${dd}-${yyyy}`, fmt: `${dd}/${mm}/${yyyy}` });
+  }
+  tryPTAX(datas, 0);
+}
+
+function tryPTAX(datas, idx) {
+  if (idx >= datas.length) {
+    const note = document.getElementById('ptax-note');
+    if (note) note.textContent = 'PTAX indisponível — ajuste manualmente.';
+    return;
+  }
+  const url = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarDia(dataCotacao=@dataCotacao)?@dataCotacao='${datas[idx].str}'&$top=1&$format=json&$select=cotacaoVenda`;
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      const val = data?.value?.[0]?.cotacaoVenda;
+      if (val) {
+        document.getElementById('dolar').value = val.toFixed(4);
+        document.getElementById('ptax-badge').textContent = `✓ PTAX ${datas[idx].fmt}`;
+        document.getElementById('ptax-note').textContent  = `Taxa de venda PTAX ${datas[idx].fmt}: R$ ${val.toFixed(4)}`;
+        onFreteChange();
+      } else {
+        tryPTAX(datas, idx + 1);
+      }
+    })
+    .catch(() => tryPTAX(datas, idx + 1));
+}
+
+// ============================================================
+// SALVAR / RESTAURAR SIMULAÇÕES (localStorage)
+// ============================================================
+function getSimState() {
+  return {
+    v: 1, ts: Date.now(),
+    cliente:       document.getElementById('cliente')?.value || '',
+    data_proc:     document.getElementById('data_proc')?.value || '',
+    dolar:         n('dolar'),
+    frete_total:   n('frete_total'),
+    comissao:      n('comissao'),
+    c_siscomex:    n('c_siscomex'),
+    c_despachante: n('c_despachante'),
+    c_agente:      n('c_agente'),
+    c_armazenagem: n('c_armazenagem'),
+    c_capatazia:   n('c_capatazia'),
+    c_oplog:       n('c_oplog'),
+    cot_titulo:    document.getElementById('cot_titulo')?.value || '',
+    cot_descricao: document.getElementById('cot_descricao')?.value || '',
+    cot_acrescimo: n('cot_acrescimo'),
+    items: itemIds.map(id => ({
+      prod:   document.getElementById('prod_'  + id)?.value || '',
+      qtd:    n('qtd_'   + id),
+      fob:    n('fob_'   + id),
+      cont:   n('cont_'  + id),
+      frod:   n('frod_'  + id),
+      margem: n('margem_'+ id),
+    })).filter(it => it.prod || it.qtd > 0)
+  };
+}
+
+function applySimState(state) {
+  if (!state) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e && v !== undefined) e.value = v; };
+  set('cliente',        state.cliente);
+  set('data_proc',      state.data_proc || today());
+  set('dolar',          state.dolar);
+  set('frete_total',    state.frete_total);
+  set('comissao',       state.comissao);
+  set('c_siscomex',     state.c_siscomex);
+  set('c_despachante',  state.c_despachante);
+  set('c_agente',       state.c_agente);
+  set('c_armazenagem',  state.c_armazenagem);
+  set('c_capatazia',    state.c_capatazia);
+  set('c_oplog',        state.c_oplog);
+  set('cot_titulo',     state.cot_titulo);
+  set('cot_descricao',  state.cot_descricao);
+  set('cot_acrescimo',  state.cot_acrescimo);
+  window._applyingState = true;
+  itemIds.slice().forEach(id => removeItem(id));
+  window._applyingState = false;
+  const items = state.items || [];
+  if (items.length === 0) { addItem(); addItem(); }
+  else items.forEach(it => {
+    const id = addItem();
+    if (!id) return;
+    set('prod_'  + id, it.prod);
+    set('qtd_'   + id, it.qtd);
+    set('fob_'   + id, it.fob);
+    set('cont_'  + id, it.cont || 1);
+    set('frod_'  + id, it.frod);
+    set('margem_'+ id, it.margem || 20);
+    if (it.prod) {
+      const match = produtos.find(p => p.produto === it.prod);
+      if (match) setAliq(id, match);
+    }
+  });
+  onFreteChange();
+  calcAll();
+}
+
+function saveSimulacao() {
+  const state = getSimState();
+  const def   = state.cliente || `Simulação ${new Date().toLocaleDateString('pt-BR')}`;
+  const nome  = prompt('Nome para esta simulação:', def);
+  if (nome === null) return;
+  state.nome = nome.trim() || def;
+  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  sims.unshift(state);
+  if (sims.length > 20) sims.length = 20;
+  localStorage.setItem('pilar_sims', JSON.stringify(sims));
+  alert(`✅ Salvo: "${state.nome}"`);
+  renderSimList();
+}
+
+function toggleSimulacoes() {
+  const p = document.getElementById('sim-panel');
+  const vis = p.style.display !== 'none';
+  if (!vis) renderSimList();
+  p.style.display = vis ? 'none' : 'block';
+}
+
+function renderSimList() {
+  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  const el = document.getElementById('sim-list');
+  if (!el) return;
+  if (!sims.length) { el.innerHTML = '<p style="color:#888;font-size:13px">Nenhuma simulação salva.</p>'; return; }
+  el.innerHTML = sims.map((s, i) => {
+    const dt   = new Date(s.ts).toLocaleString('pt-BR');
+    const prods = (s.items||[]).map(it=>it.prod).filter(Boolean).join(', ') || '—';
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-weight:700">${s.nome||'Simulação'}</div>
+        <div style="font-size:12px;color:#888">${dt} · ${prods}</div>
+        <div style="font-size:12px;color:var(--turquesa)">USD ${(s.dolar||0).toFixed(4)} · Frete USD ${(s.frete_total||0).toLocaleString('pt-BR')}/ctn</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" style="padding:6px 14px;font-size:12px" onclick="loadSim(${i})">▶ Carregar</button>
+        <button class="btn btn-s" style="padding:6px 14px;font-size:12px" onclick="deleteSim(${i})">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function loadSim(idx) {
+  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  if (!sims[idx]) return;
+  if (!confirm(`Carregar "${sims[idx].nome}"? Dados atuais serão substituídos.`)) return;
+  applySimState(sims[idx]);
+  document.getElementById('sim-panel').style.display = 'none';
+}
+
+function deleteSim(idx) {
+  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  if (!confirm(`Excluir "${sims[idx]?.nome}"?`)) return;
+  sims.splice(idx, 1);
+  localStorage.setItem('pilar_sims', JSON.stringify(sims));
+  renderSimList();
+}
+
+// ============================================================
+// URL PARAMS — carregar / copiar link
+// ============================================================
+function loadFromURL() {
+  const enc = new URLSearchParams(location.search).get('sim');
+  if (!enc) return false;
+  try { applySimState(JSON.parse(atob(enc))); return true; }
+  catch(e) { return false; }
+}
+
+function copySimUrl() {
+  const enc = btoa(JSON.stringify(getSimState()));
+  const url = `${location.origin}${location.pathname}?sim=${enc}`;
+  navigator.clipboard.writeText(url)
+    .then(() => alert('🔗 Link copiado! Compartilhe para abrir já preenchido.'))
+    .catch(() => prompt('Copie o link:', url));
 }
 
 function today() {
@@ -721,15 +922,20 @@ function addItem() {
   div.innerHTML = itemHTML(id);
   document.getElementById('items-container').appendChild(div);
   calcAll();
+  return id;
 }
 
 function removeItem(id) {
-  if (itemIds.length <= 1) { alert('Deve haver ao menos 1 item.'); return; }
+  if (itemIds.length <= 1 && document.getElementById('item_' + id)) {
+    // No applySimState pode ter 0 itens, só bloqueia na UI
+    if (itemIds.length === 1 && !window._applyingState) { alert('Deve haver ao menos 1 item.'); return; }
+  }
   itemIds = itemIds.filter(i => i !== id);
   delete itemAliq[id];
   delete pvManual[id];
-  document.getElementById('item_' + id).remove();
-  calcAll();
+  const el = document.getElementById('item_' + id);
+  if (el) el.remove();
+  if (!window._applyingState) calcAll();
 }
 
 function itemHTML(id) {
@@ -874,6 +1080,32 @@ function acKey(e, id) {
 
   items.forEach((el, i) => el.classList.toggle('act', i === acActive[id]));
   items[acActive[id]]?.scrollIntoView({ block: 'nearest' });
+}
+
+function setAliq(itemId, p) {
+  itemAliq[itemId] = {
+    ii:           p.ii || 0,
+    ipi:          p.ipi || 0,
+    pis_imp:      p.pis_importacao || 0,
+    cof_imp:      p.cofins_importacao || 0,
+    pis_venda:    p.pis_venda || 0.0065,
+    cof_venda:    p.cofins_venda || 0.03,
+    icms_intra:   p.icms_intra || 0.18,
+    icms_inter:   p.icms_inter || 0.04,
+    reg_espec_intra:  p.reg_espec_intra || 0.14,
+    reg_espec_inter:  p.reg_espec_inter || 0.015
+  };
+  const ncmEl = document.getElementById('ncm_' + itemId);
+  if (ncmEl) ncmEl.value = p.ncm || '';
+  const aliqEl = document.getElementById('aliq_' + itemId);
+  if (aliqEl) {
+    const a = itemAliq[itemId];
+    aliqEl.innerHTML = [
+      ['II', fmtPct(a.ii)], ['IPI', fmtPct(a.ipi)],
+      ['PIS imp', fmtPct(a.pis_imp)], ['COFINS imp', fmtPct(a.cof_imp)],
+      ['ICMS inter', fmtPct(a.icms_inter)], ['Reg.Espec', fmtPct(a.reg_espec_inter)]
+    ].map(([k,v]) => `<span class="aliq-tag">${k}: <b>${v}</b></span>`).join('');
+  }
 }
 
 function selectProd(itemId, prodIdx) {
