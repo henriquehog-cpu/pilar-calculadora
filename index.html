@@ -738,9 +738,9 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 
   // [B] O24 = custo total unitário antes da nota (oplog já dentro do custoImpUnit)
   const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
-  // [C] O26 = lucro unitário antes IR; base = markup × receita (planilha N26 × P39)
+  // [C] O26 = lucro unitário antes IR; base = o26 × qtd (lucro bruto total do item)
   const o26       = pv - o24;
-  const baseTotal = o24 > 0 ? (o26 / o24) * (pv * qtd) : 0;
+  const baseTotal = Math.max(0, o26 * qtd);
 
   const csll   = Math.max(0, baseTotal) * 0.09;               // [C]
   const ir     = Math.max(0, baseTotal) * 0.15;               // [C]
@@ -809,7 +809,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     cfRat, frodTotal, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
-    com, ipiV, pisV, cofV, icmsEf, csll, ir,
+    com, ipiV, pisV, cofV, icmsEf, csll, ir, irAdic,
     custoOpTotal: custoOpUnitVal * qtd,
     lucroUnit, lucroTotal: lucroUnit * qtd,
     margemReal
@@ -894,8 +894,9 @@ function renderItemResult(id, r) {
   s('piV', fmtBRL(r.pisV * r.qtd));
   s('coV', fmtBRL(r.cofV * r.qtd));
   s('icE', fmtBRL(r.icmsEf * r.qtd));
-  s('csl', fmtBRL(r.csll));          // já é total (base × 9%)
+  s('csl', fmtBRL(r.csll));
   s('ir_', fmtBRL(r.ir));
+  s('ira', fmtBRL(r.irAdic));
   s('pvU', fmtBRL(r.pv));
   s('pvD', fmtUSD(r.pvUSD));
   s('pvT', fmtBRL(r.pvTotal));
@@ -1023,7 +1024,8 @@ function itemHTML(id) {
           <tr><td>COFINS Venda (7,60% × BC)</td><td id="r_coV_${id}">—</td></tr>
           <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
           <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
-          <tr><td>IR (15% + adic. 10%)</td><td id="r_ir_${id}">—</td></tr>
+          <tr><td>IR (15%)</td><td id="r_ir_${id}">—</td></tr>
+          <tr><td>IR Adicional (10%)</td><td id="r_ira_${id}">—</td></tr>
         </table>
         <div class="icms-badge">
           ICMS destacado em NF: <strong>4%</strong> &nbsp;|&nbsp; ICMS efetivo recolhido (Reg. Espec. MG): <strong>1,5%</strong>
