@@ -655,6 +655,20 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const custoDesembaraco = totalValAdu + siscomexRat + afrmmItem + despRat
                          + difFreteItem + agenteRat + armazItem + capatItem;
 
+  console.log('Desembaraço breakdown:', {
+    siscomexRat:      siscomexRat.toFixed(2),
+    afrmmItem:        afrmmItem.toFixed(2),
+    despRat:          despRat.toFixed(2),
+    difFreteItem:     difFreteItem.toFixed(2),
+    agenteRat:        agenteRat.toFixed(2),
+    armazItem:        armazItem.toFixed(2),
+    capatItem:        capatItem.toFixed(2),
+    oplogItem:        oplogItem.toFixed(2),
+    frodTotal:        frodTotal.toFixed(2),
+    totalValAdu:      totalValAdu.toFixed(2),
+    custoDesembaraco: custoDesembaraco.toFixed(2),
+  });
+
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   //     oplogItem entra no custo processo para exibição mas NÃO compõe a base do PV
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
