@@ -875,7 +875,7 @@ function renderItemResult(id, r) {
   const s = (suf, val) => setEl('r_' + suf + '_' + id, val);
   if (!r) {
     ['cif','ii','ipi','piI','coI','icI','cfR','frd','crd','ciT','ciU',
-     'com','ipV','piV','coV','icE','csl','ir_','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
+     'com','ipV','piV','coV','icE','csl','ir','ira','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
     return;
   }
   s('cif', fmtBRL(r.cifRS));
@@ -895,7 +895,7 @@ function renderItemResult(id, r) {
   s('coV', fmtBRL(r.cofV * r.qtd));
   s('icE', fmtBRL(r.icmsEf * r.qtd));
   s('csl', fmtBRL(r.csll));
-  s('ir_', fmtBRL(r.ir));
+  s('ir', fmtBRL(r.ir));
   s('ira', fmtBRL(r.irAdic));
   s('pvU', fmtBRL(r.pv));
   s('pvD', fmtUSD(r.pvUSD));
