@@ -655,20 +655,6 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const custoDesembaraco = totalValAdu + siscomexRat + afrmmItem + despRat
                          + difFreteItem + agenteRat + armazItem + capatItem;
 
-  console.log('Desembaraço breakdown:', {
-    siscomexRat:      siscomexRat.toFixed(2),
-    afrmmItem:        afrmmItem.toFixed(2),
-    despRat:          despRat.toFixed(2),
-    difFreteItem:     difFreteItem.toFixed(2),
-    agenteRat:        agenteRat.toFixed(2),
-    armazItem:        armazItem.toFixed(2),
-    capatItem:        capatItem.toFixed(2),
-    oplogItem:        oplogItem.toFixed(2),
-    frodTotal:        frodTotal.toFixed(2),
-    totalValAdu:      totalValAdu.toFixed(2),
-    custoDesembaraco: custoDesembaraco.toFixed(2),
-  });
-
   // 12. Custo Processo = Custo Desembaraço + Frete Rodoviário + Operador Logístico
   //     oplogItem entra no custo processo para exibição mas NÃO compõe a base do PV
   const custoProcesso = custoDesembaraco + frodTotal + oplogItem;
@@ -690,26 +676,6 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // cfRat para exibição (fixos rateados, exceto frete rodo)
   const cfRat = siscomexRat + afrmmItem + despRat + difFreteItem
               + agenteRat + armazItem + capatItem + oplogItem;
-
-  // Diagnóstico custo desembaraço (F12 → Console)
-  console.log('── Custo Desembaraço ──────────────────────────────');
-  console.log({
-    siscomexRat:    +siscomexRat.toFixed(2),
-    afrmmItem:      +afrmmItem.toFixed(2),
-    despRat:        +despRat.toFixed(2),
-    difFreteItem:   +difFreteItem.toFixed(2),
-    agenteRat:      +agenteRat.toFixed(2),
-    armazItem:      +armazItem.toFixed(2),
-    capatItem:      +capatItem.toFixed(2),
-    oplogItem:      +oplogItem.toFixed(2),
-    frodTotal:      +frodTotal.toFixed(2),
-    totalValAdu:    +totalValAdu.toFixed(2),
-    custoDesembaraco: +custoDesembaraco.toFixed(2),
-    custoProcesso:  +custoProcesso.toFixed(2),
-    credTotal:      +credTotal.toFixed(2),
-    custoImpTotal:  +custoImpTotal.toFixed(2),
-    custoImpUnit:   +custoImpUnit.toFixed(4),
-  });
 
   // 16. PV — dois modos:
   //   a) pvManual[id]=true  → usuário fixou PV USD: usar diretamente, só calcular impostos
@@ -767,55 +733,6 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const margemReal    = pv > 0 ? lucroUnit / pv : 0;
 
   const custoOpUnitVal = o24 + (csll + ir + irAdic) / qtd;
-
-  // Diagnóstico no console (F12 → Console)
-  // Breakdown do custoImpUnit (= custoProcesso − credTotal) / qtd
-  console.log('O24 breakdown unitário:', {
-    '1_totalValAdu/u':  +(totalValAdu  / qtd).toFixed(6),
-    '2_siscomexRat/u':  +(siscomexRat  / qtd).toFixed(6),
-    '3_afrmmItem/u':    +(afrmmItem    / qtd).toFixed(6),
-    '4_despRat/u':      +(despRat      / qtd).toFixed(6),
-    '5_difFreteItem/u': +(difFreteItem / qtd).toFixed(6),
-    '6_agenteRat/u':    +(agenteRat    / qtd).toFixed(6),
-    '7_armazItem/u':    +(armazItem    / qtd).toFixed(6),
-    '8_capatItem/u':    +(capatItem    / qtd).toFixed(6),
-    'A_frodTotal/u':    +(frodTotal    / qtd).toFixed(6),
-    'B_credTotal/u':    +(-credTotal   / qtd).toFixed(6),
-    '=custoImpUnit':    +custoImpUnit.toFixed(6),
-    '+com_unit':        +com.toFixed(6),
-    '+pisV_unit':       +pisV.toFixed(6),
-    '+cofV_unit':       +cofV.toFixed(6),
-    '+icmsEf_unit':     +icmsEf.toFixed(6),
-    '+ipiV_unit':       +ipiV.toFixed(6),
-    // oplog já dentro do custoImpUnit
-    '=o24_unit':        +o24.toFixed(6),
-    '=o26_unit':        +o26.toFixed(6),
-    'pv_unit':          +pv.toFixed(6),
-  });
-  console.log({
-    pvTotal:       pv * qtd,
-    o24Total:      o24 * qtd,
-    o26Total:      o26 * qtd,
-    baseTotal,
-    ipiVTotal:     ipiV * qtd,
-    pisVTotal:     pisV * qtd,
-    cofVTotal:     cofV * qtd,
-    icmsEfTotal:   icmsEf * qtd,
-    csllTotal:     csll,
-    irTotal:       ir,
-    irAdicTotal:   irAdic,
-    lucroLiqTotal
-  });
-
-  console.log('CSLL/IR diagnóstico:', {
-    o26Total:      (o26 * qtd).toFixed(2),
-    baseTotal:     baseTotal.toFixed(2),
-    csll:          csll.toFixed(2),
-    ir:            ir.toFixed(2),
-    irAdic:        irAdic.toFixed(2),
-    lucroLiqTotal: (lucroUnit * qtd).toFixed(2),
-    threshold60k:  Math.max(0, baseTotal - 60000).toFixed(2)
-  });
 
   return {
     qtd, fob, fobItem, prop, freteRat, cifRS,
