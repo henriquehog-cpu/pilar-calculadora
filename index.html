@@ -641,9 +641,9 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   //     Planilha: =(frete_RS)*J27+20
   const afrmmItem   = 0.08 * freteRS + 20;
 
-  // Custos fixos por container; Despachante/Siscomex rateados por FOB; Dif.Frete 2,5% do frete do item
+  // Custos fixos por container; Despachante/Siscomex rateados por FOB; Dif.Frete 2,0% do frete do item
   const despRat      = n('c_despachante') * prop;
-  const difFreteItem = freteRS * 0.025;            // 2,5% do frete R$ deste item
+  const difFreteItem = freteRS * 0.02;             // 2,0% do frete R$ deste item (TABELA MATRIZ MG)
   const agenteRat    = n('c_agente')      * cont;  // por container
   const armazItem    = n('c_armazenagem') * cont;  // por container
   const capatItem    = n('c_capatazia')   * cont;  // por container
@@ -713,8 +713,8 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _ipiV   = pv * aliq.ipi / (1 + aliq.ipi);
       const _icmsEf = pv * aliq.reg_espec_inter;             // [A] BC usa icmsEf (1,5%)
       const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
-      const _pisV   = _bcV * 0.0165;
-      const _cofV   = _bcV * 0.076;
+      const _pisV   = _bcV * aliq.pis_venda;
+      const _cofV   = _bcV * aliq.cof_venda;
       const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] oplog já incluído no custoImpUnit
       const _o26    = pv - _o24;                             // lucro unitário antes IR
       const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
@@ -733,8 +733,8 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const icmsEf  = pv * aliq.reg_espec_inter;                  // ICMS efetivo 1,5%
   // [A] BC PIS/COFINS = PV − IPI − icmsEf (1,5%), espelho de O27 da planilha
   const bcVenda = Math.max(0, pv - ipiV - icmsEf);
-  const pisV    = bcVenda * 0.0165;                            // PIS 1,65%
-  const cofV    = bcVenda * 0.076;                             // COFINS 7,60%
+  const pisV    = bcVenda * aliq.pis_venda;
+  const cofV    = bcVenda * aliq.cof_venda;
 
   // [B] O24 = custo total unitário antes da nota (oplog já dentro do custoImpUnit)
   const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
