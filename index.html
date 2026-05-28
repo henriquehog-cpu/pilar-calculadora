@@ -643,7 +643,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
 
   // Custos fixos por container; Despachante/Siscomex rateados por FOB; Dif.Frete 2,0% do frete do item
   const despRat      = n('c_despachante') * prop;
-  const difFreteItem = freteRS * 0.02;             // 2,0% do frete R$ deste item (TABELA MATRIZ MG)
+  const difFreteItem = freteRS * 0.025;            // 2,5% do frete R$ deste item
   const agenteRat    = n('c_agente')      * cont;  // por container
   const armazItem    = n('c_armazenagem') * cont;  // por container
   const capatItem    = n('c_capatazia')   * cont;  // por container
