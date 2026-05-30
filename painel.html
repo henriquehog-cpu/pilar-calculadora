@@ -1267,6 +1267,7 @@ function renderFluxoCaixa() {
         <div class="card">
           <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">
             <span>3 — Recebimentos do Cliente</span>
+            <span id="fc-rec-nf-label" style="font-size:11px;opacity:.75;font-weight:400"></span>
             <button onclick="fcAddRecebimento()"
               style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
               + Recebimento
@@ -1275,7 +1276,7 @@ function renderFluxoCaixa() {
           <div style="overflow-x:auto">
             <table class="items-tbl" style="font-size:13px">
               <thead><tr>
-                <th>Descrição</th>
+                <th>Descrição</th><th>%</th>
                 <th style="text-align:right">Valor USD</th>
                 <th>Câmbio Spot</th>
                 <th style="text-align:right">Valor R$</th>
@@ -1347,7 +1348,7 @@ function fcSelecionarProcesso(id) {
     const nfBRL = _fcProcesso.resultado?.nf_total_brl || 0;
     const nfUSD = camCliente > 0 ? nfBRL / camCliente : 0;
     _fcRecebimentos = [{
-      id:Date.now()+2, descricao:'Pagamento', valor_usd:nfUSD,
+      id:Date.now()+2, descricao:'Pagamento', percentual:1.0, valor_usd:nfUSD,
       cambio:camCliente, valor_reais:nfBRL,
       data_prevista:'', data_realizada:null, status:'previsto'
     }];
@@ -1488,18 +1489,36 @@ function fcMarcarPago(i) {
   fcRenderPagamentos();
 }
 
+function fcNfTotalUSD() {
+  const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
+  const nfBRL      = _fcProcesso?.resultado?.nf_total_brl || 0;
+  if (camCliente > 0 && nfBRL > 0) return nfBRL / camCliente;
+  // Fallback: soma dos recebimentos já existentes
+  return _fcRecebimentos.reduce((s, r) => s + (r.valor_usd || 0), 0);
+}
+
 function fcRenderRecebimentos() {
   const tbody = document.getElementById('fc-rec-tbody');
   if (!tbody) return;
+
+  const nfTotalUSD = fcNfTotalUSD();
+  const n          = _fcRecebimentos.length || 1;
+  const nlEl = document.getElementById('fc-rec-nf-label');
+  if (nlEl) nlEl.textContent = nfTotalUSD > 0 ? `Total NF: USD ${fmtN(nfTotalUSD)}` : '';
+
   tbody.innerHTML = _fcRecebimentos.map((r, i) => {
     const statusSel = ['previsto','recebido','atrasado'].map(s =>
       `<option${r.status===s?' selected':''}>${s}</option>`).join('');
+    const pct = ((r.percentual ?? 1/n) * 100).toFixed(1);
     return `<tr style="${r.status==='recebido'?'opacity:.75':''}">
-      <td><input value="${esc(r.descricao)}" style="width:120px"
+      <td><input value="${esc(r.descricao)}" style="width:110px"
         oninput="fcChangeRecebimento(${i},'descricao',this.value)"></td>
-      <td>
-        <input type="number" value="${r.valor_usd||''}" step="0.01" min="0" style="width:90px" placeholder="0,00"
-          oninput="fcChangeRecebimento(${i},'valor_usd',this.value)">
+      <td style="white-space:nowrap">
+        <input type="number" value="${pct}" min="0" max="100" step="1" style="width:52px"
+          oninput="fcChangeRecebimento(${i},'percentual',this.value)">%
+      </td>
+      <td id="fc-rec-usd-${i}" style="text-align:right;padding:5px 8px;white-space:nowrap">
+        USD ${fmtN(r.valor_usd)}
       </td>
       <td><input type="number" value="${r.cambio||''}" step="0.0001" style="width:76px" placeholder="0,0000"
         oninput="fcChangeRecebimento(${i},'cambio',this.value)"></td>
@@ -1519,39 +1538,51 @@ function fcRenderRecebimentos() {
         <button class="btn btn-s btn-sm" style="color:#c62828" onclick="fcRemoveRecebimento(${i})">✕</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhum recebimento</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhum recebimento</td></tr>';
   fcAtualizarFootRec();
 }
 
 function fcAtualizarFootRec() {
   const tfoot = document.getElementById('fc-rec-tfoot');
   if (!tfoot) return;
-  let totUSD=0, totBRL=0;
-  _fcRecebimentos.forEach(r => { totUSD+=r.valor_usd||0; totBRL+=r.valor_reais||0; });
+  let totPct=0, totUSD=0, totBRL=0;
+  _fcRecebimentos.forEach(r => {
+    totPct += r.percentual || 0;
+    totUSD += r.valor_usd  || 0;
+    totBRL += r.valor_reais|| 0;
+  });
+  const pctOk = Math.abs(totPct - 1) < 0.005;
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
       <td style="padding:7px 8px">TOTAL</td>
+      <td style="padding:7px 8px;${!pctOk?'color:#C62828;':''}">${fmtN(totPct*100,1)}%${!pctOk?' ⚠':''}</td>
       <td style="text-align:right;padding:7px 8px">USD ${fmtN(totUSD)}</td>
       <td></td>
       <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(totBRL)}</td>
       <td colspan="3"></td>
-    </tr>`;
+    </tr>
+    ${!pctOk ? `<tr><td colspan="8" style="background:#FFF8E1;color:#C62828;font-size:11px;padding:5px 8px">
+      ⚠ Parcelas somam ${fmtN(totPct*100,1)}% — devem totalizar 100%.
+    </td></tr>` : ''}`;
 }
 
 function fcChangeRecebimento(i, campo, valor) {
   const r = _fcRecebimentos[i];
   if (!r) return;
-  if (campo === 'valor_usd') {
-    r.valor_usd   = parseFloat(valor) || 0;
-    r.valor_reais = r.valor_usd * (r.cambio||0);
-    const el = document.getElementById(`fc-rec-brl-${i}`);
-    if (el) el.textContent = 'R$ ' + fmtN(r.valor_reais);
+  if (campo === 'percentual') {
+    r.percentual  = parseFloat(valor) / 100 || 0;
+    r.valor_usd   = parseFloat((fcNfTotalUSD() * r.percentual).toFixed(2));
+    r.valor_reais = parseFloat((r.valor_usd * (r.cambio||0)).toFixed(2));
+    const uEl = document.getElementById(`fc-rec-usd-${i}`);
+    const bEl = document.getElementById(`fc-rec-brl-${i}`);
+    if (uEl) uEl.textContent = 'USD ' + fmtN(r.valor_usd);
+    if (bEl) bEl.textContent = 'R$ '  + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
   } else if (campo === 'cambio') {
     r.cambio      = parseFloat(valor) || 0;
-    r.valor_reais = (r.valor_usd||0) * r.cambio;
-    const el = document.getElementById(`fc-rec-brl-${i}`);
-    if (el) el.textContent = 'R$ ' + fmtN(r.valor_reais);
+    r.valor_reais = parseFloat((r.valor_usd * r.cambio).toFixed(2));
+    const bEl = document.getElementById(`fc-rec-brl-${i}`);
+    if (bEl) bEl.textContent = 'R$ ' + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
   } else {
     r[campo] = valor;
@@ -1560,20 +1591,21 @@ function fcChangeRecebimento(i, campo, valor) {
 
 function fcRedistribuirRecebimentos() {
   if (!_fcRecebimentos.length) return;
+  const n          = _fcRecebimentos.length;
+  const nfTotalUSD = fcNfTotalUSD();
   const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
-  const nfBRL      = _fcProcesso?.resultado?.nf_total_brl || 0;
-  const totalUSD   = camCliente > 0 ? nfBRL / camCliente : 0;
-  const parteUSD   = totalUSD > 0 ? parseFloat((totalUSD / _fcRecebimentos.length).toFixed(2)) : 0;
-  _fcRecebimentos.forEach(r => {
-    r.valor_usd   = parteUSD;
-    r.valor_reais = parseFloat((parteUSD * (r.cambio || camCliente || 0)).toFixed(2));
+  const parteP     = parseFloat((1 / n).toFixed(6));
+  _fcRecebimentos.forEach((r, i) => {
+    r.percentual  = i < n - 1 ? parteP : parseFloat((1 - parteP * (n - 1)).toFixed(6));
+    r.valor_usd   = parseFloat((nfTotalUSD * r.percentual).toFixed(2));
+    r.valor_reais = parseFloat((r.valor_usd * (r.cambio || camCliente || 0)).toFixed(2));
   });
 }
 
 function fcAddRecebimento() {
   const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
-  _fcRecebimentos.push({ id:Date.now(), descricao:'Pagamento', valor_usd:0,
-    cambio:camCliente, valor_reais:0,
+  _fcRecebimentos.push({ id:Date.now(), descricao:'Pagamento', percentual:0,
+    valor_usd:0, cambio:camCliente, valor_reais:0,
     data_prevista:'', data_realizada:null, status:'previsto' });
   fcRedistribuirRecebimentos();
   fcRenderRecebimentos();
