@@ -1,0 +1,23 @@
+{
+  "omie": {
+    "app_key": "",
+    "app_secret": ""
+  },
+  "empresa": {
+    "razao_social": "PILAR Imports",
+    "cnpj": "",
+    "endereco": "",
+    "email": "",
+    "site": "www.pilarimports.com.br"
+  },
+  "defaults": {
+    "despachante": 2500.00,
+    "siscomex": 192.79,
+    "agente_cargas": 1700.00,
+    "armazenagem": 2500.00,
+    "capatazia": 1010.00,
+    "operador_logistico": 1000.00,
+    "comissao_pct": 0.015,
+    "dif_frete_pct": 0.025
+  }
+}

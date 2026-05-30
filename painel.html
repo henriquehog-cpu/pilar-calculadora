@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PILAR Imports — Painel Operacional</title>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="painel/js/calc.js"></script>
+<style>
+:root {
+  --turquesa: #00BCD4;
+  --turquesa-dark: #0097A7;
+  --cinza: #37474F;
+  --cinza-med: #607D8B;
+  --cinza-light: #ECEFF1;
+  --border: #CFD8DC;
+  --bg: #F5F7F8;
+  --white: #fff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--cinza);font-size:14px}
+
+/* ── Header — idêntico ao index.html ── */
+.header{background:var(--cinza);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:16px;font-weight:400;opacity:.9}
+.header-right{margin-left:auto;font-size:13px;opacity:.7}
+.header-right a{color:rgba(255,255,255,.75);text-decoration:none}
+.header-right a:hover{color:#fff}
+
+/* ── Layout ── */
+.painel-layout{display:flex;height:calc(100vh - 78px)}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:210px;
+  min-width:210px;
+  background:var(--cinza);
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  flex-shrink:0;
+}
+.nav-sep{
+  padding:16px 16px 4px;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:1px;
+  color:rgba(255,255,255,.35);
+}
+.nav-link{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 16px;
+  color:rgba(255,255,255,.72);
+  font-size:13px;
+  text-decoration:none;
+  border:none;
+  background:none;
+  width:100%;
+  text-align:left;
+  cursor:pointer;
+  transition:background .15s, color .15s;
+}
+.nav-link:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-link.active{background:var(--turquesa);color:#fff;font-weight:600}
+.nav-icon{width:16px;text-align:center;font-size:14px;flex-shrink:0}
+
+.sidebar-footer{
+  margin-top:auto;
+  padding:16px;
+  border-top:1px solid rgba(255,255,255,.1);
+  font-size:11px;
+  color:rgba(255,255,255,.35);
+}
+
+/* ── Área de conteúdo ── */
+.content-area{
+  flex:1;
+  padding:24px;
+  overflow-y:auto;
+  min-width:0;
+}
+
+/* ── Cards — mesmo estilo do index.html ── */
+.card{background:var(--white);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);margin-bottom:20px;overflow:hidden}
+.card-hd{background:var(--cinza);color:#fff;padding:10px 20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.card-hd.tq{background:var(--turquesa)}
+.card-bd{padding:20px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+.field label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med)}
+.field input,.field select{padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza);width:100%;transition:border-color .15s;font-family:inherit;background:var(--white)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--turquesa)}
+.note{font-size:11px;color:var(--cinza-med);margin-top:2px}
+.btn{padding:9px 20px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;font-family:inherit}
+.btn-p{background:var(--turquesa);color:#fff}
+.btn-p:hover{background:var(--turquesa-dark)}
+.btn-s{background:var(--cinza-light);color:var(--cinza);border:1px solid var(--border)}
+.btn-s:hover{background:var(--border)}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* ── Tabela de itens do pedido ── */
+.items-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.items-tbl th{background:var(--cinza);color:#fff;padding:7px 8px;text-align:left;font-size:11px;font-weight:700;white-space:nowrap}
+.items-tbl td{padding:3px 4px;border-bottom:1px solid var(--cinza-light);vertical-align:middle}
+.items-tbl td:first-child{padding-left:8px;color:var(--cinza-med);font-size:12px}
+.items-tbl input,.items-tbl select{padding:5px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px;width:100%;background:var(--white);font-family:inherit;color:var(--cinza)}
+.items-tbl input:focus,.items-tbl select:focus{outline:none;border-color:var(--turquesa)}
+
+/* ── Tabela lista de processos ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--cinza-med);font-weight:700;padding:8px 10px;border-bottom:2px solid var(--border);white-space:nowrap}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--cinza-light)}
+.tbl tbody tr:hover{background:#F9FBFC;cursor:pointer}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase}
+.badge-ativo{background:#E8F5E9;color:#2E7D32}
+.badge-concluido{background:#E3F2FD;color:#1565C0}
+.badge-arquivado{background:var(--cinza-light);color:var(--cinza-med)}
+
+/* ── Textarea — mesmo padrão dos inputs ── */
+.field textarea{padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza);width:100%;transition:border-color .15s;font-family:inherit;background:var(--white);resize:vertical}
+.field textarea:focus{outline:none;border-color:var(--turquesa)}
+/* ── Toast ── */
+@keyframes toastIn{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── KPI cards — mesmo estilo do index.html ── */
+.sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:0}
+.sum-item{text-align:center;padding:18px 14px;background:var(--cinza-light);border-radius:8px}
+.sum-item .val{font-size:22px;font-weight:700;color:var(--turquesa-dark)}
+.sum-item .lbl{font-size:11px;color:var(--cinza-med);margin-top:5px;text-transform:uppercase;letter-spacing:.4px}
+.sum-item.dk{background:var(--cinza)}
+.sum-item.dk .val{color:var(--turquesa)}
+.sum-item.dk .lbl{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+
+<!-- Header idêntico ao index.html -->
+<div class="header">
+  <img src="web_Logo_sem assinatura_turquesa.png" style="height:50px" alt="PILAR">
+  <h1>Painel Operacional de Importação</h1>
+  <div class="header-right">
+    <a href="index.html">← Calculadora</a>
+  </div>
+</div>
+
+<!-- Layout: sidebar + conteúdo -->
+<div class="painel-layout">
+
+  <nav class="sidebar">
+    <div class="nav-sep">Visão Geral</div>
+    <a class="nav-link active" href="#" onclick="return navTo(this, renderDashboard)">
+      <span class="nav-icon">◈</span> Dashboard
+    </a>
+
+    <div class="nav-sep">Importação</div>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderNovoProcesso)">
+      <span class="nav-icon">＋</span> Novo Processo
+    </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderProcessos)">
+      <span class="nav-icon">≡</span> Processos
+    </a>
+
+    <div class="nav-sep">Documentos</div>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderOrderRequest)">
+      <span class="nav-icon">📋</span> Order Request
+    </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderResumoDespachante)">
+      <span class="nav-icon">📄</span> Resumo Despachante
+    </a>
+
+    <div class="nav-sep">Financeiro</div>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderFluxoCaixa)">
+      <span class="nav-icon">📊</span> Fluxo de Caixa
+    </a>
+
+    <div class="nav-sep">Produtos</div>
+    <a class="nav-link" href="#">
+      <span class="nav-icon">📦</span> Catálogo Omie
+    </a>
+
+    <div class="nav-sep">Sistema</div>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderConfig)">
+      <span class="nav-icon">⚙</span> Configurações
+    </a>
+
+    <div class="sidebar-footer">
+      Painel v1.0
+    </div>
+  </nav>
+
+  <!-- Conteúdo — preenchido pelos módulos -->
+  <div id="vc" class="content-area"></div>
+
+</div>
+
+<script>
+// ── Navegação ──────────────────────────────────────────────────────────────
+function navTo(link, renderFn) {
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  link.classList.add('active');
+  renderFn();
+  return false; // cancela o href="#"
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const processos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const produtos  = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]');
+
+  const ativos    = processos.filter(p => p.status === 'ativo').length;
+  const fobTotal  = processos.reduce((s, p) => s + (p.resultado?.fob_total_usd || 0), 0);
+  const itensTotal = processos.reduce((s, p) => s + (p.itens?.length || 0), 0);
+
+  function fmtUSD(v) { return v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+  document.getElementById('vc').innerHTML = `
+    <div class="sum-grid">
+      <div class="sum-item">
+        <div class="val">${ativos}</div>
+        <div class="lbl">Processos Ativos</div>
+      </div>
+      <div class="sum-item">
+        <div class="val">USD ${fmtUSD(fobTotal)}</div>
+        <div class="lbl">FOB Total USD</div>
+      </div>
+      <div class="sum-item">
+        <div class="val">${itensTotal}</div>
+        <div class="lbl">Itens Pedidos</div>
+      </div>
+      <div class="sum-item dk">
+        <div class="val">${produtos.length}</div>
+        <div class="lbl">Produtos Omie</div>
+      </div>
+    </div>`;
+}
+
+// ── Configurações ──────────────────────────────────────────────────────────
+function renderConfig() {
+  const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const o = cfg.omie    || {};
+  const e = cfg.empresa || {};
+  const d = cfg.defaults || {};
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:780px">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h2 style="font-size:18px;font-weight:700">Configurações</h2>
+        <button class="btn btn-p" onclick="salvarConfig()">Salvar Configurações</button>
+      </div>
+
+      ${location.protocol === 'file:' ? `
+      <div style="background:#FFF8E1;border:1px solid #F9A825;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#5D4037">
+        ⚠ Para conectar ao Omie, abra via <strong>http://localhost:8080/painel.html</strong> — não via file://<br>
+        <span style="font-size:12px;opacity:.8">No terminal: <code style="background:#F5F5F5;padding:1px 6px;border-radius:3px">bash serve.sh</code></span>
+      </div>` : ''}
+
+      <div class="card">
+        <div class="card-hd tq">Integração Omie</div>
+        <div class="card-bd">
+          <div class="g2">
+            <div class="field">
+              <label>App Key</label>
+              <input type="text" id="cfg-app-key" value="${e_(o.app_key)}" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>App Secret</label>
+              <input type="password" id="cfg-app-secret" value="${e_(o.app_secret)}" autocomplete="off">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+            <button class="btn btn-s" onclick="testarOmie()">Testar conexão Omie</button>
+            <span id="omie-status" style="font-size:13px"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">Dados da Empresa</div>
+        <div class="card-bd">
+          <div class="g2">
+            <div class="field">
+              <label>Razão Social</label>
+              <input type="text" id="cfg-razao" value="${e_(e.razao)}">
+            </div>
+            <div class="field">
+              <label>CNPJ</label>
+              <input type="text" id="cfg-cnpj" value="${e_(e.cnpj)}">
+            </div>
+            <div class="field">
+              <label>E-mail</label>
+              <input type="email" id="cfg-email" value="${e_(e.email)}">
+            </div>
+            <div class="field">
+              <label>Site</label>
+              <input type="text" id="cfg-site" value="${e_(e.site)}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">Defaults dos Processos</div>
+        <div class="card-bd">
+          <div class="g2">
+            <div class="field">
+              <label>Despachante Padrão (R$)</label>
+              <input type="number" id="cfg-despachante" value="${d.despachante ?? 2500}" step="100" min="0">
+            </div>
+            <div class="field">
+              <label>Porto Padrão</label>
+              <input type="text" id="cfg-porto" value="${e_(d.porto)}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>`;
+}
+
+// escapa aspas para uso em value=""
+function e_(s) { return (s || '').toString().replace(/"/g, '&quot;'); }
+
+function salvarConfig() {
+  const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  cfg.omie    = { app_key: val('cfg-app-key'), app_secret: val('cfg-app-secret') };
+  cfg.empresa = { razao: val('cfg-razao'), cnpj: val('cfg-cnpj'), email: val('cfg-email'), site: val('cfg-site') };
+  cfg.defaults = { despachante: parseFloat(val('cfg-despachante')) || 2500, porto: val('cfg-porto') };
+  localStorage.setItem('pilar_config', JSON.stringify(cfg));
+
+  // feedback visual no botão
+  const btn = document.querySelector('[onclick="salvarConfig()"]');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Salvo!';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1800);
+}
+
+async function testarOmie() {
+  const statusEl = document.getElementById('omie-status');
+  statusEl.textContent = 'Testando…';
+  statusEl.style.color = '#607D8B';
+
+  try {
+    const r = await fetch('http://localhost:3001/omie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call:   'ListarProdutos',
+        params: [{ pagina: 1, registros_por_pagina: 1, apenas_importado_api: 'N' }]
+      })
+    });
+    const data = await r.json();
+    if (data.faultstring) throw new Error(data.faultstring);
+    if (data.erro)        throw new Error(data.erro);
+    statusEl.textContent = '✓ Conectado — Omie respondeu com sucesso.';
+    statusEl.style.color = '#2E7D32';
+  } catch (err) {
+    statusEl.textContent = '✗ ' + err.message;
+    statusEl.style.color = '#C62828';
+  }
+}
+
+async function sincronizarOmie() {
+  let pagina = 1, todos = [];
+  while (true) {
+    const r = await fetch('http://localhost:3001/omie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call:   'ListarProdutos',
+        params: [{ pagina, registros_por_pagina: 500, apenas_importado_api: 'N' }]
+      })
+    });
+    const data = await r.json();
+    if (data.faultstring) throw new Error(data.faultstring);
+    if (data.erro)        throw new Error(data.erro);
+    const lista = data.produto_servico_listfull || data.produto_servico_cadastro || [];
+    todos = todos.concat(lista);
+    if (todos.length >= (data.nTotRegistros || 0)) break;
+    pagina++;
+  }
+  const produtos = todos.map(p => ({
+    produto:          p.descricao || p.codigo,
+    codigo:           p.codigo || '',
+    ncm:              p.ncm || '',
+    familia:          p.familia_produto || '',
+    unidade:          p.unidade || 'PC',
+    peso_liq_unit:    parseFloat(p.peso_liq)    || 0,
+    peso_bruto_unit:  parseFloat(p.peso_bruto)  || 0,
+    ii:               parseFloat(p.perc_ii)  / 100 || 0,
+    ipi:              parseFloat(p.perc_ipi) / 100 || 0,
+    pis_importacao:   0.021,
+    cofins_importacao:0.1065,
+    pis_venda:        0.0165,
+    cofins_venda:     0.076,
+    icms_intra:       0.14,  icms_inter:       0.04,
+    reg_espec_intra:  0.14,  reg_espec_inter:  0.015
+  }));
+  localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+  return produtos.length;
+}
+
+function val(id) { return (document.getElementById(id)?.value || '').trim(); }
+function var_cinza_med() { return '#607D8B'; }
+function today() { return new Date().toISOString().split('T')[0]; }
+function fmtN(v, d=2) { return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+// ── Novo Processo ──────────────────────────────────────────────────────────
+let _itens = [];
+let _npEditId = null; // id do processo em edição; null = criação nova
+
+function gerarNumero() {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const ano   = new Date().getFullYear();
+  const seq   = String(todos.length + 1).padStart(3, '0');
+  return `PIL-${seq}-${ano}`;
+}
+
+function newItemRow() {
+  return { codigo:'', descricao:'', cor:'', quantidade:0, unidade:'PC',
+           fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'',
+           margem_pct: 0.20, pv_fixo_usd: 0 };
+}
+
+function esc(s) { return (s||'').toString().replace(/"/g,'&quot;'); }
+
+async function fetchPTAX(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const orig = el.placeholder;
+  el.placeholder = 'buscando…';
+  const hoje = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d  = new Date(hoje);
+    d.setDate(hoje.getDate() - i);
+    const mm   = String(d.getMonth()+1).padStart(2,'0');
+    const dd   = String(d.getDate()).padStart(2,'0');
+    const yyyy = d.getFullYear();
+    try {
+      const r = await fetch(
+        `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/` +
+        `CotacaoDolarDia(dataCotacao='${mm}-${dd}-${yyyy}')?$top=1&$format=json&$select=cotacaoVenda`
+      );
+      const j = await r.json();
+      const t = j?.value?.[0]?.cotacaoVenda;
+      if (t) { el.value = t.toFixed(4); el.placeholder = orig; return; }
+    } catch { /* tenta dia anterior */ }
+  }
+  el.placeholder = 'indisponível';
+}
+
+function renderNovoProcesso(proc) {
+  _npEditId = proc ? proc.id : null;
+  _itens    = proc?.itens?.length ? proc.itens.map(it => ({...it})) : [newItemRow()];
+
+  const g    = proc?.dados_gerais || {};
+  const c    = proc?.cambios      || {};
+  const fr   = proc?.frete        || {};
+  const inco = g.incoterm || 'FOB';
+  const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
+  const btnLabel  = proc ? 'Salvar Alterações' : 'Salvar Processo';
+  const selInco   = v => `${inco === v ? ' selected' : ''}`;
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:980px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h2 style="font-size:18px;font-weight:700">${titulo}</h2>
+        <button class="btn btn-p" onclick="npSalvar()">${btnLabel}</button>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">1 — Dados Gerais</div>
+        <div class="card-bd">
+          <div class="g3">
+            <div class="field"><label>Número do Processo</label>
+              <input id="np-numero" type="text" value="${esc(proc?.numero || gerarNumero())}" placeholder="PIL-001-2026"></div>
+            <div class="field"><label>Data do Pedido</label>
+              <input id="np-data" type="date" value="${g.data_pedido || today()}"></div>
+            <div class="field"><label>Cliente</label>
+              <input id="np-cliente" type="text" value="${esc(g.cliente)}" placeholder="Nome do cliente"></div>
+          </div>
+          <div class="g3">
+            <div class="field"><label>Fornecedor</label>
+              <input id="np-fornecedor" type="text" value="${esc(g.fornecedor)}" placeholder="Nome do fornecedor"></div>
+            <div class="field"><label>País de Origem</label>
+              <input id="np-pais" type="text" value="${esc(g.pais || 'China')}"></div>
+            <div class="field"><label>Incoterm</label>
+              <select id="np-incoterm">
+                <option${selInco('FOB')}>FOB</option>
+                <option${selInco('CIF')}>CIF</option>
+                <option${selInco('EXW')}>EXW</option>
+              </select>
+            </div>
+          </div>
+          <div class="g3">
+            <div class="field"><label>Número da Proforma</label>
+              <input id="np-proforma" type="text" value="${esc(g.numero_proforma)}" placeholder="Ex: PIL-001-2026"></div>
+            <div class="field"><label>Prev. Embarque</label>
+              <input id="np-embarque" type="date" value="${g.prev_embarque||''}"></div>
+            <div class="field"><label>Prev. Chegada Porto</label>
+              <input id="np-porto" type="date" value="${g.prev_chegada_porto||''}"></div>
+          </div>
+          <div style="max-width:320px">
+            <div class="field"><label>Prev. Chegada Cliente</label>
+              <input id="np-chegada" type="date" value="${g.prev_chegada_cliente||''}"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">2 — Câmbios e Frete</div>
+        <div class="card-bd">
+          <div class="g3">
+            <div class="field">
+              <label>Câmbio DI (importação)</label>
+              <div style="display:flex;gap:6px">
+                <input type="number" id="np-cambio-di" step="0.0001" min="0" placeholder="0,0000"
+                  value="${c.di?.taxa || ''}" style="flex:1" oninput="npRecalcular()">
+                <button class="btn btn-s" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="fetchPTAX('np-cambio-di')">PTAX ↓</button>
+              </div>
+              <span class="note">Base de cálculo II, PIS, COFINS</span>
+            </div>
+            <div class="field"><label>Câmbio Fiscal (NF entrada)</label>
+              <input type="number" id="np-cambio-fiscal" step="0.0001" min="0" placeholder="0,0000"
+                value="${c.fiscal?.taxa || ''}" oninput="npRecalcular()"></div>
+            <div class="field"><label>Câmbio Cliente (venda)</label>
+              <input type="number" id="np-cambio-cliente" step="0.0001" min="0" placeholder="0,0000"
+                value="${c.cliente?.taxa || ''}" oninput="npRecalcular()"></div>
+          </div>
+          <div class="g2" style="max-width:480px">
+            <div class="field"><label>Frete Internacional (USD)</label>
+              <input type="number" id="np-frete" step="100" min="0" placeholder="0,00"
+                value="${fr.valor_usd || ''}" oninput="npRecalcular()"></div>
+            <div class="field"><label>Número de Containers</label>
+              <input type="number" id="np-containers" min="1" step="1"
+                value="${fr.containers || 1}" oninput="npRecalcular()"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+          <span>3 — Itens do Pedido</span>
+          <button onclick="npAddItem()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">+ Adicionar Item</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="items-tbl">
+            <thead><tr>
+              <th>#</th><th>Código</th><th style="min-width:180px">Descrição</th>
+              <th>Cor/Estampa</th><th>Qtd</th><th>Un</th>
+              <th>FOB Unit (USD)</th><th>NCM</th><th>GSM</th><th>Larg. cm</th>
+              <th style="text-align:right;padding-right:10px">Total USD</th><th></th>
+            </tr></thead>
+            <tbody id="itens-tbody"></tbody>
+            <tfoot id="itens-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-hd tq">4 — Precificação</div>
+        <div id="s4-tabela" style="overflow-x:auto">
+          <div style="padding:20px;text-align:center;color:var(--cinza-med)">
+            Preencha câmbio DI e itens para calcular.
+          </div>
+        </div>
+      </div>
+
+      <div id="s4-resumo"></div>
+
+      <div style="text-align:right;margin-top:20px;padding-bottom:40px">
+        <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="npSalvar()">${btnLabel}</button>
+      </div>
+    </div>`;
+  npRenderItens();
+  npRecalcular();
+}
+
+function npAddItem() {
+  _itens.push(newItemRow());
+  npRenderItens();
+  npRecalcular();
+}
+
+function npRemoveItem(i) {
+  _itens.splice(i, 1);
+  if (_itens.length === 0) _itens.push(newItemRow());
+  npRenderItens();
+  npRecalcular();
+}
+
+function npItemChange(i, campo, valor) {
+  if (campo === 'quantidade' || campo === 'fob_unit_usd') {
+    _itens[i][campo] = parseFloat(valor) || 0;
+    const total = (_itens[i].quantidade || 0) * (_itens[i].fob_unit_usd || 0);
+    const el = document.getElementById(`np-total-${i}`);
+    if (el) el.textContent = 'USD ' + fmtN(total);
+    npAtualizarRodape();
+    npRecalcular();
+  } else {
+    _itens[i][campo] = valor;
+  }
+}
+
+function npAtualizarRodape() {
+  const fobTotal = _itens.reduce((s, it) => s + (it.quantidade||0)*(it.fob_unit_usd||0), 0);
+  const tfoot = document.getElementById('itens-tfoot');
+  if (!tfoot) return;
+  tfoot.innerHTML = `
+    <tr style="background:var(--cinza-light)">
+      <td colspan="10" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
+      <td style="text-align:right;padding:8px 10px;font-size:15px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(fobTotal)}</td>
+      <td></td>
+    </tr>`;
+}
+
+function npRenderItens() {
+  const tbody = document.getElementById('itens-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = _itens.map((it, i) => {
+    const total = (it.quantidade||0) * (it.fob_unit_usd||0);
+    const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
+    return `<tr>
+      <td>${i+1}</td>
+      <td><input value="${esc(it.codigo)}" placeholder="Cód." oninput="npItemChange(${i},'codigo',this.value)" style="width:80px"></td>
+      <td><input value="${esc(it.descricao)}" placeholder="Descrição do produto" oninput="npItemChange(${i},'descricao',this.value)"></td>
+      <td><input value="${esc(it.cor)}" placeholder="Ex: Branco" oninput="npItemChange(${i},'cor',this.value)" style="width:90px"></td>
+      <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)" style="width:70px"></td>
+      <td><select oninput="npItemChange(${i},'unidade',this.value)" style="width:55px">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
+      <td><input type="number" value="${it.fob_unit_usd||''}" min="0" step="0.01" oninput="npItemChange(${i},'fob_unit_usd',this.value)" style="width:90px"></td>
+      <td><input value="${esc(it.ncm)}" placeholder="0000.00.00" oninput="npItemChange(${i},'ncm',this.value)" style="width:88px"></td>
+      <td><input type="number" value="${it.gsm||''}" min="0" oninput="npItemChange(${i},'gsm',this.value)" style="width:52px"></td>
+      <td><input type="number" value="${it.largura_cm||''}" min="0" oninput="npItemChange(${i},'largura_cm',this.value)" style="width:60px"></td>
+      <td id="np-total-${i}" style="text-align:right;padding:4px 10px;font-weight:600;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(total)}</td>
+      <td style="padding:2px 6px">
+        <button onclick="npRemoveItem(${i})" title="Remover" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:16px;line-height:1;padding:2px 4px">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+  npAtualizarRodape();
+}
+
+function npSalvar() {
+  const itensValidos = _itens.filter(it => it.descricao || it.codigo || it.quantidade > 0);
+  const dadosForm = {
+    numero: val('np-numero') || gerarNumero(),
+    dados_gerais: {
+      data_pedido:          val('np-data'),
+      cliente:              val('np-cliente'),
+      fornecedor:           val('np-fornecedor'),
+      pais:                 val('np-pais'),
+      incoterm:             val('np-incoterm'),
+      numero_proforma:      val('np-proforma'),
+      prev_embarque:        val('np-embarque'),
+      prev_chegada_porto:   val('np-porto'),
+      prev_chegada_cliente: val('np-chegada')
+    },
+    cambios: {
+      di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
+      fiscal:  { taxa: parseFloat(val('np-cambio-fiscal'))  || 0 },
+      cliente: { taxa: parseFloat(val('np-cambio-cliente')) || 0 }
+    },
+    frete: {
+      valor_usd:  parseFloat(val('np-frete'))    || 0,
+      containers: parseInt(val('np-containers')) || 1
+    },
+    itens: itensValidos
+  };
+
+  // Calcular e persistir resultado
+  const resCalc = typeof Calc !== 'undefined' ? npCalcResultado(npBuildProcessoAtual()) : null;
+  dadosForm.resultado = resCalc ? {
+    fob_total_usd:     resCalc.fob_total_usd,
+    cif_total_brl:     resCalc.cif_total_brl,
+    custo_final_total: resCalc.custo_final_total,
+    nf_total_brl:      resCalc.nf_total_brl,
+    lucro_brl:         resCalc.lucro_brl,
+    margem_pct:        resCalc.margem_pct,
+    imp_importacao:    resCalc.imp_imp?.total || 0,
+    custos_op_total:   resCalc.custos_op_total
+  } : {};
+
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+
+  if (_npEditId) {
+    const idx = todos.findIndex(p => p.id === _npEditId);
+    if (idx >= 0) {
+      todos[idx] = { ...todos[idx], ...dadosForm, atualizado_em: new Date().toISOString() };
+    }
+  } else {
+    todos.push({
+      id: Date.now(),
+      status: 'ativo',
+      criado_em: new Date().toISOString(),
+      ...dadosForm
+    });
+  }
+
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));
+
+  const link = Array.from(document.querySelectorAll('.nav-link'))
+    .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
+  if (link) navTo(link, renderProcessos);
+  else renderProcessos();
+}
+
+// ── Processos (lista) ──────────────────────────────────────────────────────
+function renderProcessos() {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]')
+    .slice().reverse(); // mais recentes primeiro
+
+  const linhas = todos.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--cinza-med)">Nenhum processo cadastrado ainda.</td></tr>`
+    : todos.map(p => {
+        const g    = p.dados_gerais || {};
+        const fob  = (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
+        const data = g.data_pedido ? g.data_pedido.split('-').reverse().join('/') : '—';
+        const badge = `<span class="badge badge-${p.status||'ativo'}">${p.status||'ativo'}</span>`;
+        return `<tr>
+          <td style="font-weight:600">${p.numero||'—'}</td>
+          <td>${g.cliente||'—'}</td>
+          <td>${g.fornecedor||'—'}</td>
+          <td>${data}</td>
+          <td>${badge}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">USD ${fmtN(fob)}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button onclick="procEditar(${p.id})" class="btn btn-s btn-sm" style="margin-right:4px">✎ Editar</button>
+            <button onclick="procDeletar(${p.id})" title="Excluir" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:16px;padding:2px 6px;vertical-align:middle">🗑</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="font-size:18px;font-weight:700">Processos</h2>
+      <button class="btn btn-p" onclick="
+        document.querySelectorAll('.nav-link').forEach(el=>el.classList.remove('active'));
+        document.querySelector('.nav-link[onclick*=renderNovoProcesso]').classList.add('active');
+        renderNovoProcesso()">+ Novo Processo</button>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr>
+            <th>Número</th><th>Cliente</th><th>Fornecedor</th>
+            <th>Data</th><th>Status</th><th style="text-align:right">FOB Total USD</th><th></th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function procEditar(id) {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const proc  = todos.find(p => p.id === id);
+  if (!proc) return;
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  document.querySelector('.nav-link[onclick*=renderNovoProcesso]')?.classList.add('active');
+  renderNovoProcesso(proc);
+}
+
+function procDeletar(id) {
+  if (!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]')
+    .filter(p => p.id !== id);
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));
+  renderProcessos();
+}
+
+// ── Precificação — Seção 4 ────────────────────────────────────────────────
+
+function npBuildProcessoAtual() {
+  const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const d   = cfg.defaults || {};
+  return {
+    cambios: {
+      di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
+      fiscal:  { taxa: parseFloat(val('np-cambio-fiscal'))  || 0 },
+      cliente: { taxa: parseFloat(val('np-cambio-cliente')) || 0 }
+    },
+    frete: {
+      valor_usd:     parseFloat(val('np-frete'))    || 0,
+      containers:    parseInt(val('np-containers')) || 1,
+      dif_frete_pct: d.dif_frete_pct || 0.025
+    },
+    custos_defaults: {
+      siscomex:           d.siscomex            || 192.79,
+      despachante:        d.despachante          || 2500,
+      agente_cargas:      d.agente_cargas        || 1700,
+      armazenagem:        d.armazenagem          || 2500,
+      capatazia:          d.capatazia            || 1010,
+      operador_logistico: d.operador_logistico   || 1000,
+      comissao_pct:       d.comissao_pct         || 0.015,
+      frete_rodoviario:   0
+    },
+    itens: _itens.filter(it => (it.quantidade||0) > 0 && (it.fob_unit_usd||0) > 0)
+  };
+}
+
+function npCalcResultado(proc) {
+  const itens = proc.itens || [];
+  if (!itens.length) return null;
+
+  const taxaCalc    = proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || 0;
+  const taxaCliente = proc.cambios?.cliente?.taxa || taxaCalc;
+  if (!taxaCalc) return null;
+
+  const comissaoPct = proc.custos_defaults?.comissao_pct || 0.015;
+  const freteUSD    = proc.frete?.valor_usd  || 0;
+  const containers  = proc.frete?.containers || 1;
+  const d           = proc.custos_defaults   || {};
+
+  const fobTotalUSD = itens.reduce((s, it) => s + it.quantidade * it.fob_unit_usd, 0);
+  if (!fobTotalUSD) return null;
+
+  // Custos totais do processo (serão distribuídos proporcionalmente)
+  const agenteT    = (d.agente_cargas      || 1700) * containers;
+  const armazT     = (d.armazenagem        || 2500) * containers;
+  const capatT     = (d.capatazia          || 1010) * containers;
+  const oplogT     = (d.operador_logistico || 1000) * containers;
+  const frodT      = (d.frete_rodoviario   || 0)   * containers;
+
+  const rItens = itens.map(item => {
+    const prop = (item.quantidade * item.fob_unit_usd) / fobTotalUSD;
+    const ctx  = {
+      fobTotalUSD,
+      freteUSD:    freteUSD * prop,         // frete proporcional ao FOB do item
+      taxaCalc, taxaCliente, comissaoPct,
+      custos: {
+        siscomex:    d.siscomex    || 192.79, // calc.js já rateia internamente por prop
+        despachante: d.despachante || 2500,   // idem
+        agente:      agenteT * prop,
+        armazenagem: armazT  * prop,
+        capatazia:   capatT  * prop,
+        oplog:       oplogT  * prop,
+        frodRodov:   frodT   * prop
+      }
+    };
+    return Calc.calcItem(
+      { ...item, containers: 1, margem_pct: item.margem_pct ?? 0.20 },
+      ctx
+    );
+  });
+
+  // Agregar totais
+  let totII=0, totPIS=0, totCOF=0, totIPI=0, totSisc=0, totAfrmm=0, totDifFrete=0;
+  let totCustoFinal=0, totPVBRL=0, totLucro=0;
+  let totIcmsEf=0, totPisV=0, totCofV=0, totCSLL=0, totIR=0, totIRAdic=0, totCom=0;
+
+  rItens.filter(Boolean).forEach(r => {
+    totII        += r.ii;          totPIS      += r.pisImp;  totCOF      += r.cofImp;
+    totIPI       += r.ipi;         totSisc     += r.siscomexRat;
+    totAfrmm     += r.afrmm;       totDifFrete += r.difFrete;
+    totCustoFinal+= r.custoImpTotal;
+    totPVBRL     += r.pvTotal;     totLucro    += r.lucroLiqTotal;
+    totIcmsEf    += r.icmsEf * r.qtd; totPisV += r.pisV * r.qtd; totCofV += r.cofV * r.qtd;
+    totCSLL      += r.csll;        totIR       += r.ir;    totIRAdic += r.irAdic;
+    totCom       += r.com * r.qtd;
+  });
+
+  const cifRS    = fobTotalUSD * taxaCalc + freteUSD * taxaCalc;
+  const totImpImp = totII + totPIS + totCOF + totIPI + totSisc + totAfrmm + totDifFrete;
+  const custosOp  = Math.max(0, totCustoFinal - cifRS - totImpImp);
+  const margem    = totPVBRL > 0 ? totLucro / totPVBRL : 0;
+
+  return {
+    fob_total_usd: fobTotalUSD,
+    cif_total_brl: cifRS,
+    imp_imp: { ii: totII, pis: totPIS, cofins: totCOF, ipi: totIPI,
+               siscomex: totSisc, afrmm: totAfrmm, dif_frete: totDifFrete, total: totImpImp },
+    custos_op_total:   custosOp,
+    custo_final_total: totCustoFinal,
+    nf_total_brl:  totPVBRL,
+    lucro_brl:     totLucro,
+    margem_pct:    margem,
+    imp_venda:     { icms: totIcmsEf, pis: totPisV, cofins: totCofV,
+                     csll: totCSLL, ir: totIR, ir_adicional: totIRAdic, comissao: totCom },
+    itens_resultado: rItens
+  };
+}
+
+function s4Change(i, campo, valor) {
+  if (campo === 'margem_pct') {
+    _itens[i].margem_pct  = parseFloat(valor) / 100 || 0;
+    _itens[i].pv_fixo_usd = 0;
+  } else {
+    _itens[i].pv_fixo_usd = parseFloat(valor) || 0;
+  }
+  npRecalcular();
+}
+
+function npRecalcular() {
+  const s4t = document.getElementById('s4-tabela');
+  const s4r = document.getElementById('s4-resumo');
+  if (!s4t) return;
+
+  const proc = npBuildProcessoAtual();
+  const res  = typeof Calc !== 'undefined' ? npCalcResultado(proc) : null;
+
+  if (!res) {
+    s4t.innerHTML = '<div style="padding:20px;text-align:center;color:var(--cinza-med)">Preencha câmbio DI e itens para calcular.</div>';
+    if (s4r) s4r.innerHTML = '';
+    return;
+  }
+
+  const R  = v => isFinite(v) ? 'R$ '  + fmtN(v, 2) : '—';
+  const U  = v => isFinite(v) ? 'USD ' + fmtN(v, 4) : '—';
+  const P  = v => isFinite(v) ? fmtN(v * 100, 2) + '%' : '—';
+
+  // ── Tabela por item ─────────────────────────────────────────────────────
+  const linhas = proc.itens.map((it, i) => {
+    const r = res.itens_resultado[i];
+    if (!r) return '';
+    const mg  = ((it.margem_pct ?? 0.20) * 100).toFixed(1);
+    const pvF = it.pv_fixo_usd > 0 ? it.pv_fixo_usd : '';
+    return `<tr>
+      <td style="padding:5px 8px;color:var(--cinza-med);font-size:12px">${i+1}</td>
+      <td style="padding:5px 8px;font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${esc(it.descricao||it.codigo)}">${it.descricao||it.codigo||'—'}</td>
+      <td style="padding:3px 4px">
+        <input type="number" value="${mg}" min="0" max="99" step="0.1"
+          style="width:58px;padding:4px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right"
+          oninput="s4Change(${i},'margem_pct',this.value)">
+      </td>
+      <td style="padding:3px 4px">
+        <input type="number" value="${pvF}" min="0" step="0.01" placeholder="—"
+          style="width:76px;padding:4px 6px;border:1px solid #F9A825;border-radius:3px;font-size:12px;text-align:right;background:#FFFDE7"
+          oninput="s4Change(${i},'pv_fixo_usd',this.value)">
+      </td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;color:var(--cinza-med)">${R(r.custoImpUnit)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;font-weight:700;color:var(--turquesa-dark)">${R(r.pv)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap">${U(r.pvUSD)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap">${R(r.icmsEf)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap">${R(r.pisV + r.cofV)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap">${R((r.csll + r.ir + r.irAdic) / r.qtd)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;font-weight:700;color:var(--turquesa-dark)">${P(r.margemReal)}</td>
+    </tr>`;
+  }).join('');
+
+  s4t.innerHTML = `<table class="tbl">
+    <thead><tr>
+      <th>#</th><th>Descrição</th>
+      <th style="text-align:center">Margem %</th>
+      <th style="text-align:center">PV fixo USD</th>
+      <th style="text-align:right">Custo Unit R$</th>
+      <th style="text-align:right">PV Sug. R$</th>
+      <th style="text-align:right">PV Sug. USD</th>
+      <th style="text-align:right">ICMS 1,5%/un</th>
+      <th style="text-align:right">PIS+COF/un</th>
+      <th style="text-align:right">CSLL+IR/un</th>
+      <th style="text-align:right">Margem Real</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`;
+
+  // ── Resumo do processo ──────────────────────────────────────────────────
+  if (!s4r) return;
+  const ri = res.imp_imp;
+  s4r.innerHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-hd">Resumo do Processo</div>
+      <div class="card-bd">
+        <div class="sum-grid">
+          <div class="sum-item">
+            <div class="val">USD ${fmtN(res.fob_total_usd,2)}</div><div class="lbl">FOB Total</div>
+          </div>
+          <div class="sum-item">
+            <div class="val">${R(res.cif_total_brl)}</div><div class="lbl">CIF Total R$</div>
+          </div>
+          <div class="sum-item">
+            <div class="val">${R(ri.total)}</div><div class="lbl">Impostos Importação</div>
+          </div>
+          <div class="sum-item">
+            <div class="val">${R(res.custos_op_total)}</div><div class="lbl">Custos Operacionais</div>
+          </div>
+          <div class="sum-item dk">
+            <div class="val">${R(res.custo_final_total)}</div><div class="lbl">Custo Final Total</div>
+          </div>
+          <div class="sum-item dk">
+            <div class="val">${R(res.nf_total_brl)}</div><div class="lbl">NF Total R$</div>
+          </div>
+          <div class="sum-item dk">
+            <div class="val">${R(res.lucro_brl)}</div><div class="lbl">Lucro R$</div>
+          </div>
+          <div class="sum-item dk">
+            <div class="val">${P(res.margem_pct)}</div><div class="lbl">Margem %</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:var(--cinza-med);display:flex;flex-wrap:wrap;gap:16px">
+          <span>II: ${R(ri.ii)}</span>
+          <span>PIS imp: ${R(ri.pis)}</span>
+          <span>COFINS imp: ${R(ri.cofins)}</span>
+          <span>AFRMM: ${R(ri.afrmm)}</span>
+          <span>Siscomex: ${R(ri.siscomex)}</span>
+          <span>Dif.Frete: ${R(ri.dif_frete)}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Fluxo de Caixa ────────────────────────────────────────────────────────
+let _fcProcesso     = null;
+let _fcPagamentos   = [];
+let _fcRecebimentos = [];
+
+function renderFluxoCaixa() {
+  _fcProcesso = null; _fcPagamentos = []; _fcRecebimentos = [];
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const opts  = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione —</option>' +
+      todos.map(p => {
+        const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${p.numero} — ${g.cliente||g.fornecedor||'sem nome'}</option>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1100px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h2 style="font-size:18px;font-weight:700">Fluxo de Caixa</h2>
+        <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
+          style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-bd">
+          <div class="field" style="margin-bottom:0;max-width:520px">
+            <label>Processo</label>
+            <select id="fc-select" onchange="fcSelecionarProcesso(this.value)">${opts}</select>
+          </div>
+        </div>
+      </div>
+
+      <div id="fc-corpo" style="display:none">
+
+        <div class="card">
+          <div class="card-hd">1 — Câmbios do Processo</div>
+          <div class="card-bd" id="fc-cambios"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+            <span>2 — Pagamentos ao Fornecedor</span>
+            <button onclick="fcAddPagamento()"
+              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+              + Parcela
+            </button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Parcela</th><th>%</th>
+                <th style="text-align:right">Valor USD</th>
+                <th>Data Prevista</th><th>Câmbio</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Status</th><th>Ações</th>
+              </tr></thead>
+              <tbody id="fc-pag-tbody"></tbody>
+              <tfoot id="fc-pag-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">
+            <span>3 — Recebimentos do Cliente</span>
+            <button onclick="fcAddRecebimento()"
+              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+              + Recebimento
+            </button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Descrição</th>
+                <th style="text-align:right">Valor USD</th>
+                <th>Câmbio Spot</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Data Prevista</th>
+                <th>Status</th><th>Ações</th>
+              </tr></thead>
+              <tbody id="fc-rec-tbody"></tbody>
+              <tfoot id="fc-rec-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">4 — Resumo Financeiro</div>
+          <div class="card-bd" id="fc-resumo"></div>
+        </div>
+
+      </div>
+    </div>`;
+}
+
+function fcFobTotal() {
+  if (!_fcProcesso) return 0;
+  if (_fcProcesso.resultado?.fob_total_usd) return _fcProcesso.resultado.fob_total_usd;
+  return (_fcProcesso.itens||[]).reduce((s,it) => s+(it.quantidade||0)*(it.fob_unit_usd||0), 0);
+}
+
+function fcSelecionarProcesso(id) {
+  const corpo = document.getElementById('fc-corpo');
+  const btn   = document.getElementById('btn-fc-salvar');
+  if (!id) {
+    _fcProcesso = null;
+    corpo.style.display = 'none';
+    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
+    return;
+  }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _fcProcesso = todos.find(p => p.id == id) || null;
+  if (!_fcProcesso) return;
+  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  corpo.style.display = 'block';
+
+  const fobTotal  = fcFobTotal();
+  const camFiscal = _fcProcesso.cambios?.fiscal?.taxa || _fcProcesso.cambios?.di?.taxa || 0;
+
+  // Pagamentos
+  if (_fcProcesso.pagamentos_fornecedor?.length) {
+    _fcPagamentos = JSON.parse(JSON.stringify(_fcProcesso.pagamentos_fornecedor));
+  } else {
+    _fcPagamentos = [
+      { id:Date.now(),   descricao:'Sinal', percentual:0.20, valor_usd:fobTotal*0.20,
+        data_prevista:'', data_realizada:null, cambio:camFiscal,
+        valor_reais:fobTotal*0.20*camFiscal, status:'previsto' },
+      { id:Date.now()+1, descricao:'Saldo', percentual:0.80, valor_usd:fobTotal*0.80,
+        data_prevista:'', data_realizada:null, cambio:camFiscal,
+        valor_reais:fobTotal*0.80*camFiscal, status:'previsto' }
+    ];
+  }
+
+  // Recebimentos
+  if (_fcProcesso.recebimentos_cliente?.length) {
+    _fcRecebimentos = JSON.parse(JSON.stringify(_fcProcesso.recebimentos_cliente));
+  } else {
+    const camCliente = _fcProcesso.cambios?.cliente?.taxa || camFiscal;
+    const nfBRL = _fcProcesso.resultado?.nf_total_brl || 0;
+    const nfUSD = camCliente > 0 ? nfBRL / camCliente : 0;
+    _fcRecebimentos = [{
+      id:Date.now()+2, descricao:'Pagamento', valor_usd:nfUSD,
+      cambio:camCliente, valor_reais:nfBRL,
+      data_prevista:'', data_realizada:null, status:'previsto'
+    }];
+  }
+
+  fcRenderCambios();
+  fcRenderPagamentos();
+  fcRenderRecebimentos();
+  fcRenderResumo();
+}
+
+function fcRenderCambios() {
+  const el = document.getElementById('fc-cambios');
+  if (!el || !_fcProcesso) return;
+  const c = _fcProcesso.cambios || {};
+  el.innerHTML = `
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+      <div class="sum-item" style="min-width:120px">
+        <div class="val">${fmtN(c.di?.taxa||0,4)}</div><div class="lbl">Câmbio DI</div>
+      </div>
+      <div class="sum-item" style="min-width:120px">
+        <div class="val">${fmtN(c.fiscal?.taxa||0,4)}</div><div class="lbl">Câmbio Fiscal</div>
+      </div>
+      <div class="sum-item" style="min-width:120px">
+        <div class="val">${fmtN(c.cliente?.taxa||0,4)}</div><div class="lbl">Câmbio Cliente</div>
+      </div>
+      <div style="margin-left:auto">
+        <button class="btn btn-s" onclick="fcEditarProcesso()">✎ Editar no Processo</button>
+      </div>
+    </div>`;
+}
+
+function fcRenderPagamentos() {
+  const tbody = document.getElementById('fc-pag-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = _fcPagamentos.map((p, i) => {
+    const statusSel = ['previsto','pago','atrasado'].map(s =>
+      `<option${p.status===s?' selected':''}>${s}</option>`).join('');
+    const pagoStyle  = p.status === 'pago'     ? 'color:#2E7D32;font-weight:600' : '';
+    const atrasStyle = p.status === 'atrasado' ? 'color:#C62828;font-weight:600' : '';
+    return `<tr style="${p.status==='pago'?'opacity:.75':''}">
+      <td><input value="${esc(p.descricao)}" style="width:80px"
+        oninput="fcChangePagamento(${i},'descricao',this.value)"></td>
+      <td style="white-space:nowrap">
+        <input type="number" value="${fmtN(p.percentual*100,1)}" min="0" max="100" step="1" style="width:52px"
+          oninput="fcChangePagamento(${i},'percentual',this.value/100)">%
+      </td>
+      <td id="fc-pag-usd-${i}" style="text-align:right;padding:5px 8px;white-space:nowrap">
+        USD ${fmtN(p.valor_usd)}
+      </td>
+      <td><input type="date" value="${p.data_prevista||''}" style="width:132px"
+        oninput="fcChangePagamento(${i},'data_prevista',this.value)"></td>
+      <td><input type="number" value="${p.cambio||''}" step="0.0001" style="width:76px" placeholder="0,0000"
+        oninput="fcChangePagamento(${i},'cambio',this.value)"></td>
+      <td id="fc-pag-brl-${i}" style="text-align:right;padding:5px 8px;white-space:nowrap;font-weight:600;color:var(--turquesa-dark)">
+        R$ ${fmtN(p.valor_reais)}
+      </td>
+      <td>
+        <select style="width:88px;padding:4px 6px;${pagoStyle||atrasStyle}"
+          oninput="fcChangePagamento(${i},'status',this.value)">${statusSel}</select>
+      </td>
+      <td style="white-space:nowrap">
+        ${p.status !== 'pago'
+          ? `<button class="btn btn-s btn-sm" onclick="fcMarcarPago(${i})" style="margin-right:4px">✓ Pago</button>`
+          : ''}
+        <button class="btn btn-s btn-sm" style="color:#c62828" onclick="fcRemovePagamento(${i})">✕</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhuma parcela</td></tr>';
+  fcAtualizarFootPag();
+}
+
+function fcAtualizarFootPag() {
+  const tfoot = document.getElementById('fc-pag-tfoot');
+  if (!tfoot) return;
+  let totPct=0, totUSD=0, totBRL=0, numTM=0, denTM=0;
+  _fcPagamentos.forEach(p => {
+    totPct += p.percentual||0; totUSD += p.valor_usd||0; totBRL += p.valor_reais||0;
+    if ((p.valor_usd||0)>0 && (p.cambio||0)>0) { numTM += p.valor_usd*p.cambio; denTM += p.valor_usd; }
+  });
+  const taxaMedia = denTM > 0 ? numTM / denTM : 0;
+  const pctOk = Math.abs(totPct - 1) < 0.005;
+  tfoot.innerHTML = `
+    <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
+      <td style="padding:7px 8px">TOTAL</td>
+      <td style="padding:7px 8px;${!pctOk?'color:#C62828;':''}">${fmtN(totPct*100,1)}%${!pctOk?' ⚠':''}</td>
+      <td style="text-align:right;padding:7px 8px">USD ${fmtN(totUSD)}</td>
+      <td colspan="2" style="padding:7px 8px;font-size:11px;color:var(--cinza-med);font-weight:400">
+        Taxa média pond.: <strong style="color:var(--cinza)">${fmtN(taxaMedia,4)}</strong>
+      </td>
+      <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(totBRL)}</td>
+      <td colspan="2"></td>
+    </tr>
+    ${!pctOk ? `<tr><td colspan="8" style="background:#FFF8E1;color:#C62828;font-size:11px;padding:5px 8px">
+      ⚠ Parcelas somam ${fmtN(totPct*100,1)}% — devem totalizar 100%.
+    </td></tr>` : ''}`;
+}
+
+function fcChangePagamento(i, campo, valor) {
+  const p = _fcPagamentos[i];
+  if (!p) return;
+  if (campo === 'percentual') {
+    p.percentual  = parseFloat(valor) || 0;
+    p.valor_usd   = fcFobTotal() * p.percentual;
+    p.valor_reais = p.valor_usd * (p.cambio||0);
+    const uEl = document.getElementById(`fc-pag-usd-${i}`);
+    const bEl = document.getElementById(`fc-pag-brl-${i}`);
+    if (uEl) uEl.textContent = 'USD ' + fmtN(p.valor_usd);
+    if (bEl) bEl.textContent = 'R$ '  + fmtN(p.valor_reais);
+    fcAtualizarFootPag(); fcRenderResumo();
+  } else if (campo === 'cambio') {
+    p.cambio      = parseFloat(valor) || 0;
+    p.valor_reais = (p.valor_usd||0) * p.cambio;
+    const bEl = document.getElementById(`fc-pag-brl-${i}`);
+    if (bEl) bEl.textContent = 'R$ ' + fmtN(p.valor_reais);
+    fcAtualizarFootPag(); fcRenderResumo();
+  } else {
+    p[campo] = valor;
+  }
+}
+
+function fcAddPagamento() {
+  const camFiscal = _fcProcesso?.cambios?.fiscal?.taxa || 0;
+  _fcPagamentos.push({ id:Date.now(), descricao:'Nova parcela', percentual:0,
+    valor_usd:0, data_prevista:'', data_realizada:null,
+    cambio:camFiscal, valor_reais:0, status:'previsto' });
+  fcRenderPagamentos();
+}
+
+function fcRemovePagamento(i) {
+  _fcPagamentos.splice(i, 1);
+  fcRenderPagamentos(); fcRenderResumo();
+}
+
+function fcMarcarPago(i) {
+  _fcPagamentos[i].status = 'pago';
+  _fcPagamentos[i].data_realizada = today();
+  fcRenderPagamentos();
+}
+
+function fcRenderRecebimentos() {
+  const tbody = document.getElementById('fc-rec-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = _fcRecebimentos.map((r, i) => {
+    const statusSel = ['previsto','recebido','atrasado'].map(s =>
+      `<option${r.status===s?' selected':''}>${s}</option>`).join('');
+    return `<tr style="${r.status==='recebido'?'opacity:.75':''}">
+      <td><input value="${esc(r.descricao)}" style="width:120px"
+        oninput="fcChangeRecebimento(${i},'descricao',this.value)"></td>
+      <td>
+        <input type="number" value="${r.valor_usd||''}" step="0.01" min="0" style="width:90px" placeholder="0,00"
+          oninput="fcChangeRecebimento(${i},'valor_usd',this.value)">
+      </td>
+      <td><input type="number" value="${r.cambio||''}" step="0.0001" style="width:76px" placeholder="0,0000"
+        oninput="fcChangeRecebimento(${i},'cambio',this.value)"></td>
+      <td id="fc-rec-brl-${i}" style="text-align:right;padding:5px 8px;white-space:nowrap;font-weight:600;color:var(--turquesa-dark)">
+        R$ ${fmtN(r.valor_reais)}
+      </td>
+      <td><input type="date" value="${r.data_prevista||''}" style="width:132px"
+        oninput="fcChangeRecebimento(${i},'data_prevista',this.value)"></td>
+      <td>
+        <select style="width:88px;padding:4px 6px"
+          oninput="fcChangeRecebimento(${i},'status',this.value)">${statusSel}</select>
+      </td>
+      <td style="white-space:nowrap">
+        ${r.status !== 'recebido'
+          ? `<button class="btn btn-s btn-sm" onclick="fcMarcarRecebido(${i})" style="margin-right:4px">✓ Recebido</button>`
+          : ''}
+        <button class="btn btn-s btn-sm" style="color:#c62828" onclick="fcRemoveRecebimento(${i})">✕</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhum recebimento</td></tr>';
+  fcAtualizarFootRec();
+}
+
+function fcAtualizarFootRec() {
+  const tfoot = document.getElementById('fc-rec-tfoot');
+  if (!tfoot) return;
+  let totUSD=0, totBRL=0;
+  _fcRecebimentos.forEach(r => { totUSD+=r.valor_usd||0; totBRL+=r.valor_reais||0; });
+  tfoot.innerHTML = `
+    <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
+      <td style="padding:7px 8px">TOTAL</td>
+      <td style="text-align:right;padding:7px 8px">USD ${fmtN(totUSD)}</td>
+      <td></td>
+      <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(totBRL)}</td>
+      <td colspan="3"></td>
+    </tr>`;
+}
+
+function fcChangeRecebimento(i, campo, valor) {
+  const r = _fcRecebimentos[i];
+  if (!r) return;
+  if (campo === 'valor_usd') {
+    r.valor_usd   = parseFloat(valor) || 0;
+    r.valor_reais = r.valor_usd * (r.cambio||0);
+    const el = document.getElementById(`fc-rec-brl-${i}`);
+    if (el) el.textContent = 'R$ ' + fmtN(r.valor_reais);
+    fcAtualizarFootRec(); fcRenderResumo();
+  } else if (campo === 'cambio') {
+    r.cambio      = parseFloat(valor) || 0;
+    r.valor_reais = (r.valor_usd||0) * r.cambio;
+    const el = document.getElementById(`fc-rec-brl-${i}`);
+    if (el) el.textContent = 'R$ ' + fmtN(r.valor_reais);
+    fcAtualizarFootRec(); fcRenderResumo();
+  } else {
+    r[campo] = valor;
+  }
+}
+
+function fcAddRecebimento() {
+  const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
+  _fcRecebimentos.push({ id:Date.now(), descricao:'Pagamento', valor_usd:0,
+    cambio:camCliente, valor_reais:0,
+    data_prevista:'', data_realizada:null, status:'previsto' });
+  fcRenderRecebimentos();
+}
+
+function fcRemoveRecebimento(i) {
+  _fcRecebimentos.splice(i, 1);
+  fcRenderRecebimentos(); fcRenderResumo();
+}
+
+function fcMarcarRecebido(i) {
+  _fcRecebimentos[i].status = 'recebido';
+  _fcRecebimentos[i].data_realizada = today();
+  fcRenderRecebimentos();
+}
+
+function fcRenderResumo() {
+  const el = document.getElementById('fc-resumo');
+  if (!el || !_fcProcesso) return;
+
+  const totReceitas = _fcRecebimentos.reduce((s,r) => s+(r.valor_reais||0), 0);
+  const totPagFor   = _fcPagamentos.reduce((s,p) => s+(p.valor_reais||0), 0);
+  const custoFinal  = _fcProcesso.resultado?.custo_final_total || 0;
+  const lucro       = _fcProcesso.resultado?.lucro_brl || 0;
+  const margem      = _fcProcesso.resultado?.margem_pct || 0;
+  const saldo       = totReceitas - (custoFinal || totPagFor);
+  const margemEst   = totReceitas > 0 ? saldo / totReceitas : 0;
+
+  const saldoColor = saldo >= 0 ? '' : 'color:#C62828';
+  const saldoClass = saldo >= 0 ? 'sum-item dk' : 'sum-item';
+
+  el.innerHTML = `
+    <div class="sum-grid">
+      <div class="sum-item">
+        <div class="val">R$ ${fmtN(totReceitas)}</div>
+        <div class="lbl">Total Receitas</div>
+      </div>
+      <div class="sum-item">
+        <div class="val">R$ ${fmtN(totPagFor)}</div>
+        <div class="lbl">Pagto. Fornecedor</div>
+      </div>
+      <div class="sum-item">
+        <div class="val">R$ ${fmtN(custoFinal||totPagFor)}</div>
+        <div class="lbl">Custo Total</div>
+      </div>
+      <div class="${saldoClass}">
+        <div class="val" style="${saldoColor}">R$ ${fmtN(saldo)}</div>
+        <div class="lbl">Saldo</div>
+      </div>
+      <div class="sum-item dk">
+        <div class="val">${fmtN(margemEst*100,2)}%</div>
+        <div class="lbl">Margem Estimada</div>
+      </div>
+      ${lucro ? `<div class="sum-item dk">
+        <div class="val">R$ ${fmtN(lucro)}</div><div class="lbl">Lucro Calculado</div>
+      </div>` : ''}
+      ${margem ? `<div class="sum-item dk">
+        <div class="val">${fmtN(margem*100,2)}%</div><div class="lbl">Margem Calculada</div>
+      </div>` : ''}
+    </div>`;
+}
+
+function fcEditarProcesso() {
+  if (!_fcProcesso) return;
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  document.querySelector('.nav-link[onclick*=renderNovoProcesso]')?.classList.add('active');
+  renderNovoProcesso(_fcProcesso);
+}
+
+function fcSalvar() {
+  if (!_fcProcesso) return;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const idx   = todos.findIndex(p => p.id === _fcProcesso.id);
+  if (idx >= 0) {
+    todos[idx].pagamentos_fornecedor = _fcPagamentos;
+    todos[idx].recebimentos_cliente  = _fcRecebimentos;
+    todos[idx].atualizado_em = new Date().toISOString();
+    localStorage.setItem('pilar_processos', JSON.stringify(todos));
+    toast('✓ Fluxo de caixa salvo');
+  }
+}
+
+// ── Resumo Despachante ─────────────────────────────────────────────────────
+let _rdProcesso = null;
+let _diEditando = null;
+
+function renderResumoDespachante() {
+  _rdProcesso = null; _diEditando = null;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const opts = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione —</option>' +
+      todos.map(p => {
+        const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${p.numero} — ${g.cliente||g.fornecedor||'sem nome'}</option>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1100px">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:20px">Resumo Despachante</h2>
+
+      <!-- BANCO DE DESCRIÇÕES DI -->
+      <div class="card">
+        <div class="card-hd" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between"
+             onclick="diToggleBanco()">
+          <span>📋 Banco de Descrições DI</span>
+          <span id="banco-toggle-icon" style="font-size:11px;font-weight:400;opacity:.7">▼ expandir</span>
+        </div>
+        <div id="banco-body" style="display:none">
+          <div class="card-bd" style="border-bottom:1px solid var(--cinza-light)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-s" onclick="diImportarExcel()">⬆ Importar .xlsx</button>
+              <button class="btn btn-s" onclick="diToggleForm(true)">+ Adicionar manualmente</button>
+              <input id="di-busca" type="text" placeholder="Buscar código ou descrição…"
+                style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px"
+                oninput="renderBancoTabela()">
+              <input type="file" id="di-file-input" accept=".xlsx,.xls" style="display:none"
+                onchange="diProcessarExcel(this)">
+            </div>
+            <div id="di-form" style="display:none;background:var(--cinza-light);border-radius:6px;padding:14px;margin-top:14px">
+              <div class="g2">
+                <div class="field" style="margin-bottom:0">
+                  <label>Código Omie</label>
+                  <input id="di-form-codigo" type="text" placeholder="Ex: COBT.260.090.0001">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label>Descrição DI</label>
+                  <input id="di-form-desc" type="text" placeholder="Ex: JOGO DE CAMA MATELASSE 100% POLIESTER">
+                </div>
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <button class="btn btn-p btn-sm" onclick="diSalvarManual()">Salvar</button>
+                <button class="btn btn-s btn-sm" onclick="diToggleForm(false)">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div id="banco-tabela" style="padding:0;max-height:320px;overflow-y:auto"></div>
+        </div>
+      </div>
+
+      <!-- GERAR RESUMO -->
+      <div class="card">
+        <div class="card-hd tq">Gerar Resumo para Despachante</div>
+        <div class="card-bd">
+          <div class="g3" style="margin-bottom:16px">
+            <div class="field" style="margin-bottom:0">
+              <label>Processo</label>
+              <select id="rd-select" onchange="rdSelecionarProcesso(this.value)">${opts}</select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Número DI / DUIMP (opcional)</label>
+              <input type="text" id="rd-duimp" placeholder="Ex: 25/1234567-8">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Observações</label>
+              <input type="text" id="rd-obs" placeholder="Obs. para o despachante">
+            </div>
+          </div>
+          <button class="btn btn-p" id="btn-rd-gerar" onclick="gerarResumoDespachante()" disabled
+            style="opacity:.45;cursor:not-allowed">⬇ Gerar Resumo Despachante (.xlsx)</button>
+        </div>
+      </div>
+
+      <div id="rd-preview"></div>
+    </div>`;
+
+  renderBancoTabela();
+}
+
+function diToggleBanco() {
+  const body = document.getElementById('banco-body');
+  const icon = document.getElementById('banco-toggle-icon');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  icon.textContent   = open ? '▲ recolher' : '▼ expandir';
+  if (open) renderBancoTabela();
+}
+
+function diImportarExcel() {
+  const fi = document.getElementById('di-file-input');
+  if (fi) { fi.value = ''; fi.click(); }
+}
+
+function diProcessarExcel(input) {
+  const file = input?.files?.[0];
+  if (!file || typeof XLSX === 'undefined') return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb   = XLSX.read(e.target.result, { type: 'array' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    // Localiza linha de cabeçalho e colunas
+    let headerRow = -1, codigoCol = -1, diCol = -1;
+    for (let i = 0; i < Math.min(20, rows.length); i++) {
+      const row = rows[i] || [];
+      let cCol = -1, dCol = -1;
+      for (let j = 0; j < row.length; j++) {
+        const c = String(row[j] || '').trim().toUpperCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, ''); // remove acentos
+        if ((c.includes('CODIGO') || c.includes('PRODUTO')) && cCol < 0) cCol = j;
+        if ((c === 'DESCRICAO DI' || c.endsWith(' DI') || c === 'DESC DI') && dCol < 0) dCol = j;
+      }
+      if (cCol >= 0 && dCol >= 0) { headerRow = i; codigoCol = cCol; diCol = dCol; break; }
+    }
+
+    if (codigoCol < 0 || diCol < 0) {
+      toast('Colunas não encontradas. Verifique o formato do arquivo.');
+      return;
+    }
+
+    const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+    let importadas = 0, jaExistiam = 0;
+    for (let i = headerRow + 1; i < rows.length; i++) {
+      const row    = rows[i] || [];
+      const codigo = String(row[codigoCol] || '').trim();
+      const descDI = String(row[diCol]     || '').trim();
+      if (!codigo || !descDI) continue;
+      if (banco[codigo] !== undefined) { jaExistiam++; }
+      else { banco[codigo] = descDI; importadas++; }
+    }
+    localStorage.setItem('pilar_descricoes_di', JSON.stringify(banco));
+    toast(`✓ ${importadas} descrição${importadas !== 1 ? 'ões' : ''} importada${importadas !== 1 ? 's' : ''}, ${jaExistiam} já existiam`);
+    renderBancoTabela();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderBancoTabela() {
+  const el = document.getElementById('banco-tabela');
+  if (!el) return;
+  const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  const q     = (document.getElementById('di-busca')?.value || '').toLowerCase();
+  const entries = Object.entries(banco)
+    .filter(([k, v]) => !q || k.toLowerCase().includes(q) || v.toLowerCase().includes(q))
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  if (entries.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--cinza-med)">Nenhuma descrição cadastrada.</div>';
+    return;
+  }
+
+  el.innerHTML = `<table class="tbl"><thead><tr>
+    <th style="width:200px">Código Omie</th><th>Descrição DI</th><th style="width:90px"></th>
+  </tr></thead><tbody>${
+    entries.map(([cod, desc]) => {
+      if (_diEditando === cod) return `
+        <tr style="background:#FFF8E1">
+          <td style="font-family:monospace;font-size:12px">${cod}</td>
+          <td><input id="di-edit-val" value="${esc(desc)}"
+            style="width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:3px;font-size:13px"
+            onkeydown="if(event.key==='Enter')diSalvarEdicao('${esc(cod)}');if(event.key==='Escape'){_diEditando=null;renderBancoTabela();}"></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-p btn-sm" onclick="diSalvarEdicao('${esc(cod)}')">✓</button>
+            <button class="btn btn-s btn-sm" onclick="_diEditando=null;renderBancoTabela()">✕</button>
+          </td>
+        </tr>`;
+      return `<tr>
+        <td style="font-family:monospace;font-size:12px">${cod}</td>
+        <td style="font-size:13px">${desc}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-s btn-sm" onclick="diIniciarEdicao('${esc(cod)}')">✎</button>
+          <button class="btn btn-s btn-sm" style="color:#c62828" onclick="diDeletar('${esc(cod)}')">✕</button>
+        </td>
+      </tr>`;
+    }).join('')
+  }</tbody></table>`;
+
+  if (_diEditando) document.getElementById('di-edit-val')?.focus();
+}
+
+function diToggleForm(show) {
+  const el = document.getElementById('di-form');
+  if (!el) return;
+  el.style.display = show ? 'block' : 'none';
+  if (show) document.getElementById('di-form-codigo')?.focus();
+}
+
+function diSalvarManual() {
+  const codigo = val('di-form-codigo');
+  const desc   = val('di-form-desc');
+  if (!codigo || !desc) { toast('Preencha código e descrição DI.'); return; }
+  const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  banco[codigo] = desc;
+  localStorage.setItem('pilar_descricoes_di', JSON.stringify(banco));
+  diToggleForm(false);
+  document.getElementById('di-form-codigo').value = '';
+  document.getElementById('di-form-desc').value   = '';
+  renderBancoTabela();
+  toast(`✓ Descrição DI salva para ${codigo}`);
+}
+
+function diIniciarEdicao(codigo) {
+  _diEditando = codigo;
+  renderBancoTabela();
+}
+
+function diSalvarEdicao(codigo) {
+  const nova = document.getElementById('di-edit-val')?.value.trim();
+  if (!nova) return;
+  const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  banco[codigo] = nova;
+  localStorage.setItem('pilar_descricoes_di', JSON.stringify(banco));
+  _diEditando = null;
+  renderBancoTabela();
+}
+
+function diDeletar(codigo) {
+  if (!confirm(`Excluir descrição DI de "${codigo}"?`)) return;
+  const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  delete banco[codigo];
+  localStorage.setItem('pilar_descricoes_di', JSON.stringify(banco));
+  renderBancoTabela();
+}
+
+function rdSelecionarProcesso(id) {
+  const btn = document.getElementById('btn-rd-gerar');
+  document.getElementById('rd-preview').innerHTML = '';
+  if (!id) {
+    _rdProcesso = null;
+    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
+    return;
+  }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _rdProcesso  = todos.find(p => p.id == id) || null;
+  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  if (!_rdProcesso) return;
+
+  const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  const g     = _rdProcesso.dados_gerais || {};
+  const itens = _rdProcesso.itens || [];
+  let totalQty = 0, totalFOB = 0;
+
+  const linhas = itens.map((it, i) => {
+    const tot    = (it.quantidade||0)*(it.fob_unit_usd||0);
+    const descDI = banco[it.codigo] || '';
+    totalQty += it.quantidade||0; totalFOB += tot;
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${it.codigo||'—'}</td>
+      <td>${it.descricao||'—'}</td>
+      <td><input id="di-${i}" value="${esc(descDI)}" placeholder="Descrição para DI/DUIMP"
+        style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px"></td>
+      <td style="font-family:monospace;font-size:11px">${it.ncm||'—'}</td>
+      <td style="text-align:right">${fmtN(it.quantidade,0)}</td>
+      <td>${it.unidade||'PC'}</td>
+      <td style="text-align:right">USD ${fmtN(it.fob_unit_usd,4)}</td>
+      <td style="text-align:right;font-weight:600;color:var(--turquesa-dark)">USD ${fmtN(tot,2)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--cinza-med)">Sem itens</td></tr>';
+
+  document.getElementById('rd-preview').innerHTML = `
+    <div class="card">
+      <div class="card-hd">Preview — ${_rdProcesso.numero}</div>
+      <div style="padding:10px 20px;border-bottom:1px solid var(--cinza-light);font-size:13px;color:var(--cinza-med)">
+        <strong style="color:var(--cinza)">${g.fornecedor||'—'}</strong>
+        · ${g.pais||''} · ${g.incoterm||''} · ${g.data_pedido||''}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr>
+            <th>Código</th><th>Descrição</th><th style="min-width:200px">Descrição DI ✎</th>
+            <th>NCM</th><th style="text-align:right">Qtd</th><th>Un</th>
+            <th style="text-align:right">FOB Unit</th><th style="text-align:right">Total USD</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+          <tfoot><tr style="background:var(--cinza-light)">
+            <td colspan="6" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--cinza-med)">Total</td>
+            <td style="text-align:right;padding:8px 10px;font-weight:700">${fmtN(totalQty,0)} pç</td>
+            <td style="text-align:right;padding:8px 10px;font-weight:700;color:var(--turquesa-dark)">USD ${fmtN(totalFOB,2)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div style="padding:10px 16px;font-size:12px;color:var(--cinza-med);background:var(--cinza-light)">
+        ✎ Edite a coluna "Descrição DI" antes de gerar o arquivo. As edições não afetam o banco de descrições.
+      </div>
+    </div>`;
+}
+
+function gerarResumoDespachante() {
+  if (!_rdProcesso) return;
+  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado.'); return; }
+
+  const numeroDI = val('rd-duimp');
+  const obs      = val('rd-obs');
+  const wb       = XLSX.utils.book_new();
+  const ws       = XLSX.utils.aoa_to_sheet(buildDespachante(_rdProcesso, numeroDI, obs));
+  ws['!cols']    = [{wch:22},{wch:38},{wch:38},{wch:14},{wch:8},{wch:6},{wch:13},{wch:13},{wch:10},{wch:10},{wch:6},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumo Despachante');
+  XLSX.writeFile(wb, `DI_${_rdProcesso.numero}.xlsx`);
+  toast(`✓ Resumo Despachante gerado: DI_${_rdProcesso.numero}.xlsx`);
+}
+
+function buildDespachante(proc, numeroDI, obs) {
+  const g    = proc.dados_gerais || {};
+  const rows = [];
+  rows.push([`RESUMO PARA DESPACHANTE — ${proc.numero}`]);
+  rows.push(['Importador: PILAR IMPORTS LTDA', '', `Fornecedor: ${g.fornecedor||''}`, '', `País: ${g.pais||''}`]);
+  if (numeroDI) rows.push([`DI / DUIMP: ${numeroDI}`]);
+  rows.push([]);
+  rows.push(['CÓDIGO OMIE','DESCRIÇÃO','DESCRIÇÃO DI','NCM','QTD','UN',
+             'FOB UNIT USD','FOB TOTAL USD','PESO LÍQ (kg)','PESO BRUTO (kg)','GSM','LARGURA CM']);
+
+  let totQty=0, totFOB=0, totPL=0, totPB=0;
+  (proc.itens||[]).forEach((it, i) => {
+    const descDI = document.getElementById(`di-${i}`)?.value.trim() || '';
+    const tot    = (it.quantidade||0)*(it.fob_unit_usd||0);
+    const pl     = (it.quantidade||0)*(it.peso_liq_unit||0);
+    const pb     = (it.quantidade||0)*(it.peso_bruto_unit||0);
+    totQty+=it.quantidade||0; totFOB+=tot; totPL+=pl; totPB+=pb;
+    rows.push([
+      it.codigo||'', it.descricao||'', descDI, it.ncm||'',
+      it.quantidade||0, it.unidade||'PC',
+      it.fob_unit_usd||0, parseFloat(tot.toFixed(2)),
+      parseFloat(pl.toFixed(3)), parseFloat(pb.toFixed(3)),
+      it.gsm||'', it.largura_cm||''
+    ]);
+  });
+
+  rows.push([]);
+  rows.push(['TOTAL','','','', totQty,'', '', parseFloat(totFOB.toFixed(2)),
+             parseFloat(totPL.toFixed(3)), parseFloat(totPB.toFixed(3))]);
+  if (obs) { rows.push([]); rows.push(['Obs:', obs]); }
+  return rows;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#37474F;color:#fff;padding:12px 20px;border-radius:6px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);z-index:9999;max-width:400px;animation:toastIn .2s ease';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── Order Request ──────────────────────────────────────────────────────────
+let _orProcesso = null;
+
+function renderOrderRequest() {
+  _orProcesso = null;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+
+  const opts = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione um processo —</option>' +
+      todos.map(p => {
+        const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${p.numero} — ${g.cliente || g.fornecedor || 'sem nome'}</option>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:980px">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:20px">Order Request</h2>
+
+      <div class="card">
+        <div class="card-hd tq">Selecionar Processo</div>
+        <div class="card-bd">
+          <div class="g2" style="margin-bottom:16px">
+            <div class="field" style="margin-bottom:0">
+              <label>Processo</label>
+              <select id="or-select" onchange="orSelecionarProcesso(this.value)">${opts}</select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Observações para o Fornecedor (OBS)</label>
+              <textarea id="or-obs" rows="3" placeholder="Ex: Please check the labels before shipment..."></textarea>
+            </div>
+          </div>
+          <button class="btn btn-p" id="btn-or-gerar" onclick="gerarOrderRequest()" disabled
+            style="opacity:.45;cursor:not-allowed">
+            ⬇ Gerar Order Request (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div id="or-preview"></div>
+    </div>`;
+}
+
+function orSelecionarProcesso(id) {
+  const btn = document.getElementById('btn-or-gerar');
+  if (!id) {
+    _orProcesso = null;
+    document.getElementById('or-preview').innerHTML = '';
+    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
+    return;
+  }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _orProcesso  = todos.find(p => p.id == id) || null;
+  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  if (!_orProcesso) return;
+
+  const g = _orProcesso.dados_gerais || {};
+  const itens = _orProcesso.itens || [];
+  let totalQty = 0, totalFOB = 0;
+
+  const linhas = itens.map((it, i) => {
+    const tot = (it.quantidade||0) * (it.fob_unit_usd||0);
+    totalQty += it.quantidade||0; totalFOB += tot;
+    return `<tr>
+      <td>${i+1}. ${it.descricao || it.codigo || '—'}</td>
+      <td style="text-align:right">${fmtN(it.quantidade,0)}</td>
+      <td style="text-align:right">USD ${fmtN(it.fob_unit_usd,4)}</td>
+      <td>${it.cor||'—'}</td>
+      <td>${it.unidade||'PC'}</td>
+      <td style="text-align:right">${it.gsm||'—'}</td>
+      <td style="text-align:right">${it.largura_cm||'—'}</td>
+      <td style="text-align:right;font-weight:600;color:var(--turquesa-dark)">USD ${fmtN(tot,2)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--cinza-med)">Sem itens</td></tr>';
+
+  document.getElementById('or-preview').innerHTML = `
+    <div class="card">
+      <div class="card-hd">Preview — ${_orProcesso.numero}</div>
+      <div style="padding:12px 20px;border-bottom:1px solid var(--cinza-light);font-size:13px;color:var(--cinza-med)">
+        <strong style="color:var(--cinza)">${g.fornecedor||'—'}</strong>
+        · ${g.pais||''} · ${g.incoterm||''} · ${g.data_pedido||''}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr>
+            <th>Item / Descrição</th><th style="text-align:right">Qtd</th>
+            <th style="text-align:right">Preço Unit USD</th><th>Cor/Estampa</th>
+            <th>Un</th><th style="text-align:right">GSM</th>
+            <th style="text-align:right">Larg. cm</th><th style="text-align:right">Total USD</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+          <tfoot><tr style="background:var(--cinza-light)">
+            <td colspan="6" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--cinza-med)">Total</td>
+            <td style="text-align:right;padding:8px 10px;font-weight:700">${fmtN(totalQty,0)} pç</td>
+            <td style="text-align:right;padding:8px 10px;font-weight:700;color:var(--turquesa-dark)">USD ${fmtN(totalFOB,2)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>`;
+}
+
+function gerarOrderRequest() {
+  if (!_orProcesso) return;
+  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado — verifique sua conexão.'); return; }
+
+  const obs = val('or-obs');
+  const wb  = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet(buildOrSheet(_orProcesso, obs, false));
+  const ws2 = XLSX.utils.aoa_to_sheet(buildOrSheet(_orProcesso, obs, true));
+  const cols = [{wch:42},{wch:10},{wch:16},{wch:22},{wch:6},{wch:6},{wch:12},{wch:30}];
+  ws1['!cols'] = cols; ws2['!cols'] = cols;
+  XLSX.utils.book_append_sheet(wb, ws1, 'REQUEST IN ENGLISH');
+  XLSX.utils.book_append_sheet(wb, ws2, 'ficha cadastral pedido');
+  XLSX.writeFile(wb, `OR_${_orProcesso.numero}.xlsx`);
+
+  const n = atualizarFOBProdutos(_orProcesso.itens || []);
+  toast(`✓ Order Request gerado${n > 0 ? ` e FOB atualizado em ${n} produto${n>1?'s':''}` : ''}`);
+}
+
+function buildOrSheet(proc, obs, pt) {
+  const g    = proc.dados_gerais || {};
+  const rows = [];
+  rows.push(['PILAR IMPORTS LTDA']);
+  rows.push([]);
+  if (pt) {
+    rows.push(['PEDIDO:', proc.numero, '', 'DATA:', g.data_pedido||'']);
+    rows.push(['FORNECEDOR:', g.fornecedor||'', '', 'PAÍS:', g.pais||'']);
+  } else {
+    rows.push(['ORDER:', proc.numero, '', 'DATE:', g.data_pedido||'']);
+    rows.push(['SUPPLIER:', g.fornecedor||'', '', 'COUNTRY:', g.pais||'']);
+  }
+  rows.push(['INCOTERM:', g.incoterm||'FOB']);
+  rows.push([]);
+  rows.push(pt
+    ? ['ITEM','QUANTIDADE','PREÇO UNIT (USD)','COR / ESTAMPA','UN','GSM','TAMANHO (CM)','OBS.']
+    : ['ITEM','QUANTITY','UNIT PRICE (USD)','COLOR / DESIGN','UND','GSM','ROLL SIZE (CM)','OBS.']);
+
+  let totalQty = 0, totalFOB = 0;
+  (proc.itens||[]).forEach((it, i) => {
+    const tot = (it.quantidade||0)*(it.fob_unit_usd||0);
+    totalQty += it.quantidade||0; totalFOB += tot;
+    rows.push([it.descricao||it.codigo||`Item ${i+1}`, it.quantidade||0, it.fob_unit_usd||0,
+               it.cor||'', it.unidade||'PC', it.gsm||'', it.largura_cm||'', it.obs||'']);
+  });
+
+  rows.push([]);
+  rows.push(['', pt?'TOTAL QUANTIDADE:':'TOTAL QUANTITY:', totalQty]);
+  rows.push(['', pt?'TOTAL FOB (USD):':'TOTAL FOB (USD):', `USD ${fmtN(totalFOB,2)}`]);
+  rows.push([]);
+  if (obs) rows.push([pt?'OBS:':'OBS:', obs]);
+  rows.push([pt?'COND. PAGAMENTO:':'PAYMENT TERMS:', g.cond_pagamento||'']);
+  rows.push([pt?'PREV. EMBARQUE:':'EST. SHIPMENT:', g.prev_embarque||'']);
+  rows.push([]);
+  rows.push([pt
+    ? 'Favor confirmar este pedido assinando abaixo e devolvendo uma cópia.'
+    : 'Please confirm this order by signing below and returning a copy.']);
+  rows.push([]);
+  rows.push([pt?'ASSINATURA DO EXPORTADOR:':'EXPORTER SIGNATURE:', '', '', '____________________________']);
+  rows.push([pt?'DATA:':'DATE:', '', '', '____________________________']);
+  return rows;
+}
+
+function atualizarFOBProdutos(itens) {
+  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  let count = 0;
+  itens.forEach(it => {
+    if (!it.codigo || !(it.fob_unit_usd > 0)) return;
+    const idx = produtos.findIndex(p => p.codigo === it.codigo);
+    if (idx < 0) return;
+    produtos[idx].fob_unit_usd = it.fob_unit_usd;
+    if (!produtos[idx].menor_fob || it.fob_unit_usd < produtos[idx].menor_fob)
+      produtos[idx].menor_fob = it.fob_unit_usd;
+    count++;
+  });
+  if (count > 0) localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+  return count;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderDashboard();
+</script>
+
+</body>
+</html>

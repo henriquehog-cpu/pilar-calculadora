@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel PILAR Imports</title>
+<link rel="stylesheet" href="css/painel.css">
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════════════════════════════════════ -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">PILAR</div>
+    <div class="logo-sub">Painel Operacional</div>
+  </div>
+
+  <div class="sidebar-nav">
+    <div class="nav-section">Visão Geral</div>
+    <button class="nav-item active" data-route="dashboard">
+      <span class="nav-icon">◈</span> Dashboard
+    </button>
+
+    <div class="nav-section">Importação</div>
+    <button class="nav-item" data-route="processos/novo">
+      <span class="nav-icon">＋</span> Novo Processo
+    </button>
+    <button class="nav-item" data-route="processos">
+      <span class="nav-icon">≡</span> Lista de Processos
+    </button>
+
+    <div class="nav-section">Documentos</div>
+    <button class="nav-item" data-route="order-request">
+      <span class="nav-icon">📋</span> Order Request
+    </button>
+    <button class="nav-item" data-route="resumo-despachante">
+      <span class="nav-icon">📄</span> Resumo Despachante
+    </button>
+
+    <div class="nav-section">Financeiro</div>
+    <button class="nav-item" data-route="fluxo">
+      <span class="nav-icon">📊</span> Fluxo de Caixa
+    </button>
+
+    <div class="nav-section">Produtos</div>
+    <button class="nav-item" data-route="catalogo">
+      <span class="nav-icon">📦</span> Catálogo Omie
+    </button>
+
+    <div class="nav-section">Sistema</div>
+    <button class="nav-item" data-route="config">
+      <span class="nav-icon">⚙</span> Configurações
+    </button>
+  </div>
+
+  <div class="sidebar-footer">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt3)">
+      <span class="omie-dot loading" id="omie-dot"></span>
+      <span id="omie-label">Omie: verificando...</span>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--txt3)">
+      <a href="/" style="color:var(--tq);text-decoration:none">↗ Calculadora</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════ MAIN ══════════════════════════════════════════════════ -->
+<div id="main">
+  <div id="topbar">
+    <span id="topbar-title" class="topbar-title">Dashboard</span>
+    <div class="topbar-right">
+      <span style="font-size:11px;color:var(--txt3)">PILAR Imports v1.0 — Fase 1</span>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="empty-state">
+      <div class="spin" style="font-size:24px">↻</div>
+      <p>Carregando...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TOASTS ════════════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════════════════════════════════════ -->
+<script src="js/calc.js"></script>
+<script src="js/ptax.js"></script>
+<script src="js/processos.js"></script>
+<script src="js/omie.js"></script>
+<script src="js/documentos.js"></script>
+<script src="js/fluxo-caixa.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
