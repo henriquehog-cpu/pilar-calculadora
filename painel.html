@@ -185,7 +185,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </a>
 
     <div class="nav-sep">Produtos</div>
-    <a class="nav-link" href="#">
+    <a class="nav-link" href="#" onclick="return navTo(this, renderCatalogo)">
       <span class="nav-icon">📦</span> Catálogo Omie
     </a>
 
@@ -319,7 +319,7 @@ function dashEventos(ativos) {
       const d = new Date(dataStr + 'T12:00');
       if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero });
     };
-    add(g.prev_embarque,        '✈', 'Embarque');
+    add(g.prev_embarque,        '🚢', 'Embarque');
     add(g.prev_chegada_porto,   '⚓', 'Chegada Porto');
     add(g.prev_chegada_cliente, '📦', 'Chegada Cliente');
     (proc.pagamentos_fornecedor||[])
@@ -398,14 +398,14 @@ function dashPipelineRow(proc) {
   const ln = done => `<span class="pipe-line" style="background:${done?'#2E7D32':'var(--border)'}"></span>`;
   const dot = (cls, ic, tip) => `<span class="pipe-dot ${cls}" title="${tip}">${ic}</span>`;
 
-  return `<tr>
+  return `<tr onclick="procEditar(${proc.id})" style="cursor:pointer" onmouseover="this.style.background='#F0FAFB'" onmouseout="this.style.background=''">
     <td style="font-weight:700">${proc.numero||'—'}</td>
     <td>${g.cliente||'—'}</td>
     <td>
       <div style="display:flex;align-items:center;gap:2px">
         ${dot('pipe-done','✓', `Pedido — ${g.data_pedido||proc.criado_em?.slice(0,10)||'—'}`)}
         ${ln(embDone)}
-        ${dot(c1,'✈',`Embarque — ${g.prev_embarque||'sem data'}`)}
+        ${dot(c1,'🚢',`Embarque — ${g.prev_embarque||'sem data'}`)}
         ${ln(prtDone)}
         ${dot(c2,'⚓',`Chegada Porto — ${g.prev_chegada_porto||'sem data'}`)}
         ${ln(cliDone)}
@@ -1045,7 +1045,13 @@ function npCalcResultado(proc) {
 
   const cifRS    = fobTotalUSD * taxaCalc + freteUSD * taxaCalc;
   const totImpImp = totII + totPIS + totCOF + totIPI + totSisc + totAfrmm + totDifFrete;
-  const custosOp  = Math.max(0, totCustoFinal - cifRS - totImpImp);
+  // Soma direta dos custos operacionais dos defaults (despachante fixo + por container)
+  const custosOp = (d.despachante          || 2500) +
+                   (d.agente_cargas        || 1700) * containers +
+                   (d.armazenagem          || 2600) * containers +
+                   (d.capatazia            || 1010) * containers +
+                   (d.operador_logistico   || 1000) * containers +
+                   (d.frete_rodoviario     || 0);
   const margem    = totPVBRL > 0 ? totLucro / totPVBRL : 0;
 
   return {
@@ -2150,6 +2156,183 @@ function atualizarFOBProdutos(itens) {
   });
   if (count > 0) localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
   return count;
+}
+
+// ── Catálogo Omie ─────────────────────────────────────────────────────────
+
+function renderCatalogo() {
+  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const familias = [...new Set(produtos.map(p => p.familia).filter(Boolean))].sort();
+  const famOpts  = familias.map(f => `<option value="${esc(f)}">${f}</option>`).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1100px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <h2 style="font-size:18px;font-weight:700">Catálogo de Produtos — Omie</h2>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-s" onclick="catImportarXlsx()">⬆ Importar .xlsx do Omie</button>
+          <button class="btn btn-p" onclick="catSincronizar(this)">↻ Sincronizar API Omie</button>
+          <input type="file" id="cat-file" accept=".xlsx,.xls" style="display:none" onchange="catProcessarXlsx(this)">
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-bd" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <input id="cat-q" type="text" placeholder="Buscar código, descrição ou NCM…"
+            style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px"
+            oninput="catFiltrar()">
+          <select id="cat-familia" style="padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px"
+            onchange="catFiltrar()">
+            <option value="">Todas as famílias</option>${famOpts}
+          </select>
+          <span id="cat-count" style="font-size:12px;color:var(--cinza-med)">${produtos.length} produtos</span>
+        </div>
+      </div>
+
+      <div id="cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+    </div>`;
+
+  catRenderGrade(produtos);
+}
+
+function catRenderGrade(lista) {
+  const grid  = document.getElementById('cat-grid');
+  const count = document.getElementById('cat-count');
+  if (!grid) return;
+  if (count) count.textContent = `${lista.length} produto${lista.length !== 1 ? 's' : ''}`;
+
+  if (!lista.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--cinza-med)">
+      <div style="font-size:36px;margin-bottom:12px">📦</div>
+      <div style="font-weight:600;margin-bottom:6px">Catálogo vazio</div>
+      <div style="font-size:13px">Importe um .xlsx do Omie ou sincronize via API.</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = lista.slice(0, 300).map(p => `
+    <div style="background:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px 14px">
+      <div style="font-size:13px;font-weight:600;color:var(--cinza);line-height:1.4;margin-bottom:6px">${p.produto}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;font-size:11px">
+        ${p.codigo   ? `<span style="background:var(--cinza-light);padding:1px 7px;border-radius:3px">${p.codigo}</span>`           : ''}
+        ${p.ncm      ? `<span style="background:var(--cinza-light);padding:1px 7px;border-radius:3px">NCM: ${p.ncm}</span>`         : ''}
+        ${p.familia  ? `<span style="background:var(--cinza-light);padding:1px 7px;border-radius:3px">${p.familia}</span>`          : ''}
+        ${p.unidade  ? `<span style="background:var(--cinza-light);padding:1px 7px;border-radius:3px">${p.unidade}</span>`          : ''}
+        ${p.ii       ? `<span style="background:#E0F7FA;padding:1px 7px;border-radius:3px;color:#006064">II: ${(p.ii*100).toFixed(1)}%</span>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function catFiltrar() {
+  const q      = (document.getElementById('cat-q')?.value || '').toLowerCase();
+  const fam    = document.getElementById('cat-familia')?.value || '';
+  const todos  = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const lista  = todos.filter(p =>
+    (!fam || p.familia === fam) &&
+    (!q   || p.produto.toLowerCase().includes(q) || (p.codigo||'').toLowerCase().includes(q) || (p.ncm||'').includes(q))
+  );
+  catRenderGrade(lista);
+}
+
+async function catSincronizar(btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '↻ Sincronizando…';
+  try {
+    const n = await sincronizarOmie();
+    toast(`✓ ${n} produtos sincronizados`);
+    renderCatalogo();
+  } catch (e) {
+    toast('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function catImportarXlsx() {
+  const fi = document.getElementById('cat-file');
+  if (fi) { fi.value = ''; fi.click(); }
+}
+
+function catProcessarXlsx(input) {
+  const file = input?.files?.[0];
+  if (!file || typeof XLSX === 'undefined') return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb   = XLSX.read(e.target.result, { type: 'array' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    // Localizar linha de cabeçalho
+    const COL_MAP = {
+      situacao:    ['situação','situacao'],
+      produto:     ['descrição','descricao','description','nome'],
+      codigo:      ['código','codigo','code'],
+      familia:     ['família de produto','familia de produto','familia','family'],
+      ncm:         ['código ncm','codigo ncm','ncm'],
+      peso_liq:    ['peso líquido','peso liquido','peso liq'],
+      peso_bruto:  ['peso bruto'],
+      unidade:     ['unidade','unit']
+    };
+
+    let header = -1;
+    const cols = {};
+    for (let i = 0; i < Math.min(20, rows.length); i++) {
+      const row = rows[i] || [];
+      const found = {};
+      row.forEach((cell, j) => {
+        const c = String(cell||'').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        for (const [key, aliases] of Object.entries(COL_MAP)) {
+          if (!found[key] && aliases.some(a => c.includes(a.normalize('NFD').replace(/[̀-ͯ]/g,'')))) {
+            found[key] = j;
+          }
+        }
+      });
+      // Precisa de pelo menos produto e código para considerar válido
+      if (found.produto !== undefined && found.codigo !== undefined) {
+        header = i; Object.assign(cols, found); break;
+      }
+    }
+
+    if (header < 0) { toast('Colunas não reconhecidas. Verifique o arquivo.'); return; }
+
+    const get = (row, key) => String(row[cols[key]] ?? '').trim();
+
+    const novos = [];
+    for (let i = header + 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const codigo  = get(row, 'codigo');
+      const produto = get(row, 'produto');
+      if (!codigo && !produto) continue;
+
+      // Pula inativos
+      const sit = get(row, 'situacao').toUpperCase();
+      if (sit && sit !== 'ATIVO' && sit !== 'A') continue;
+
+      novos.push({
+        produto:         produto || codigo,
+        codigo:          codigo,
+        ncm:             get(row, 'ncm'),
+        familia:         get(row, 'familia'),
+        unidade:         get(row, 'unidade') || 'PC',
+        peso_liq_unit:   parseFloat(get(row, 'peso_liq').replace(',', '.'))  || 0,
+        peso_bruto_unit: parseFloat(get(row, 'peso_bruto').replace(',', '.')) || 0,
+        ii: 0, ipi: 0,
+        pis_importacao: 0.021, cofins_importacao: 0.1065,
+        pis_venda: 0.0165, cofins_venda: 0.076,
+        icms_intra: 0.14, icms_inter: 0.04,
+        reg_espec_intra: 0.14, reg_espec_inter: 0.015,
+        menor_fob: null
+      });
+    }
+
+    if (!novos.length) { toast('Nenhum produto válido encontrado no arquivo.'); return; }
+
+    localStorage.setItem('pilar_produtos', JSON.stringify(novos));
+    toast(`✓ ${novos.length} produto${novos.length !== 1 ? 's' : ''} importado${novos.length !== 1 ? 's' : ''}`);
+    renderCatalogo();
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
