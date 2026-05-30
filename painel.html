@@ -126,6 +126,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* ── Toast ── */
 @keyframes toastIn{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
 
+/* ── Pipeline dots ── */
+.pipe-dot{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;flex-shrink:0;cursor:default}
+.pipe-done{background:#2E7D32;color:#fff}
+.pipe-active{background:var(--turquesa);color:#fff;box-shadow:0 0 0 3px rgba(0,188,212,.25)}
+.pipe-future{background:var(--cinza-light);color:var(--cinza-med);border:1px solid var(--border)}
+.pipe-line{display:inline-block;width:14px;height:2px;flex-shrink:0;vertical-align:middle}
+
 /* ── KPI cards — mesmo estilo do index.html ── */
 .sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:0}
 .sum-item{text-align:center;padding:18px 14px;background:var(--cinza-light);border-radius:8px}
@@ -208,23 +215,26 @@ function navTo(link, renderFn) {
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function renderDashboard() {
-  const processos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  const produtos  = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]');
-
-  const ativos    = processos.filter(p => p.status === 'ativo').length;
-  const fobTotal  = processos.reduce((s, p) => s + (p.resultado?.fob_total_usd || 0), 0);
+  const processos  = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const produtos   = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]');
+  const ativos     = processos.filter(p => p.status === 'ativo');
+  const fobTotal   = processos.reduce((s, p) => s + (p.resultado?.fob_total_usd || 0), 0);
   const itensTotal = processos.reduce((s, p) => s + (p.itens?.length || 0), 0);
 
-  function fmtUSD(v) { return v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  const eventos  = dashEventos(ativos);
+  const evHTML   = eventos.slice(0, 14).map(dashEventoHTML).join('') ||
+    '<div style="padding:24px;text-align:center;color:var(--cinza-med);font-size:13px">Nenhum evento nos próximos 30 dias.</div>';
+  const pipeHTML = ativos.map(dashPipelineRow).join('') ||
+    '<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--cinza-med)">Nenhum processo ativo.</td></tr>';
 
   document.getElementById('vc').innerHTML = `
-    <div class="sum-grid">
+    <div class="sum-grid" style="margin-bottom:24px">
       <div class="sum-item">
-        <div class="val">${ativos}</div>
+        <div class="val">${ativos.length}</div>
         <div class="lbl">Processos Ativos</div>
       </div>
       <div class="sum-item">
-        <div class="val">USD ${fmtUSD(fobTotal)}</div>
+        <div class="val">USD ${fmtN(fobTotal)}</div>
         <div class="lbl">FOB Total USD</div>
       </div>
       <div class="sum-item">
@@ -235,7 +245,176 @@ function renderDashboard() {
         <div class="val">${produtos.length}</div>
         <div class="lbl">Produtos Omie</div>
       </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px;align-items:start">
+
+      <div class="card" style="margin-bottom:0">
+        <div class="card-hd tq">Próximos Eventos — 30 dias</div>
+        <div style="padding:0">${evHTML}</div>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <div class="card-hd">Ações Rápidas</div>
+        <div class="card-bd" style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn btn-p" onclick="
+            document.querySelectorAll('.nav-link').forEach(el=>el.classList.remove('active'));
+            document.querySelector('.nav-link[onclick*=renderNovoProcesso]').classList.add('active');
+            renderNovoProcesso()">+ Novo Processo</button>
+          <button class="btn btn-s" onclick="return navTo(document.querySelector('.nav-link[onclick*=renderFluxoCaixa]'), renderFluxoCaixa)">📊 Fluxo de Caixa</button>
+          <button class="btn btn-s" onclick="return navTo(document.querySelector('.nav-link[onclick*=renderOrderRequest]'), renderOrderRequest)">📋 Order Request</button>
+          <hr style="border:none;border-top:1px solid var(--border)">
+          <a href="index.html" class="btn btn-s" style="text-align:center">← Calculadora</a>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-bottom:0">
+      <div class="card-hd">Processos Ativos — Pipeline</div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr>
+            <th>Processo</th><th>Cliente</th>
+            <th>
+              <div style="display:flex;align-items:center;gap:2px;font-size:10px;font-weight:600;letter-spacing:.3px">
+                <span style="width:24px;text-align:center">Ped.</span>
+                <span style="width:14px"></span>
+                <span style="width:24px;text-align:center">Emb.</span>
+                <span style="width:14px"></span>
+                <span style="width:24px;text-align:center">Porto</span>
+                <span style="width:14px"></span>
+                <span style="width:24px;text-align:center">Cli.</span>
+              </div>
+            </th>
+            <th style="text-align:right">FOB USD</th>
+            <th>Próximo Evento</th>
+          </tr></thead>
+          <tbody>${pipeHTML}</tbody>
+        </table>
+      </div>
     </div>`;
+}
+
+// ── Dashboard helpers ──────────────────────────────────────────────────────
+
+function dashDiasRel(d) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const diff = Math.round((d - hoje) / 86400000);
+  if (diff === 0) return { txt: 'hoje',            cor: '#E65100' };
+  if (diff  >  0) return { txt: `em ${diff}d`,    cor: '#2E7D32' };
+  return               { txt: `há ${-diff}d`,    cor: '#C62828' };
+}
+
+function dashEventos(ativos) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const d30  = new Date(hoje); d30.setDate(hoje.getDate() + 30);
+  const d7a  = new Date(hoje); d7a.setDate(hoje.getDate() - 7);
+  const ev   = [];
+
+  ativos.forEach(proc => {
+    const g = proc.dados_gerais || {};
+    const add = (dataStr, icone, desc) => {
+      if (!dataStr) return;
+      const d = new Date(dataStr + 'T12:00');
+      if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero });
+    };
+    add(g.prev_embarque,        '✈', 'Embarque');
+    add(g.prev_chegada_porto,   '⚓', 'Chegada Porto');
+    add(g.prev_chegada_cliente, '📦', 'Chegada Cliente');
+    (proc.pagamentos_fornecedor||[])
+      .filter(p => p.status !== 'pago')
+      .forEach(p => add(p.data_prevista, '💸', `Pgto ${p.descricao||'fornecedor'}`));
+    (proc.recebimentos_cliente||[])
+      .filter(r => r.status !== 'recebido')
+      .forEach(r => add(r.data_prevista, '💰', `Recebimento ${r.descricao||'cliente'}`));
+  });
+
+  return ev.sort((a, b) => a.d - b.d);
+}
+
+function dashEventoHTML(e) {
+  const rel    = dashDiasRel(e.d);
+  const dataBR = e.d.toLocaleDateString('pt-BR');
+  return `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light)">
+      <span style="font-size:15px;width:22px;text-align:center;flex-shrink:0">${e.icone}</span>
+      <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${e.numero}</span>
+      <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.desc}</span>
+      <span style="font-size:12px;color:var(--cinza-med);white-space:nowrap">${dataBR}</span>
+      <span style="font-size:11px;font-weight:700;white-space:nowrap;min-width:52px;text-align:right;color:${rel.cor}">${rel.txt}</span>
+    </div>`;
+}
+
+function dashProximoEvento(proc) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const g = proc.dados_gerais || {};
+  let proxD = null, proxDesc = '';
+  const check = (s, desc) => {
+    if (!s) return;
+    const d = new Date(s + 'T12:00');
+    if (d >= hoje && (!proxD || d < proxD)) { proxD = d; proxDesc = desc; }
+  };
+  check(g.prev_embarque,        'Embarque');
+  check(g.prev_chegada_porto,   'Porto');
+  check(g.prev_chegada_cliente, 'Cliente');
+  (proc.pagamentos_fornecedor||[]).filter(p=>p.status!=='pago')
+    .forEach(p => check(p.data_prevista, `Pgto ${p.descricao||''}`));
+  (proc.recebimentos_cliente||[]).filter(r=>r.status!=='recebido')
+    .forEach(r => check(r.data_prevista, 'Recebimento'));
+  if (!proxD) return '<span style="color:var(--cinza-med)">—</span>';
+  const diff = Math.round((proxD - hoje) / 86400000);
+  const rel  = diff === 0 ? 'hoje' : diff > 0 ? `em ${diff}d` : `há ${-diff}d`;
+  const cor  = diff < 0 ? '#C62828' : diff === 0 ? '#E65100' : 'inherit';
+  return `<span style="font-size:12px">${proxDesc}</span> <span style="font-size:11px;font-weight:600;color:${cor}">${rel}</span>`;
+}
+
+function dashPipelineRow(proc) {
+  const g    = proc.dados_gerais || {};
+  const hoje = new Date(); hoje.setHours(12,0,0,0);
+  const toD  = s => s ? new Date(s + 'T12:00') : null;
+  const fob  = proc.resultado?.fob_total_usd ||
+               (proc.itens||[]).reduce((s,it) => s+(it.quantidade||0)*(it.fob_unit_usd||0), 0);
+
+  const emb = toD(g.prev_embarque);
+  const prt = toD(g.prev_chegada_porto);
+  const cli = toD(g.prev_chegada_cliente);
+
+  const embDone = emb && emb <= hoje;
+  const prtDone = prt && prt <= hoje;
+  const cliDone = cli && cli <= hoje;
+
+  // First incomplete stage with a date is 'active'
+  let actSet = false;
+  const stg = (done, hasDate) => {
+    if (done) return 'pipe-done';
+    if (!actSet && hasDate) { actSet = true; return 'pipe-active'; }
+    return 'pipe-future';
+  };
+
+  const c1 = stg(embDone, !!emb);
+  const c2 = stg(prtDone, !!prt);
+  const c3 = stg(cliDone, !!cli);
+  const ln = done => `<span class="pipe-line" style="background:${done?'#2E7D32':'var(--border)'}"></span>`;
+  const dot = (cls, ic, tip) => `<span class="pipe-dot ${cls}" title="${tip}">${ic}</span>`;
+
+  return `<tr>
+    <td style="font-weight:700">${proc.numero||'—'}</td>
+    <td>${g.cliente||'—'}</td>
+    <td>
+      <div style="display:flex;align-items:center;gap:2px">
+        ${dot('pipe-done','✓', `Pedido — ${g.data_pedido||proc.criado_em?.slice(0,10)||'—'}`)}
+        ${ln(embDone)}
+        ${dot(c1,'✈',`Embarque — ${g.prev_embarque||'sem data'}`)}
+        ${ln(prtDone)}
+        ${dot(c2,'⚓',`Chegada Porto — ${g.prev_chegada_porto||'sem data'}`)}
+        ${ln(cliDone)}
+        ${dot(c3,'📦',`Chegada Cliente — ${g.prev_chegada_cliente||'sem data'}`)}
+      </div>
+    </td>
+    <td style="text-align:right;font-variant-numeric:tabular-nums">USD ${fmtN(fob)}</td>
+    <td style="min-width:140px">${dashProximoEvento(proc)}</td>
+  </tr>`;
 }
 
 // ── Configurações ──────────────────────────────────────────────────────────
