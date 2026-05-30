@@ -103,11 +103,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-sm{padding:4px 10px;font-size:12px}
 
 /* ── Tabela de itens do pedido ── */
-.items-tbl{width:100%;border-collapse:collapse;font-size:12px}
-.items-tbl th{background:var(--cinza);color:#fff;padding:7px 8px;text-align:left;font-size:11px;font-weight:700;white-space:nowrap}
-.items-tbl td{padding:3px 4px;border-bottom:1px solid var(--cinza-light);vertical-align:middle}
-.items-tbl td:first-child{padding-left:8px;color:var(--cinza-med);font-size:12px}
-.items-tbl input,.items-tbl select{padding:5px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px;width:100%;background:var(--white);font-family:inherit;color:var(--cinza)}
+.items-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px}
+.items-tbl th{background:var(--cinza);color:#fff;padding:6px 4px;text-align:left;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden}
+.items-tbl td{padding:3px 4px;border-bottom:1px solid var(--cinza-light);vertical-align:middle;overflow:hidden}
+.items-tbl td:first-child{padding-left:6px;color:var(--cinza-med);font-size:12px;text-align:center}
+.items-tbl input,.items-tbl select{padding:5px 4px;border:1px solid var(--border);border-radius:3px;font-size:12px;width:100%;background:var(--white);font-family:inherit;color:var(--cinza);box-sizing:border-box}
 .items-tbl input:focus,.items-tbl select:focus{outline:none;border-color:var(--turquesa)}
 
 /* ── Tabela lista de processos ── */
@@ -733,11 +733,25 @@ function renderNovoProcesso(proc) {
         </div>
         <div style="overflow-x:auto">
           <table class="items-tbl">
+            <colgroup>
+              <col style="width:30px">
+              <col style="width:160px">
+              <col><!-- Descrição: espaço restante -->
+              <col style="width:120px">
+              <col style="width:70px">
+              <col style="width:55px">
+              <col style="width:100px">
+              <col style="width:105px">
+              <col style="width:60px">
+              <col style="width:70px">
+              <col style="width:110px">
+              <col style="width:36px">
+            </colgroup>
             <thead><tr>
-              <th>#</th><th>Código</th><th style="min-width:180px">Descrição</th>
+              <th style="text-align:center">#</th><th>Código</th><th>Descrição</th>
               <th>Cor/Estampa</th><th>Qtd</th><th>Un</th>
-              <th>FOB Unit (USD)</th><th>NCM</th><th>GSM</th><th>Larg. cm</th>
-              <th style="text-align:right;padding-right:10px">Total USD</th><th></th>
+              <th>FOB Unit USD</th><th>NCM</th><th>GSM</th><th>Larg.</th>
+              <th style="text-align:right">Total USD</th><th></th>
             </tr></thead>
             <tbody id="itens-tbody"></tbody>
             <tfoot id="itens-tfoot"></tfoot>
@@ -810,23 +824,23 @@ function npRenderItens() {
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
     return `<tr>
       <td>${i+1}</td>
-      <td style="min-width:130px"><div class="ac-wrap">
-        <input value="${esc(it.codigo)}" placeholder="Cód." style="width:130px"
+      <td><div class="ac-wrap">
+        <input value="${esc(it.codigo)}" placeholder="Código"
           oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
         <div class="ac-list" id="np-ac-${i}-cod" style="min-width:340px;right:auto"></div>
       </div></td>
-      <td style="min-width:250px"><div class="ac-wrap">
+      <td><div class="ac-wrap">
         <input value="${esc(it.descricao)}" placeholder="Descrição do produto"
           oninput="npItemChange(${i},'descricao',this.value);npAcFilter(${i},'desc',this.value)">
         <div class="ac-list" id="np-ac-${i}-desc" style="min-width:340px;right:auto"></div>
       </div></td>
-      <td><input value="${esc(it.cor)}" placeholder="Ex: Branco" oninput="npItemChange(${i},'cor',this.value)" style="width:110px"></td>
-      <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)" style="width:70px"></td>
-      <td><select oninput="npItemChange(${i},'unidade',this.value)" style="width:55px">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
-      <td><input type="number" value="${it.fob_unit_usd||''}" min="0" step="0.01" oninput="npItemChange(${i},'fob_unit_usd',this.value)" style="width:90px"></td>
-      <td><input value="${esc(it.ncm)}" placeholder="0000.00.00" oninput="npItemChange(${i},'ncm',this.value)" style="width:100px"></td>
-      <td><input type="number" value="${it.gsm||''}" min="0" oninput="npItemChange(${i},'gsm',this.value)" style="width:52px"></td>
-      <td><input type="number" value="${it.largura_cm||''}" min="0" oninput="npItemChange(${i},'largura_cm',this.value)" style="width:60px"></td>
+      <td><input value="${esc(it.cor)}" placeholder="Cor/Estampa" oninput="npItemChange(${i},'cor',this.value)"></td>
+      <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)"></td>
+      <td><select oninput="npItemChange(${i},'unidade',this.value)">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
+      <td><input type="number" value="${it.fob_unit_usd||''}" min="0" step="0.01" oninput="npItemChange(${i},'fob_unit_usd',this.value)"></td>
+      <td><input value="${esc(it.ncm)}" placeholder="NCM" oninput="npItemChange(${i},'ncm',this.value)"></td>
+      <td><input type="number" value="${it.gsm||''}" min="0" oninput="npItemChange(${i},'gsm',this.value)"></td>
+      <td><input type="number" value="${it.largura_cm||''}" min="0" oninput="npItemChange(${i},'largura_cm',this.value)"></td>
       <td id="np-total-${i}" style="text-align:right;padding:4px 10px;font-weight:600;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(total)}</td>
       <td style="padding:2px 6px">
         <button onclick="npRemoveItem(${i})" title="Remover" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:16px;line-height:1;padding:2px 4px">✕</button>
