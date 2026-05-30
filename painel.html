@@ -810,21 +810,21 @@ function npRenderItens() {
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
     return `<tr>
       <td>${i+1}</td>
-      <td><div class="ac-wrap" style="width:80px">
-        <input value="${esc(it.codigo)}" placeholder="Cód." style="width:80px"
+      <td style="min-width:130px"><div class="ac-wrap">
+        <input value="${esc(it.codigo)}" placeholder="Cód." style="width:130px"
           oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
         <div class="ac-list" id="np-ac-${i}-cod" style="min-width:340px;right:auto"></div>
       </div></td>
-      <td><div class="ac-wrap">
+      <td style="min-width:250px"><div class="ac-wrap">
         <input value="${esc(it.descricao)}" placeholder="Descrição do produto"
           oninput="npItemChange(${i},'descricao',this.value);npAcFilter(${i},'desc',this.value)">
         <div class="ac-list" id="np-ac-${i}-desc" style="min-width:340px;right:auto"></div>
       </div></td>
-      <td><input value="${esc(it.cor)}" placeholder="Ex: Branco" oninput="npItemChange(${i},'cor',this.value)" style="width:90px"></td>
+      <td><input value="${esc(it.cor)}" placeholder="Ex: Branco" oninput="npItemChange(${i},'cor',this.value)" style="width:110px"></td>
       <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)" style="width:70px"></td>
       <td><select oninput="npItemChange(${i},'unidade',this.value)" style="width:55px">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
       <td><input type="number" value="${it.fob_unit_usd||''}" min="0" step="0.01" oninput="npItemChange(${i},'fob_unit_usd',this.value)" style="width:90px"></td>
-      <td><input value="${esc(it.ncm)}" placeholder="0000.00.00" oninput="npItemChange(${i},'ncm',this.value)" style="width:88px"></td>
+      <td><input value="${esc(it.ncm)}" placeholder="0000.00.00" oninput="npItemChange(${i},'ncm',this.value)" style="width:100px"></td>
       <td><input type="number" value="${it.gsm||''}" min="0" oninput="npItemChange(${i},'gsm',this.value)" style="width:52px"></td>
       <td><input type="number" value="${it.largura_cm||''}" min="0" oninput="npItemChange(${i},'largura_cm',this.value)" style="width:60px"></td>
       <td id="np-total-${i}" style="text-align:right;padding:4px 10px;font-weight:600;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(total)}</td>
@@ -1969,7 +1969,7 @@ function rdSelecionarProcesso(id) {
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr>
-            <th>Código</th><th>Descrição</th><th style="min-width:200px">Descrição DI ✎</th>
+            <th style="min-width:130px">Código</th><th style="min-width:200px">Descrição</th><th style="min-width:280px">Descrição DI ✎</th>
             <th>NCM</th><th style="text-align:right">Qtd</th><th>Un</th>
             <th style="text-align:right">FOB Unit</th><th style="text-align:right">Total USD</th>
           </tr></thead>
