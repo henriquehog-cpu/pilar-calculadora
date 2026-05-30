@@ -322,11 +322,14 @@ function dashEventos(ativos) {
     add(g.prev_embarque,        '🚢', 'Embarque');
     add(g.prev_chegada_porto,   '⚓', 'Chegada Porto');
     add(g.prev_chegada_cliente, '📦', 'Chegada Cliente');
-    (proc.pagamentos_fornecedor||[])
-      .filter(p => p.status !== 'pago')
+    // Lê dados salvos pelo Fluxo de Caixa
+    const procFresh = JSON.parse(localStorage.getItem('pilar_processos') || '[]')
+      .find(x => x.id === proc.id) || proc;
+    (procFresh.pagamentos_fornecedor||[])
+      .filter(p => p.status !== 'pago' && p.data_prevista)
       .forEach(p => add(p.data_prevista, '💸', `Pgto ${p.descricao||'fornecedor'}`));
-    (proc.recebimentos_cliente||[])
-      .filter(r => r.status !== 'recebido')
+    (procFresh.recebimentos_cliente||[])
+      .filter(r => r.status !== 'recebido' && r.data_prevista)
       .forEach(r => add(r.data_prevista, '💰', `Recebimento ${r.descricao||'cliente'}`));
   });
 
@@ -1290,6 +1293,10 @@ function renderFluxoCaixa() {
           <div class="card-bd" id="fc-resumo"></div>
         </div>
 
+        <div style="text-align:right;margin-top:4px;padding-bottom:40px">
+          <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="fcSalvar()">Salvar Fluxo</button>
+        </div>
+
       </div>
     </div>`;
 }
@@ -1551,17 +1558,33 @@ function fcChangeRecebimento(i, campo, valor) {
   }
 }
 
+function fcRedistribuirRecebimentos() {
+  if (!_fcRecebimentos.length) return;
+  const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
+  const nfBRL      = _fcProcesso?.resultado?.nf_total_brl || 0;
+  const totalUSD   = camCliente > 0 ? nfBRL / camCliente : 0;
+  const parteUSD   = totalUSD > 0 ? parseFloat((totalUSD / _fcRecebimentos.length).toFixed(2)) : 0;
+  _fcRecebimentos.forEach(r => {
+    r.valor_usd   = parteUSD;
+    r.valor_reais = parseFloat((parteUSD * (r.cambio || camCliente || 0)).toFixed(2));
+  });
+}
+
 function fcAddRecebimento() {
   const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
   _fcRecebimentos.push({ id:Date.now(), descricao:'Pagamento', valor_usd:0,
     cambio:camCliente, valor_reais:0,
     data_prevista:'', data_realizada:null, status:'previsto' });
+  fcRedistribuirRecebimentos();
   fcRenderRecebimentos();
+  fcRenderResumo();
 }
 
 function fcRemoveRecebimento(i) {
   _fcRecebimentos.splice(i, 1);
-  fcRenderRecebimentos(); fcRenderResumo();
+  fcRedistribuirRecebimentos();
+  fcRenderRecebimentos();
+  fcRenderResumo();
 }
 
 function fcMarcarRecebido(i) {
