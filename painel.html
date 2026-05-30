@@ -603,6 +603,7 @@ function gerarNumero() {
 function newItemRow() {
   return { codigo:'', descricao:'', cor:'', quantidade:0, unidade:'PC',
            fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'',
+           peso_liq_unit:0, peso_bruto_unit:0,
            margem_pct: 0.20, pv_fixo_usd: 0 };
 }
 
@@ -806,8 +807,16 @@ function npRenderItens() {
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
     return `<tr>
       <td>${i+1}</td>
-      <td><input value="${esc(it.codigo)}" placeholder="Cód." oninput="npItemChange(${i},'codigo',this.value)" style="width:80px"></td>
-      <td><input value="${esc(it.descricao)}" placeholder="Descrição do produto" oninput="npItemChange(${i},'descricao',this.value)"></td>
+      <td><div class="ac-wrap" style="width:80px">
+        <input value="${esc(it.codigo)}" placeholder="Cód." style="width:80px"
+          oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
+        <div class="ac-list" id="np-ac-${i}-cod" style="min-width:340px;right:auto"></div>
+      </div></td>
+      <td><div class="ac-wrap">
+        <input value="${esc(it.descricao)}" placeholder="Descrição do produto"
+          oninput="npItemChange(${i},'descricao',this.value);npAcFilter(${i},'desc',this.value)">
+        <div class="ac-list" id="np-ac-${i}-desc" style="min-width:340px;right:auto"></div>
+      </div></td>
       <td><input value="${esc(it.cor)}" placeholder="Ex: Branco" oninput="npItemChange(${i},'cor',this.value)" style="width:90px"></td>
       <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)" style="width:70px"></td>
       <td><select oninput="npItemChange(${i},'unidade',this.value)" style="width:55px">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
@@ -2334,6 +2343,70 @@ function catProcessarXlsx(input) {
   };
   reader.readAsArrayBuffer(file);
 }
+
+// ── Autocomplete itens (Novo/Editar Processo) ──────────────────────────────
+const _acMatches = {};
+
+function npAcFilter(i, campo, q) {
+  const acId = `np-ac-${i}-${campo}`;
+  const ac   = document.getElementById(acId);
+  if (!ac) return;
+
+  if (!q || q.length < 1) { ac.style.display = 'none'; return; }
+
+  const ql      = q.toLowerCase();
+  const todos   = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const matches = todos.filter(p =>
+    (p.codigo  || '').toLowerCase().includes(ql) ||
+    (p.produto || '').toLowerCase().includes(ql)
+  ).slice(0, 8);
+
+  _acMatches[acId] = matches;
+
+  if (!matches.length) { ac.style.display = 'none'; return; }
+
+  ac.innerHTML = matches.map((p, idx) => `
+    <div class="ac-item" onmousedown="npAcSelect(${i},'${acId}',${idx})">
+      ${p.codigo ? `<span style="font-family:monospace;font-size:11px;color:var(--cinza-med);margin-right:8px">${p.codigo}</span>` : ''}
+      <span>${p.produto}</span>
+      ${p.ncm ? `<span class="ac-ncm">${p.ncm}</span>` : ''}
+    </div>`).join('');
+  ac.style.display = 'block';
+}
+
+function npAcSelect(i, acId, idx) {
+  const p = (_acMatches[acId] || [])[idx];
+  if (!p) return;
+
+  _itens[i].codigo          = p.codigo          || '';
+  _itens[i].descricao       = p.produto         || '';
+  _itens[i].ncm             = p.ncm             || '';
+  _itens[i].unidade         = p.unidade         || 'PC';
+  _itens[i].peso_liq_unit   = p.peso_liq_unit   || 0;
+  _itens[i].peso_bruto_unit = p.peso_bruto_unit || 0;
+  _itens[i].aliquotas = {
+    ii:                p.ii                || 0,
+    ipi:               p.ipi               || 0,
+    pis_importacao:    p.pis_importacao    || 0.021,
+    cofins_importacao: p.cofins_importacao || 0.1065,
+    pis_venda:         p.pis_venda         || 0.0165,
+    cofins_venda:      p.cofins_venda      || 0.076,
+    icms_intra:        p.icms_intra        || 0.14,
+    icms_inter:        p.icms_inter        || 0.04,
+    reg_espec_intra:   p.reg_espec_intra   || 0.14,
+    reg_espec_inter:   p.reg_espec_inter   || 0.015
+  };
+
+  document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
+  npRenderItens();
+  npRecalcular();
+}
+
+// Fecha dropdowns ao clicar fora de qualquer ac-wrap
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ac-wrap'))
+    document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
+});
 
 // ── Init ───────────────────────────────────────────────────────────────────
 renderDashboard();
