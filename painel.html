@@ -542,7 +542,7 @@ async function testarOmie() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         call:   'ListarProdutos',
-        params: [{ pagina: 1, registros_por_pagina: 1, apenas_importado_api: 'N' }]
+        params: [{ pagina: 1, registros_por_pagina: 1, filtrar_apenas_omiepdv: "N" }]
       })
     });
     const data = await r.json();
@@ -615,7 +615,7 @@ async function sincronizarOmie() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         call:   'ListarProdutos',
-        params: [{ pagina, registros_por_pagina: 500, apenas_importado_api: 'N' }]
+        params: [{ pagina, registros_por_pagina: 100, filtrar_apenas_omiepdv: "N" }]
       })
     });
     const data = await r.json();
@@ -623,7 +623,7 @@ async function sincronizarOmie() {
     if (data.erro)        throw new Error(data.erro);
     const lista = data.produto_servico_listfull || data.produto_servico_cadastro || [];
     todos = todos.concat(lista);
-    if (todos.length >= (data.nTotRegistros || 0)) break;
+    if (todos.length >= (data.total_de_registros || 0)) break;
     pagina++;
   }
   const produtos = todos.map(p => ({
