@@ -501,6 +501,15 @@ function renderConfig() {
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-hd">Backup e Restauração</div>
+        <div class="card-bd" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-s" onclick="exportarDados()">⬇ Exportar dados</button>
+          <button class="btn btn-s" onclick="importarDados()">⬆ Importar dados</button>
+          <span style="font-size:12px;color:var(--cinza-med)">Exporta/importa processos, produtos, configurações e descrições DI.</span>
+        </div>
+      </div>
+
     </div>`;
 }
 
@@ -545,6 +554,57 @@ async function testarOmie() {
     statusEl.textContent = '✗ ' + err.message;
     statusEl.style.color = '#C62828';
   }
+}
+
+function exportarDados() {
+  const keys = ['pilar_processos', 'pilar_produtos', 'pilar_config', 'pilar_descricoes_di'];
+  const backup = {};
+  keys.forEach(k => {
+    const v = localStorage.getItem(k);
+    if (v) backup[k] = JSON.parse(v);
+  });
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'pilar_backup.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✓ Backup exportado: pilar_backup.json');
+}
+
+function importarDados() {
+  const input   = document.createElement('input');
+  input.type    = 'file';
+  input.accept  = '.json';
+  input.onchange = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      let data;
+      try { data = JSON.parse(ev.target.result); }
+      catch { toast('Arquivo inválido — não é um JSON válido.'); return; }
+
+      const processos = Array.isArray(data.pilar_processos) ? data.pilar_processos : [];
+      const produtos  = Array.isArray(data.pilar_produtos)  ? data.pilar_produtos  : [];
+
+      const existProc = JSON.parse(localStorage.getItem('pilar_processos') || '[]').length;
+      const existProd = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]').length;
+
+      if ((existProc > 0 || existProd > 0) &&
+          !confirm(`Isso irá sobrescrever ${existProc} processo(s) e ${existProd} produto(s) existentes. Continuar?`)) return;
+
+      if (data.pilar_processos    !== undefined) localStorage.setItem('pilar_processos',    JSON.stringify(processos));
+      if (data.pilar_produtos     !== undefined) localStorage.setItem('pilar_produtos',     JSON.stringify(produtos));
+      if (data.pilar_config       !== undefined) localStorage.setItem('pilar_config',       JSON.stringify(data.pilar_config));
+      if (data.pilar_descricoes_di !== undefined) localStorage.setItem('pilar_descricoes_di', JSON.stringify(data.pilar_descricoes_di));
+
+      toast(`✓ Importados: ${processos.length} processo${processos.length !== 1 ? 's' : ''} e ${produtos.length} produto${produtos.length !== 1 ? 's' : ''}`);
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
 async function sincronizarOmie() {
