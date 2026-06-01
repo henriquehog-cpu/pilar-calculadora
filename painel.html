@@ -537,7 +537,7 @@ async function testarOmie() {
   statusEl.style.color = '#607D8B';
 
   try {
-    const r = await fetch('http://localhost:3001/omie', {
+    const r = await fetch('/omie', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -610,7 +610,7 @@ function importarDados() {
 async function sincronizarOmie() {
   let pagina = 1, todos = [];
   while (true) {
-    const r = await fetch('http://localhost:3001/omie', {
+    const r = await fetch('/omie', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2537,8 +2537,64 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
 });
 
+// ── Persistência servidor ──────────────────────────────────────────────────
+const _PILAR_KEYS = new Set(['pilar_processos','pilar_config','pilar_descricoes_di','pilar_produtos']);
+let _syncTimer = null;
+
+// Hook transparente: qualquer localStorage.setItem numa chave PILAR dispara sync
+const _lsSetOrig = localStorage.setItem.bind(localStorage);
+localStorage.setItem = function(key, value) {
+  _lsSetOrig(key, value);
+  if (_PILAR_KEYS.has(key)) {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(_apiSincronizar, 400);
+  }
+};
+
+function _apiSincronizar() {
+  const dados = {
+    pilar_processos:     JSON.parse(localStorage.getItem('pilar_processos')     || '[]'),
+    pilar_config:        JSON.parse(localStorage.getItem('pilar_config')        || '{}'),
+    pilar_descricoes_di: JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}')
+  };
+  fetch('/api/dados', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dados)
+  }).catch(() => {});
+
+  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  fetch('/api/produtos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(produtos)
+  }).catch(() => {});
+}
+
+async function _apiCarregar() {
+  try {
+    const [rDados, rProd] = await Promise.all([
+      fetch('/api/dados'),
+      fetch('/api/produtos')
+    ]);
+    if (rDados.ok) {
+      const d = await rDados.json();
+      if (Array.isArray(d.pilar_processos))
+        _lsSetOrig('pilar_processos', JSON.stringify(d.pilar_processos));
+      if (d.pilar_config && typeof d.pilar_config === 'object')
+        _lsSetOrig('pilar_config', JSON.stringify(d.pilar_config));
+      if (d.pilar_descricoes_di && typeof d.pilar_descricoes_di === 'object')
+        _lsSetOrig('pilar_descricoes_di', JSON.stringify(d.pilar_descricoes_di));
+    }
+    if (rProd.ok) {
+      const p = await rProd.json();
+      if (Array.isArray(p)) _lsSetOrig('pilar_produtos', JSON.stringify(p));
+    }
+  } catch { /* offline — usa cache localStorage */ }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
-renderDashboard();
+(async () => { await _apiCarregar(); renderDashboard(); })();
 </script>
 
 </body>
