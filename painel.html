@@ -613,8 +613,8 @@ function importarDados() {
   input.click();
 }
 
-async function sincronizarOmie() {
-  let pagina = 1, todos = [];
+async function sincronizarOmie(onProgresso) {
+  let pagina = 1, todos = [], totalRegistros = null;
   while (true) {
     const r = await fetch('/omie', {
       method: 'POST',
@@ -628,8 +628,14 @@ async function sincronizarOmie() {
     if (data.faultstring) throw new Error(data.faultstring);
     if (data.erro)        throw new Error(data.erro);
     const lista = data.produto_servico_listfull || data.produto_servico_cadastro || [];
+    if (lista.length === 0) break;
     todos = todos.concat(lista);
-    if (todos.length >= (data.total_de_registros || 0)) break;
+    if (totalRegistros === null && data.total_de_registros > 0)
+      totalRegistros = data.total_de_registros;
+    const totalPags = totalRegistros ? Math.ceil(totalRegistros / 100) : '?';
+    if (onProgresso) onProgresso(pagina, totalPags, todos.length, totalRegistros || '?');
+    if (totalRegistros !== null && todos.length >= totalRegistros) break;
+    if (pagina >= 50) break; // segurança
     pagina++;
   }
   const produtos = todos.map(p => ({
@@ -650,6 +656,11 @@ async function sincronizarOmie() {
     reg_espec_intra:  0.14,  reg_espec_inter:  0.015
   }));
   localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+  fetch('/api/produtos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(produtos)
+  }).catch(() => {});
   return produtos.length;
 }
 
@@ -2400,9 +2411,11 @@ function catFiltrar() {
 
 async function catSincronizar(btn) {
   const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '↻ Sincronizando…';
+  btn.disabled = true;
   try {
-    const n = await sincronizarOmie();
+    const n = await sincronizarOmie((pag, totalPags, qtd, total) => {
+      btn.textContent = `↻ Sincronizando… página ${pag} de ${totalPags} (${qtd}/${total})`;
+    });
     toast(`✓ ${n} produtos sincronizados`);
     renderCatalogo();
   } catch (e) {
@@ -2530,6 +2543,7 @@ function npAcFilter(i, campo, q) {
 
 function npAcSelect(i, acId, idx) {
   const p = (_acMatches[acId] || [])[idx];
+  console.log('selecionado', i, p);
   if (!p) return;
 
   _itens[i].codigo          = p.codigo          || '';
@@ -2551,6 +2565,7 @@ function npAcSelect(i, acId, idx) {
     reg_espec_intra:   p.reg_espec_intra   || 0.14,
     reg_espec_inter:   p.reg_espec_inter   || 0.015
   };
+  console.log('_itens[i] após preenchimento:', JSON.stringify(_itens[i]));
 
   document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
   npRenderItens();
