@@ -133,6 +133,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pipe-future{background:var(--cinza-light);color:var(--cinza-med);border:1px solid var(--border)}
 .pipe-line{display:inline-block;width:14px;height:2px;flex-shrink:0;vertical-align:middle}
 
+/* ── Autocomplete ── */
+.ac-wrap{position:relative}
+.ac-list{position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:260px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;min-width:320px}
+.ac-item{padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--cinza-light)}
+.ac-item:hover{background:var(--cinza-light)}
+
 /* ── KPI cards — mesmo estilo do index.html ── */
 .sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:0}
 .sum-item{text-align:center;padding:18px 14px;background:var(--cinza-light);border-radius:8px}
@@ -787,9 +793,10 @@ function renderNovoProcesso(proc) {
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="card" style="margin-bottom:0">
-        <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+    <div class="card" style="margin-bottom:0">
+      <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
           <span>3 — Itens do Pedido</span>
           <div style="display:flex;gap:8px;align-items:center">
             <button id="btn-exportar-omie" onclick="npExportarOmie()" disabled
@@ -801,13 +808,13 @@ function renderNovoProcesso(proc) {
           <table class="items-tbl">
             <colgroup>
               <col style="width:30px">
-              <col style="width:160px">
+              <col style="width:130px">
               <col><!-- Descrição: espaço restante -->
-              <col style="width:120px">
+              <col style="width:90px">
               <col style="width:70px">
               <col style="width:55px">
               <col style="width:100px">
-              <col style="width:105px">
+              <col style="width:80px">
               <col style="width:60px">
               <col style="width:70px">
               <col style="width:110px">
@@ -823,8 +830,9 @@ function renderNovoProcesso(proc) {
             <tfoot id="itens-tfoot"></tfoot>
           </table>
         </div>
-      </div>
+    </div>
 
+    <div style="max-width:980px">
       <div class="card" style="margin-bottom:20px">
         <div class="card-hd tq">4 — Precificação</div>
         <div id="s4-tabela" style="overflow-x:auto">
@@ -904,12 +912,12 @@ function npRenderItens() {
       <td><div class="ac-wrap">
         <input value="${esc(it.codigo)}" placeholder="Código"
           oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
-        <div class="ac-list" id="np-ac-${i}-cod" style="min-width:340px;right:auto"></div>
+        <div class="ac-list" id="np-ac-${i}-cod"></div>
       </div></td>
       <td><div class="ac-wrap">
         <input value="${esc(it.descricao)}" placeholder="Descrição do produto"
           oninput="npItemChange(${i},'descricao',this.value);npAcFilter(${i},'desc',this.value)">
-        <div class="ac-list" id="np-ac-${i}-desc" style="min-width:340px;right:auto"></div>
+        <div class="ac-list" id="np-ac-${i}-desc"></div>
       </div></td>
       <td><input value="${esc(it.cor)}" placeholder="Cor/Estampa" oninput="npItemChange(${i},'cor',this.value)"></td>
       <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)"></td>
@@ -2514,9 +2522,8 @@ function npAcFilter(i, campo, q) {
 
   ac.innerHTML = matches.map((p, idx) => `
     <div class="ac-item" onmousedown="npAcSelect(${i},'${acId}',${idx})">
-      ${p.codigo ? `<span style="font-family:monospace;font-size:11px;color:var(--cinza-med);margin-right:8px">${p.codigo}</span>` : ''}
-      <span>${p.produto}</span>
-      ${p.ncm ? `<span class="ac-ncm">${p.ncm}</span>` : ''}
+      <div style="font-family:monospace;font-size:12px;font-weight:700;color:var(--cinza);line-height:1.4">${p.codigo || '—'}</div>
+      <div style="font-size:11px;color:var(--cinza-med);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.produto}</div>
     </div>`).join('');
   ac.style.display = 'block';
 }
