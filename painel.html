@@ -667,7 +667,7 @@ function newItemRow() {
   return { codigo:'', descricao:'', cor:'', quantidade:0, unidade:'PC',
            fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'',
            peso_liq_unit:0, peso_bruto_unit:0,
-           margem_pct: 0.20, pv_fixo_usd: 0 };
+           margem_pct: 0.20, pv_fixo_usd: 0, is_novo: false };
 }
 
 function esc(s) { return (s||'').toString().replace(/"/g,'&quot;'); }
@@ -700,6 +700,8 @@ async function fetchPTAX(inputId) {
 function renderNovoProcesso(proc) {
   _npEditId = proc ? proc.id : null;
   _itens    = proc?.itens?.length ? proc.itens.map(it => ({...it})) : [newItemRow()];
+  { const _pls = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+    _itens.forEach(it => { it.is_novo = !!(it.codigo) && !_pls.some(p => (p.codigo||'').toLowerCase() === (it.codigo||'').toLowerCase()); }); }
 
   const g    = proc?.dados_gerais || {};
   const c    = proc?.cambios      || {};
@@ -789,7 +791,11 @@ function renderNovoProcesso(proc) {
       <div class="card" style="margin-bottom:0">
         <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
           <span>3 — Itens do Pedido</span>
-          <button onclick="npAddItem()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">+ Adicionar Item</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="btn-exportar-omie" onclick="npExportarOmie()" disabled
+              style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.25);border-radius:4px;padding:4px 12px;cursor:not-allowed;font-size:12px;font-weight:600;opacity:.55">Exportar p/ Omie (nenhum novo)</button>
+            <button onclick="npAddItem()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">+ Adicionar Item</button>
+          </div>
         </div>
         <div style="overflow-x:auto">
           <table class="items-tbl">
@@ -859,6 +865,17 @@ function npItemChange(i, campo, valor) {
     if (el) el.textContent = 'USD ' + fmtN(total);
     npAtualizarRodape();
     npRecalcular();
+  } else if (campo === 'codigo') {
+    _itens[i].codigo = valor;
+    const _pls = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+    _itens[i].is_novo = !!valor && !_pls.some(p => (p.codigo||'').toLowerCase() === valor.toLowerCase());
+    const numCell = document.getElementById(`np-num-${i}`);
+    if (numCell) {
+      numCell.innerHTML = _itens[i].is_novo
+        ? `<span title="Produto novo — será exportado para o Omie" style="color:#F9A825;font-weight:700;cursor:default">★${i+1}</span>`
+        : String(i + 1);
+    }
+    npUpdateExportBtn();
   } else {
     _itens[i][campo] = valor;
   }
@@ -883,7 +900,7 @@ function npRenderItens() {
     const total = (it.quantidade||0) * (it.fob_unit_usd||0);
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
     return `<tr>
-      <td>${i+1}</td>
+      <td id="np-num-${i}" style="text-align:center">${it.is_novo ? `<span title="Produto novo — será exportado para o Omie" style="color:#F9A825;font-weight:700;cursor:default">★${i+1}</span>` : i+1}</td>
       <td><div class="ac-wrap">
         <input value="${esc(it.codigo)}" placeholder="Código"
           oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
@@ -908,6 +925,7 @@ function npRenderItens() {
     </tr>`;
   }).join('');
   npAtualizarRodape();
+  npUpdateExportBtn();
 }
 
 function npSalvar() {
@@ -1200,7 +1218,7 @@ function npRecalcular() {
           oninput="s4Change(${i},'margem_pct',this.value)">
       </td>
       <td style="padding:3px 4px">
-        <input type="number" value="${pvF}" min="0" step="0.01" placeholder="—"
+        <input type="number" value="${pvF}" min="0.001" step="0.001" placeholder="—"
           style="width:76px;padding:4px 6px;border:1px solid #F9A825;border-radius:3px;font-size:12px;text-align:right;background:#FFFDE7"
           oninput="s4Change(${i},'pv_fixo_usd',this.value)">
       </td>
@@ -2511,6 +2529,7 @@ function npAcSelect(i, acId, idx) {
   _itens[i].descricao       = p.produto         || '';
   _itens[i].ncm             = p.ncm             || '';
   _itens[i].unidade         = p.unidade         || 'PC';
+  _itens[i].is_novo         = false;
   _itens[i].peso_liq_unit   = p.peso_liq_unit   || 0;
   _itens[i].peso_bruto_unit = p.peso_bruto_unit || 0;
   _itens[i].aliquotas = {
@@ -2536,6 +2555,87 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.ac-wrap'))
     document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
 });
+
+// ── Exportação Omie ────────────────────────────────────────────────────────
+function npUpdateExportBtn() {
+  const btn = document.getElementById('btn-exportar-omie');
+  if (!btn) return;
+  const count = _itens.filter(it => it.is_novo).length;
+  if (count === 0) {
+    btn.textContent = 'Exportar p/ Omie (nenhum novo)';
+    btn.disabled = true;
+    btn.style.cssText += ';opacity:.55;cursor:not-allowed;color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)';
+  } else {
+    btn.textContent = `⬇ Exportar ${count} novo${count > 1 ? 's' : ''} p/ Omie`;
+    btn.disabled = false;
+    btn.style.cssText += ';opacity:1;cursor:pointer;color:#fff;background:rgba(255,255,255,.2)';
+  }
+}
+
+function npExportarOmie() {
+  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado.'); return; }
+  const novos = _itens.filter(it => it.is_novo && (it.codigo || it.descricao));
+  if (!novos.length) return;
+
+  const FAMILIA_MAP = {
+    'MICL': 'TECIDOS', 'MITE': 'TECIDOS', 'MIMA': 'TECIDOS', 'MIVO': 'TECIDOS',
+    'COBT': 'COLCHAS', 'COBJ': 'COLCHAS', 'COBE': 'COLCHAS',
+    'ESCO': 'CONSTRUÇÃO', 'ESPI': 'CONSTRUÇÃO',
+    'ALMO': 'ALMOFADAS', 'TOAL': 'TOALHAS', 'TAPE': 'TAPETES',
+    'STOR': 'CORTINAS', 'CORT': 'CORTINAS'
+  };
+
+  function detectFamilia(codigo) {
+    return FAMILIA_MAP[(codigo || '').toUpperCase().slice(0, 4)] || '';
+  }
+
+  const headerRow = new Array(34).fill(null);
+  const headerNames = [
+    'Código de Integração', 'Código do Produto *', 'Descrição do Produto *',
+    'Código NCM *', 'CEST', 'Código EAN (GTIN)', 'Preço Unitário de Venda',
+    'Unidade *', 'Família de Produto', 'Estoque Mínimo', 'Estoque Atual',
+    'Preço Unitário de Custo', 'Data para Ajuste de Estoque', 'Estoque Inicial?',
+    'Local de Estoque *', 'Peso Líquido (Kg)', 'Peso Bruto (Kg)',
+    'Altura (centímetros)', 'Largura (centímetros)', 'Profundidade (centímetros)',
+    'Marca', 'Modelo', 'Dias de Garantia', 'Dias de Crossdocking',
+    'Leadtime de Ressuprimento', 'Cupom Fiscal (PDV)?', 'Marketplace?',
+    'Tipo do Produto (Bloco K) *', 'Origem da Mercadoria',
+    'Produzido em Escala Relevante?', 'CNPJ do Fabricante',
+    'Preço Tabelado (Pauta)', 'Ficha de Conteúdo de Importação (FCI)'
+  ];
+  headerNames.forEach((h, j) => { headerRow[j + 1] = h; });
+
+  const aoa = [
+    new Array(34).fill(null),
+    new Array(34).fill(null),
+    new Array(34).fill(null),
+    new Array(34).fill(null),
+    headerRow,
+    ...novos.map(it => {
+      const row = new Array(34).fill(null);
+      row[2]  = it.codigo                       || null; // C
+      row[3]  = it.descricao                    || null; // D
+      row[4]  = it.ncm                          || null; // E
+      row[8]  = it.unidade                      || 'PC'; // I
+      row[9]  = detectFamilia(it.codigo);                // J
+      row[15] = '00';                                    // P
+      row[16] = it.peso_liq_unit   || null;             // Q
+      row[17] = it.peso_bruto_unit || null;             // R
+      row[19] = it.largura_cm      || null;             // T
+      row[21] = 'PILAR';                                // V
+      row[28] = '00';                                   // AC
+      row[29] = '1';                                    // AD
+      return row;
+    })
+  ];
+
+  const numero = val('np-numero') || 'NOVO';
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, 'Omie_Produtos');
+  XLSX.writeFile(wb, `OMIE_NOVOS_PRODUTOS_${numero}.xlsx`);
+  toast(`✓ ${novos.length} produto(s) exportado(s) — importe no Omie para cadastrar`);
+}
 
 // ── Persistência servidor ──────────────────────────────────────────────────
 const _PILAR_KEYS = new Set(['pilar_processos','pilar_config','pilar_descricoes_di','pilar_produtos']);
