@@ -2518,7 +2518,7 @@ const _acMatches = {};
 function npAcFilter(i, campo, q) {
   const acId = `np-ac-${i}-${campo}`;
   const ac   = document.getElementById(acId);
-  if (!ac) return;
+  if (!ac) { console.warn('npAcFilter: elemento não encontrado:', acId); return; }
 
   if (!q || q.length < 1) { ac.style.display = 'none'; return; }
 
@@ -2528,6 +2528,7 @@ function npAcFilter(i, campo, q) {
     (p.codigo  || '').toLowerCase().includes(ql) ||
     (p.produto || '').toLowerCase().includes(ql)
   ).slice(0, 8);
+  console.log('matches encontrados:', matches.length, 'query:', q);
 
   _acMatches[acId] = matches;
 
@@ -2539,6 +2540,7 @@ function npAcFilter(i, campo, q) {
       <div style="font-size:11px;color:var(--cinza-med);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.produto}</div>
     </div>`).join('');
   ac.style.display = 'block';
+  console.log('ac display após show:', ac.style.display, '| ac no DOM:', document.contains(ac));
 }
 
 function npAcSelect(i, acId, idx) {
@@ -2710,7 +2712,8 @@ async function _apiCarregar() {
     }
     if (rProd.ok) {
       const p = await rProd.json();
-      if (Array.isArray(p)) _lsSetOrig('pilar_produtos', JSON.stringify(p));
+      console.log('produtos carregados do servidor:', Array.isArray(p) ? p.length : 'não é array');
+      if (Array.isArray(p) && p.length > 0) _lsSetOrig('pilar_produtos', JSON.stringify(p));
     }
   } catch { /* offline — usa cache localStorage */ }
 }
