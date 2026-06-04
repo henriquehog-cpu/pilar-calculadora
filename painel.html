@@ -724,7 +724,7 @@ function gerarNumero() {
 }
 
 function newItemRow() {
-  return { codigo:'', descricao:'', cor:'', quantidade:0, unidade:'PC',
+  return { codigo:'', descricao:'', cor:'', cliente:'', quantidade:0, unidade:'PC',
            fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'',
            peso_liq_unit:0, peso_bruto_unit:0,
            margem_pct: 0.20, pv_fixo_usd: 0, is_novo: false };
@@ -859,12 +859,13 @@ function renderNovoProcesso(proc) {
           </div>
         </div>
         <div style="overflow-x:auto">
-          <table class="items-tbl" style="min-width:980px">
+          <table class="items-tbl" style="min-width:1080px">
             <colgroup>
               <col style="width:30px">
               <col style="width:130px">
               <col><!-- Descrição: espaço restante -->
               <col style="width:90px">
+              <col style="width:100px">
               <col style="width:70px">
               <col style="width:55px">
               <col style="width:100px">
@@ -876,7 +877,7 @@ function renderNovoProcesso(proc) {
             </colgroup>
             <thead><tr>
               <th style="text-align:center">#</th><th>Código</th><th>Descrição</th>
-              <th>Cor/Estampa</th><th>Qtd</th><th>Un</th>
+              <th>Cor/Estampa</th><th>Cliente</th><th>Qtd</th><th>Un</th>
               <th>FOB Unit USD</th><th>NCM</th><th>GSM</th><th>Larg.</th>
               <th style="text-align:right">Total USD</th><th></th>
             </tr></thead>
@@ -1221,7 +1222,7 @@ function npAtualizarRodape() {
   if (!tfoot) return;
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light)">
-      <td colspan="10" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
+      <td colspan="11" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
       <td style="text-align:right;padding:8px 10px;font-size:15px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(fobTotal)}</td>
       <td></td>
     </tr>`;
@@ -1246,6 +1247,7 @@ function npRenderItens() {
         <div class="ac-list" id="np-ac-${i}-desc"></div>
       </div></td>
       <td><input value="${esc(it.cor)}" placeholder="Cor/Estampa" oninput="npItemChange(${i},'cor',this.value)"></td>
+      <td><input value="${esc(it.cliente)}" placeholder="${esc(document.getElementById('np-cliente')?.value || 'Cliente')}" oninput="npItemChange(${i},'cliente',this.value)"></td>
       <td><input type="number" value="${it.quantidade||''}" min="0" step="1" oninput="npItemChange(${i},'quantidade',this.value)"></td>
       <td><select oninput="npItemChange(${i},'unidade',this.value)">${sel('unidade',['PC','KG','M','M2','CX'])}</select></td>
       <td><input type="number" value="${it.fob_unit_usd||''}" min="0" step="0.01" oninput="npItemChange(${i},'fob_unit_usd',this.value)"></td>
@@ -2451,9 +2453,9 @@ function gerarDespachantePDF() {
     totQty+=it.quantidade||0; totFOB+=tot; totPL+=pl; totPB+=pb;
     return `<tr>
       <td style="font-family:monospace;font-size:9px;white-space:nowrap">${esc(it.codigo||'—')}</td>
-      <td>${esc(it.descricao||'—')}</td>
-      <td>${esc(descDI)}</td>
-      <td style="font-family:monospace;font-size:9px;text-align:center">${it.ncm||'—'}</td>
+      <td style="font-size:9px;word-break:break-word">${esc(it.descricao||'—')}</td>
+      <td style="font-size:9px;word-break:break-word">${esc(descDI)}</td>
+      <td style="font-family:monospace;font-size:9px;text-align:center;white-space:nowrap">${it.ncm||'—'}</td>
       <td class="r">${fmtN(it.quantidade||0,0)}</td>
       <td>${it.unidade||'PC'}</td>
       <td class="r">${fmtN(it.fob_unit_usd||0,4)}</td>
@@ -2480,10 +2482,15 @@ function gerarDespachantePDF() {
         <div><span>PAÍS:</span> ${esc(g.pais||'—')}</div>
         <div><span>INCOTERM:</span> ${g.incoterm||'FOB'}</div>
       </div>
-      <table class="or-pg-tbl">
+      <table class="or-pg-tbl" style="font-size:9px;table-layout:fixed">
+        <colgroup>
+          <col style="width:130px"><col style="width:160px"><col style="width:180px">
+          <col style="width:80px"><col style="width:35px"><col style="width:35px">
+          <col style="width:70px"><col style="width:70px"><col style="width:65px"><col style="width:65px">
+        </colgroup>
         <thead><tr>
-          <th>Cód. Omie</th><th>Descrição</th><th>Descrição DI</th>
-          <th style="text-align:center">NCM</th>
+          <th style="white-space:nowrap">Cód. Omie</th><th>Descrição</th><th>Descrição DI</th>
+          <th style="text-align:center;white-space:nowrap">NCM</th>
           <th class="r">Qtd</th><th>Un</th>
           <th class="r">FOB Unit USD</th><th class="r">FOB Total USD</th>
           <th class="r">Peso Líq kg</th><th class="r">Peso Bruto kg</th>
@@ -2579,10 +2586,16 @@ function renderOrderRequest() {
               <textarea id="or-obs" rows="3" placeholder="Ex: Please check the labels before shipment..."></textarea>
             </div>
           </div>
-          <button class="btn btn-p" id="btn-or-gerar" onclick="gerarOrderRequestPDF()" disabled
-            style="opacity:.45;cursor:not-allowed">
-            🖨 Imprimir / Salvar PDF
-          </button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-p" id="btn-or-gerar" onclick="gerarOrderRequestPDF()" disabled
+              style="opacity:.45;cursor:not-allowed">
+              🖨 Imprimir / Salvar PDF
+            </button>
+            <button class="btn btn-s" id="btn-or-etiquetas" onclick="gerarEtiquetas()" disabled
+              style="opacity:.45;cursor:not-allowed">
+              🏷 Gerar Etiquetas
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2591,16 +2604,19 @@ function renderOrderRequest() {
 }
 
 function orSelecionarProcesso(id) {
-  const btn = document.getElementById('btn-or-gerar');
+  const btn  = document.getElementById('btn-or-gerar');
+  const btnE = document.getElementById('btn-or-etiquetas');
+  const _setBtns = on => [btn, btnE].forEach(b => { if (!b) return;
+    b.disabled = !on; b.style.opacity = on ? '1' : '.45'; b.style.cursor = on ? 'pointer' : 'not-allowed'; });
   if (!id) {
     _orProcesso = null;
     document.getElementById('or-preview').innerHTML = '';
-    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
+    _setBtns(false);
     return;
   }
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   _orProcesso  = todos.find(p => p.id == id) || null;
-  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  _setBtns(true);
   if (!_orProcesso) return;
 
   const g = _orProcesso.dados_gerais || {};
@@ -2667,7 +2683,10 @@ function gerarOrderRequestPDF() {
       totalQty += (it.quantidade||0); totalFOB += tot;
       return `<tr>
         <td>${idx + 1}</td>
-        <td>${esc(it.descricao || it.codigo || '—')}</td>
+        <td>
+          ${it.codigo ? `<div style="font-family:monospace;font-size:9px;color:#607D8B;line-height:1.3">${esc(it.codigo)}</div>` : ''}
+          <div>${esc(it.descricao || it.codigo || '—')}</div>
+        </td>
         <td>${esc(it.cor || '—')}</td>
         <td class="r">${fmtN(it.quantidade||0, 0)}</td>
         <td>${it.unidade||'PC'}</td>
@@ -2735,12 +2754,84 @@ function gerarOrderRequestPDF() {
     </div>`;
   }
 
-  document.getElementById('or-print-area').innerHTML =
-    buildPrintPage(false) + buildPrintPage(true);
+  document.getElementById('or-print-area').innerHTML = buildPrintPage(false);
 
   const n = atualizarFOBProdutos(itens);
   window.print();
   toast(`✓ Diálogo de impressão aberto${n > 0 ? ` · FOB atualizado em ${n} produto${n>1?'s':''}` : ''}`);
+}
+
+function gerarEtiquetas() {
+  if (!_orProcesso) return;
+  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado.'); return; }
+
+  const proc       = _orProcesso;
+  const g          = proc.dados_gerais || {};
+  const itens      = proc.itens || [];
+  const clienteProc = g.cliente || '';
+
+  if (!itens.length) { toast('Processo sem itens.'); return; }
+
+  const IMPORTADOR = 'PILAR IMPORTS LTDA';
+  const CNPJ       = '43.954.200/0001-96';
+  const PAIS       = 'CHINA';
+
+  // Estrutura de uma etiqueta (4 colunas)
+  function labelRows(it) {
+    const cliente = (it.cliente || '').trim() || clienteProc;
+    return [
+      ['ORDEM NRO',      proc.numero || '',                          '',           ''],
+      ['CODIGO',         it.codigo || '',                            '',           ''],
+      ['COMPOSIÇÃO',     it.descricao || '',                         '',           ''],
+      ['LARGURA',        it.largura_cm ? `${it.largura_cm}CM` : '',  'QNTY ROLOS', ''],
+      ['ROLO',           '',                                         'de',         ''],
+      ['CLIENTE',        cliente,                                    '',           ''],
+      ['PESO LÍQUIDO',   '',                                         'PESO BRUTO', ''],
+      ['IMPORTADOR',     IMPORTADOR,                                 '',           ''],
+      ['CNPJ',           CNPJ,                                       '',           ''],
+      ['PAÍS DE ORIGEM', PAIS,                                       '',           '']
+    ];
+  }
+
+  const wb = XLSX.utils.book_new();
+  const nomesUsados = new Set();
+
+  function nomeAba(it, i) {
+    let base = `${i + 1}_${(it.codigo || 'ITEM').replace(/[:\\/?*\[\]]/g, '-')}`.slice(0, 31);
+    let nome = base, c = 1;
+    while (nomesUsados.has(nome)) { nome = base.slice(0, 28) + '_' + (++c); }
+    nomesUsados.add(nome);
+    return nome;
+  }
+
+  itens.forEach((it, i) => {
+    const left = labelRows(it);
+    // Duas etiquetas lado a lado: esquerda (cols 0-3) | gap (col 4) | direita (cols 5-8)
+    const aoa = left.map(row => [...row, '', ...row]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:16},{wch:30},{wch:14},{wch:12},{wch:4},{wch:16},{wch:30},{wch:14},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws, nomeAba(it, i));
+  });
+
+  // Aba "QTYE PER CUSTOMER": cliente → código → descrição → quantidade total
+  const agreg = {};
+  itens.forEach(it => {
+    const cli = (it.cliente || '').trim() || clienteProc || '(sem cliente)';
+    const cod = it.codigo || '';
+    const key = cli + '||' + cod;
+    if (!agreg[key]) agreg[key] = { cliente: cli, codigo: cod, descricao: it.descricao || '', qtd: 0 };
+    agreg[key].qtd += (it.quantidade || 0);
+  });
+  const qpcRows = [['CLIENTE', 'CÓDIGO', 'DESCRIÇÃO', 'QUANTIDADE']];
+  Object.values(agreg)
+    .sort((a, b) => a.cliente.localeCompare(b.cliente) || a.codigo.localeCompare(b.codigo))
+    .forEach(r => qpcRows.push([r.cliente, r.codigo, r.descricao, r.qtd]));
+  const wsQ = XLSX.utils.aoa_to_sheet(qpcRows);
+  wsQ['!cols'] = [{wch:24},{wch:22},{wch:42},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, wsQ, 'QTYE PER CUSTOMER');
+
+  XLSX.writeFile(wb, `ETIQUETAS_${proc.numero}.xlsx`);
+  toast(`✓ Etiquetas geradas: ETIQUETAS_${proc.numero}.xlsx`);
 }
 
 function buildOrSheet(proc, obs, pt) {
