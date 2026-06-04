@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PILAR Imports — Painel Operacional</title>
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="painel/js/calc.js"></script>
 <style>
 :root {
@@ -172,6 +172,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .or-pg-hd-txt .sub{font-size:10px;color:#607D8B}
 .or-pg-info{display:grid;grid-template-columns:repeat(3,1fr);gap:5px 18px;margin-bottom:14px;font-size:10.5px}
 .or-pg-info span{font-weight:700}
+/* Resumo Despachante: header com mais respiro + info em 2 colunas */
+.or-pg.rd .or-pg-hd{gap:22px;padding-bottom:14px;margin-bottom:18px}
+.or-pg.rd .or-pg-hd img{height:54px}
+.or-pg.rd .or-pg-info{grid-template-columns:repeat(2,1fr);gap:8px 48px;margin-bottom:18px;font-size:11px}
 .or-pg-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px}
 .or-pg-tbl thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;white-space:nowrap}
 .or-pg-tbl thead th.r{text-align:right}
@@ -1554,9 +1558,9 @@ function npRecalcular() {
           oninput="s4Change(${i},'margem_pct',this.value)">
       </td>
       <td style="padding:3px 4px">
-        <input type="text" inputmode="decimal" value="${pvF}" placeholder="0.0000"
+        <input type="text" inputmode="decimal" value="${pvF}" placeholder="ex: 0.4700"
           style="width:76px;padding:4px 6px;border:1px solid #F9A825;border-radius:3px;font-size:12px;text-align:right;background:#FFFDE7"
-          oninput="s4Change(${i},'pv_fixo_usd',this.value.replace(',','.'))">
+          oninput="s4Change(${i},'pv_fixo_usd',parseFloat(this.value.replace(',','.')))">
       </td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;color:var(--cinza-med)">${R(r.custoImpUnit)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;font-weight:700;color:var(--turquesa-dark)">${R(r.pv)}</td>
@@ -2466,9 +2470,9 @@ function gerarDespachantePDF() {
   }).join('') || `<tr><td colspan="10" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   document.getElementById('or-print-area').innerHTML = `
-    <div class="or-pg" style="font-size:10px">
+    <div class="or-pg rd" style="font-size:10px">
       <div class="or-pg-hd">
-        <img src="web_Logo_sem_assinatura_turquesa.png" alt="PILAR" style="height:46px">
+        <img src="web_Logo_sem_assinatura_turquesa.png" alt="PILAR">
         <div class="or-pg-hd-txt">
           <div class="co">PILAR IMPORTS LTDA — RESUMO DESPACHANTE</div>
           ${email ? `<div class="sub">${esc(email)}</div>` : ''}
@@ -2793,6 +2797,25 @@ function gerarEtiquetas() {
     ];
   }
 
+  // ── Estilos (xlsx-js-style) ──
+  const THIN   = { style: 'thin', color: { rgb: '000000' } };
+  const BORDER = { top: THIN, bottom: THIN, left: THIN, right: THIN };
+  function mkStyle({ bold = false, fill = false, turq = false } = {}) {
+    const s = {
+      font: { name: 'Arial', sz: 9, bold: bold || turq },
+      border: BORDER,
+      alignment: { vertical: 'center', wrapText: true }
+    };
+    if (turq) s.font.color = { rgb: '00B5AD' };
+    if (fill) s.fill = { patternType: 'solid', fgColor: { rgb: 'F5F5F5' } };
+    return s;
+  }
+  function setStyle(ws, r, c, s) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+    ws[addr].s = s;
+  }
+
   const wb = XLSX.utils.book_new();
   const nomesUsados = new Set();
 
@@ -2804,12 +2827,27 @@ function gerarEtiquetas() {
     return nome;
   }
 
+  const TURQ_ROWS = new Set([0, 1, 5]); // ORDEM NRO, CODIGO, CLIENTE → valor em negrito turquesa
+
   itens.forEach((it, i) => {
     const left = labelRows(it);
     // Duas etiquetas lado a lado: esquerda (cols 0-3) | gap (col 4) | direita (cols 5-8)
     const aoa = left.map(row => [...row, '', ...row]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:16},{wch:30},{wch:14},{wch:12},{wch:4},{wch:16},{wch:30},{wch:14},{wch:12}];
+    ws['!cols'] = [{wch:15},{wch:20},{wch:15},{wch:12},{wch:2},{wch:15},{wch:20},{wch:15},{wch:12}];
+    ws['!rows'] = aoa.map(() => ({ hpx: 18 }));
+
+    // (labelCol, valueCol, label2Col, value2Col) por etiqueta
+    const blocks = [[0, 1, 2, 3], [5, 6, 7, 8]];
+    for (let r = 0; r < aoa.length; r++) {
+      blocks.forEach(([lc, vc, l2, v2]) => {
+        setStyle(ws, r, lc, mkStyle({ bold: true, fill: true }));
+        setStyle(ws, r, vc, TURQ_ROWS.has(r) ? mkStyle({ turq: true }) : mkStyle());
+        const hasL2 = aoa[r][l2] !== '' && aoa[r][l2] != null;
+        setStyle(ws, r, l2, hasL2 ? mkStyle({ bold: true, fill: true }) : mkStyle());
+        setStyle(ws, r, v2, mkStyle());
+      });
+    }
     XLSX.utils.book_append_sheet(wb, ws, nomeAba(it, i));
   });
 
@@ -2828,6 +2866,10 @@ function gerarEtiquetas() {
     .forEach(r => qpcRows.push([r.cliente, r.codigo, r.descricao, r.qtd]));
   const wsQ = XLSX.utils.aoa_to_sheet(qpcRows);
   wsQ['!cols'] = [{wch:24},{wch:22},{wch:42},{wch:12}];
+  wsQ['!rows'] = qpcRows.map(() => ({ hpx: 18 }));
+  for (let r = 0; r < qpcRows.length; r++)
+    for (let c = 0; c < 4; c++)
+      setStyle(wsQ, r, c, mkStyle(r === 0 ? { bold: true, fill: true } : {}));
   XLSX.utils.book_append_sheet(wb, wsQ, 'QTYE PER CUSTOMER');
 
   XLSX.writeFile(wb, `ETIQUETAS_${proc.numero}.xlsx`);
