@@ -2193,8 +2193,12 @@ function renderResumoDespachante() {
               <input type="text" id="rd-obs" placeholder="Obs. para o despachante">
             </div>
           </div>
-          <button class="btn btn-p" id="btn-rd-gerar" onclick="gerarResumoDespachante()" disabled
-            style="opacity:.45;cursor:not-allowed">⬇ Gerar Resumo Despachante (.xlsx)</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-p" id="btn-rd-gerar" onclick="gerarResumoDespachante()" disabled
+              style="opacity:.45;cursor:not-allowed">⬇ Gerar Resumo Despachante (.xlsx)</button>
+            <button class="btn btn-s" id="btn-rd-pdf" onclick="gerarDespachantePDF()" disabled
+              style="opacity:.45;cursor:not-allowed">🖨 Imprimir / Salvar PDF</button>
+          </div>
         </div>
       </div>
 
@@ -2351,16 +2355,17 @@ function diDeletar(codigo) {
 }
 
 function rdSelecionarProcesso(id) {
-  const btn = document.getElementById('btn-rd-gerar');
-  document.getElementById('rd-preview').innerHTML = '';
-  if (!id) {
-    _rdProcesso = null;
-    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
-    return;
+  const btn    = document.getElementById('btn-rd-gerar');
+  const btnPdf = document.getElementById('btn-rd-pdf');
+  function _rdSetBtns(on) {
+    [btn, btnPdf].forEach(b => { if (!b) return;
+      b.disabled = !on; b.style.opacity = on ? '1' : '.45'; b.style.cursor = on ? 'pointer' : 'not-allowed'; });
   }
+  document.getElementById('rd-preview').innerHTML = '';
+  if (!id) { _rdProcesso = null; _rdSetBtns(false); return; }
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   _rdProcesso  = todos.find(p => p.id == id) || null;
-  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  _rdSetBtns(true);
   if (!_rdProcesso) return;
 
   const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
@@ -2373,7 +2378,7 @@ function rdSelecionarProcesso(id) {
     const descDI = banco[it.codigo] || '';
     totalQty += it.quantidade||0; totalFOB += tot;
     return `<tr>
-      <td style="font-family:monospace;font-size:11px">${it.codigo||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;font-weight:700;color:var(--cinza);white-space:nowrap">${it.codigo||'—'}</td>
       <td>${it.descricao||'—'}</td>
       <td><input id="di-${i}" value="${esc(descDI)}" placeholder="Descrição para DI/DUIMP"
         style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px"></td>
@@ -2425,6 +2430,79 @@ function gerarResumoDespachante() {
   XLSX.utils.book_append_sheet(wb, ws, 'Resumo Despachante');
   XLSX.writeFile(wb, `DI_${_rdProcesso.numero}.xlsx`);
   toast(`✓ Resumo Despachante gerado: DI_${_rdProcesso.numero}.xlsx`);
+}
+
+function gerarDespachantePDF() {
+  if (!_rdProcesso) return;
+  const proc = _rdProcesso;
+  const g    = proc.dados_gerais || {};
+  const itens = proc.itens || [];
+  const numeroDI = val('rd-duimp');
+  const obs      = val('rd-obs');
+  const cfg      = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const email    = cfg.empresa?.email || '';
+
+  let totQty=0, totFOB=0, totPL=0, totPB=0;
+  const linhas = itens.map((it, idx) => {
+    const descDI = document.getElementById(`di-${idx}`)?.value.trim() || '';
+    const tot = (it.quantidade||0)*(it.fob_unit_usd||0);
+    const pl  = (it.quantidade||0)*(it.peso_liq_unit||0);
+    const pb  = (it.quantidade||0)*(it.peso_bruto_unit||0);
+    totQty+=it.quantidade||0; totFOB+=tot; totPL+=pl; totPB+=pb;
+    return `<tr>
+      <td style="font-family:monospace;font-size:9px;white-space:nowrap">${esc(it.codigo||'—')}</td>
+      <td>${esc(it.descricao||'—')}</td>
+      <td>${esc(descDI)}</td>
+      <td style="font-family:monospace;font-size:9px;text-align:center">${it.ncm||'—'}</td>
+      <td class="r">${fmtN(it.quantidade||0,0)}</td>
+      <td>${it.unidade||'PC'}</td>
+      <td class="r">${fmtN(it.fob_unit_usd||0,4)}</td>
+      <td class="r">${fmtN(tot,2)}</td>
+      <td class="r">${fmtN(pl,3)}</td>
+      <td class="r">${fmtN(pb,3)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="10" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+
+  document.getElementById('or-print-area').innerHTML = `
+    <div class="or-pg" style="font-size:10px">
+      <div class="or-pg-hd">
+        <img src="web_Logo_sem_assinatura_turquesa.png" alt="PILAR" style="height:46px">
+        <div class="or-pg-hd-txt">
+          <div class="co">PILAR IMPORTS LTDA — RESUMO DESPACHANTE</div>
+          ${email ? `<div class="sub">${esc(email)}</div>` : ''}
+        </div>
+      </div>
+      <div class="or-pg-info">
+        <div><span>PROCESSO:</span> ${proc.numero}</div>
+        ${numeroDI ? `<div><span>DI / DUIMP:</span> ${esc(numeroDI)}</div>` : '<div></div>'}
+        <div><span>DATA:</span> ${g.data_pedido||'—'}</div>
+        <div><span>FORNECEDOR:</span> ${esc(g.fornecedor||'—')}</div>
+        <div><span>PAÍS:</span> ${esc(g.pais||'—')}</div>
+        <div><span>INCOTERM:</span> ${g.incoterm||'FOB'}</div>
+      </div>
+      <table class="or-pg-tbl">
+        <thead><tr>
+          <th>Cód. Omie</th><th>Descrição</th><th>Descrição DI</th>
+          <th style="text-align:center">NCM</th>
+          <th class="r">Qtd</th><th>Un</th>
+          <th class="r">FOB Unit USD</th><th class="r">FOB Total USD</th>
+          <th class="r">Peso Líq kg</th><th class="r">Peso Bruto kg</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr>
+          <td colspan="4" style="text-align:right;font-weight:700">TOTAL</td>
+          <td class="r">${fmtN(totQty,0)}</td>
+          <td></td><td></td>
+          <td class="r">USD ${fmtN(totFOB,2)}</td>
+          <td class="r">${fmtN(totPL,3)}</td>
+          <td class="r">${fmtN(totPB,3)}</td>
+        </tr></tfoot>
+      </table>
+      ${obs ? `<div class="or-pg-obs"><strong>OBS:</strong> ${esc(obs)}</div>` : ''}
+    </div>`;
+
+  window.print();
+  toast('✓ Diálogo de impressão aberto');
 }
 
 function buildDespachante(proc, numeroDI, obs) {
@@ -2533,7 +2611,10 @@ function orSelecionarProcesso(id) {
     const tot = (it.quantidade||0) * (it.fob_unit_usd||0);
     totalQty += it.quantidade||0; totalFOB += tot;
     return `<tr>
-      <td>${i+1}. ${it.descricao || it.codigo || '—'}</td>
+      <td>
+        ${it.codigo ? `<div style="font-family:monospace;font-size:10px;font-weight:700;color:var(--cinza-med);line-height:1.3">${it.codigo}</div>` : ''}
+        <div style="font-size:12px">${it.descricao || it.codigo || '—'}</div>
+      </td>
       <td style="text-align:right">${fmtN(it.quantidade,0)}</td>
       <td style="text-align:right">USD ${fmtN(it.fob_unit_usd,4)}</td>
       <td>${it.cor||'—'}</td>
@@ -2572,10 +2653,12 @@ function orSelecionarProcesso(id) {
 
 function gerarOrderRequestPDF() {
   if (!_orProcesso) return;
-  const proc = _orProcesso;
-  const g    = proc.dados_gerais || {};
+  const proc  = _orProcesso;
+  const g     = proc.dados_gerais || {};
   const itens = proc.itens || [];
-  const obs  = val('or-obs');
+  const obs   = val('or-obs');
+  const _cfg  = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const _email = _cfg.empresa?.email || '';
 
   function buildPrintPage(pt) {
     let totalQty = 0, totalFOB = 0;
@@ -2614,7 +2697,7 @@ function gerarOrderRequestPDF() {
         <img src="web_Logo_sem_assinatura_turquesa.png" alt="PILAR" style="height:46px">
         <div class="or-pg-hd-txt">
           <div class="co">PILAR IMPORTS LTDA</div>
-          <div class="sub">importação@pilarimports.com.br</div>
+          ${_email ? `<div class="sub">${esc(_email)}</div>` : ''}
         </div>
       </div>
       <div class="or-pg-info">
