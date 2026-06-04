@@ -135,7 +135,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 /* ── Autocomplete ── */
 .ac-wrap{position:relative}
-.ac-list{position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:260px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;min-width:320px}
+.ac-list{position:fixed;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:260px;overflow-y:auto;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;min-width:320px}
 .ac-item{padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--cinza-light)}
 .ac-item:hover{background:var(--cinza-light)}
 
@@ -816,7 +816,7 @@ function renderNovoProcesso(proc) {
           </div>
         </div>
         <div style="overflow-x:auto">
-          <table class="items-tbl">
+          <table class="items-tbl" style="min-width:980px">
             <colgroup>
               <col style="width:30px">
               <col style="width:130px">
@@ -2539,6 +2539,13 @@ function npAcFilter(i, campo, q) {
       <div style="font-family:monospace;font-size:12px;font-weight:700;color:var(--cinza);line-height:1.4">${p.codigo || '—'}</div>
       <div style="font-size:11px;color:var(--cinza-med);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.produto}</div>
     </div>`).join('');
+  const input = ac.previousElementSibling;
+  if (input) {
+    const rect = input.getBoundingClientRect();
+    ac.style.top   = (rect.bottom + 2) + 'px';
+    ac.style.left  = rect.left + 'px';
+    ac.style.width = Math.max(320, rect.width) + 'px';
+  }
   ac.style.display = 'block';
   console.log('ac display após show:', ac.style.display, '| ac no DOM:', document.contains(ac));
 }
