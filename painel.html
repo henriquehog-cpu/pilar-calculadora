@@ -162,6 +162,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sum-item.dk{background:var(--cinza)}
 .sum-item.dk .val{color:var(--turquesa)}
 .sum-item.dk .lbl{color:rgba(255,255,255,.6)}
+
+/* ── Order Request — impressão ── */
+#or-print-area{display:none}
+.or-pg{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#000;padding:18mm 14mm;box-sizing:border-box}
+.or-pg-hd{display:flex;align-items:center;gap:14px;padding-bottom:10px;border-bottom:2.5px solid #00BCD4;margin-bottom:14px}
+.or-pg-hd-txt{line-height:1.4}
+.or-pg-hd-txt .co{font-size:16px;font-weight:700;color:#37474F}
+.or-pg-hd-txt .sub{font-size:10px;color:#607D8B}
+.or-pg-info{display:grid;grid-template-columns:repeat(3,1fr);gap:5px 18px;margin-bottom:14px;font-size:10.5px}
+.or-pg-info span{font-weight:700}
+.or-pg-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px}
+.or-pg-tbl thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;white-space:nowrap}
+.or-pg-tbl thead th.r{text-align:right}
+.or-pg-tbl tbody td{padding:4px 6px;border-bottom:1px solid #ECEFF1;vertical-align:middle}
+.or-pg-tbl tbody td.r{text-align:right}
+.or-pg-tbl tfoot td{padding:6px 6px;border-top:2px solid #37474F;font-weight:700;font-size:10.5px}
+.or-pg-tbl tfoot td.r{text-align:right}
+.or-pg-obs{margin-bottom:12px;padding:7px 10px;background:#F5F7F8;border-left:3px solid #00BCD4;font-size:10.5px}
+.or-pg-confirm{margin:20px 0 8px;font-style:italic;color:#37474F;font-size:11px;border-top:1px solid #ECEFF1;padding-top:14px}
+.or-pg-sign{display:flex;gap:48px;margin-top:18px;font-size:10.5px}
+.or-pg-sign div{display:flex;flex-direction:column;gap:20px}
+@media print{
+  .header,.painel-layout,.npm-overlay{display:none !important}
+  #or-print-area{display:block !important}
+  .or-pg{page-break-after:always;padding:12mm 10mm}
+  .or-pg:last-child{page-break-after:avoid}
+  .or-pg-tbl thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -942,15 +970,19 @@ function npmInferirDaFamilia(familia) {
 }
 
 function npmProximoSequencial(familia, tamanho, gramatura) {
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
   const prefixo = `${familia}.${String(tamanho).padStart(3,'0')}.${String(gramatura).padStart(3,'0')}.`;
   let max = 0;
-  prods.forEach(p => {
-    if ((p.codigo || '').startsWith(prefixo)) {
-      const seq = parseInt((p.codigo.split('.')[3] || '0'), 10);
-      if (seq > max) max = seq;
-    }
+  const extrairSeq = cod => parseInt(((cod || '').split('.')[3] || '0'), 10);
+
+  JSON.parse(localStorage.getItem('pilar_produtos') || '[]').forEach(p => {
+    if ((p.codigo || '').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
   });
+
+  // também verifica itens novos já adicionados na sessão para não repetir
+  _itens.forEach(it => {
+    if (it.is_novo && (it.codigo || '').startsWith(prefixo)) max = Math.max(max, extrairSeq(it.codigo));
+  });
+
   return String(max + 1).padStart(4, '0');
 }
 
@@ -2469,9 +2501,9 @@ function renderOrderRequest() {
               <textarea id="or-obs" rows="3" placeholder="Ex: Please check the labels before shipment..."></textarea>
             </div>
           </div>
-          <button class="btn btn-p" id="btn-or-gerar" onclick="gerarOrderRequest()" disabled
+          <button class="btn btn-p" id="btn-or-gerar" onclick="gerarOrderRequestPDF()" disabled
             style="opacity:.45;cursor:not-allowed">
-            ⬇ Gerar Order Request (.xlsx)
+            🖨 Imprimir / Salvar PDF
           </button>
         </div>
       </div>
@@ -2538,23 +2570,94 @@ function orSelecionarProcesso(id) {
     </div>`;
 }
 
-function gerarOrderRequest() {
+function gerarOrderRequestPDF() {
   if (!_orProcesso) return;
-  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado — verifique sua conexão.'); return; }
+  const proc = _orProcesso;
+  const g    = proc.dados_gerais || {};
+  const itens = proc.itens || [];
+  const obs  = val('or-obs');
 
-  const obs = val('or-obs');
-  const wb  = XLSX.utils.book_new();
+  function buildPrintPage(pt) {
+    let totalQty = 0, totalFOB = 0;
+    const linhas = itens.map((it, idx) => {
+      const tot = (it.quantidade||0) * (it.fob_unit_usd||0);
+      totalQty += (it.quantidade||0); totalFOB += tot;
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td>${esc(it.descricao || it.codigo || '—')}</td>
+        <td>${esc(it.cor || '—')}</td>
+        <td class="r">${fmtN(it.quantidade||0, 0)}</td>
+        <td>${it.unidade||'PC'}</td>
+        <td class="r">${fmtN(it.fob_unit_usd||0, 4)}</td>
+        <td class="r">${fmtN(tot, 2)}</td>
+        <td class="r">${it.gsm||'—'}</td>
+        <td class="r">${it.largura_cm||'—'}</td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="9" style="text-align:center;padding:14px;color:#999">${pt?'Sem itens':'No items'}</td></tr>`;
 
-  const ws1 = XLSX.utils.aoa_to_sheet(buildOrSheet(_orProcesso, obs, false));
-  const ws2 = XLSX.utils.aoa_to_sheet(buildOrSheet(_orProcesso, obs, true));
-  const cols = [{wch:42},{wch:10},{wch:16},{wch:22},{wch:6},{wch:6},{wch:12},{wch:30}];
-  ws1['!cols'] = cols; ws2['!cols'] = cols;
-  XLSX.utils.book_append_sheet(wb, ws1, 'REQUEST IN ENGLISH');
-  XLSX.utils.book_append_sheet(wb, ws2, 'ficha cadastral pedido');
-  XLSX.writeFile(wb, `OR_${_orProcesso.numero}.xlsx`);
+    const thQty   = pt ? 'Qtd'        : 'Qty';
+    const thDesc  = pt ? 'Descrição'  : 'Description';
+    const thCor   = pt ? 'Cor/Estampa': 'Color/Design';
+    const thLarg  = pt ? 'Larg. cm'   : 'Width cm';
+    const thOrd   = pt ? 'PEDIDO'     : 'ORDER';
+    const thDate  = pt ? 'DATA'       : 'DATE';
+    const thSupp  = pt ? 'FORNECEDOR' : 'SUPPLIER';
+    const thCoun  = pt ? 'PAÍS'       : 'COUNTRY';
+    const txtConf = pt
+      ? 'Favor confirmar este pedido assinando abaixo e devolvendo uma cópia.'
+      : 'Dear partner, please confirm this order by signing below and returning a copy.';
+    const lblSign = pt ? 'ASSINATURA DO EXPORTADOR' : 'EXPORTER SIGNATURE';
+    const lblDate = pt ? 'DATA' : 'DATE';
 
-  const n = atualizarFOBProdutos(_orProcesso.itens || []);
-  toast(`✓ Order Request gerado${n > 0 ? ` e FOB atualizado em ${n} produto${n>1?'s':''}` : ''}`);
+    return `<div class="or-pg">
+      <div class="or-pg-hd">
+        <img src="web_Logo_sem_assinatura_turquesa.png" alt="PILAR" style="height:46px">
+        <div class="or-pg-hd-txt">
+          <div class="co">PILAR IMPORTS LTDA</div>
+          <div class="sub">importação@pilarimports.com.br</div>
+        </div>
+      </div>
+      <div class="or-pg-info">
+        <div><span>${thOrd}:</span> ${proc.numero}</div>
+        <div><span>${thDate}:</span> ${g.data_pedido||'—'}</div>
+        <div><span>INCOTERM:</span> ${g.incoterm||'FOB'}</div>
+        <div><span>${thSupp}:</span> ${esc(g.fornecedor||'—')}</div>
+        <div><span>${thCoun}:</span> ${esc(g.pais||'—')}</div>
+        <div></div>
+      </div>
+      <table class="or-pg-tbl">
+        <thead><tr>
+          <th>#</th><th>${thDesc}</th><th>${thCor}</th>
+          <th class="r">${thQty}</th><th>Un</th>
+          <th class="r">FOB Unit USD</th><th class="r">Total USD</th>
+          <th class="r">GSM</th><th class="r">${thLarg}</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr>
+          <td colspan="3" style="text-align:right">${pt?'TOTAL':'TOTAL'}</td>
+          <td class="r">${fmtN(totalQty,0)}</td>
+          <td></td><td></td>
+          <td class="r">USD ${fmtN(totalFOB,2)}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table>
+      ${obs ? `<div class="or-pg-obs"><strong>OBS:</strong> ${esc(obs)}</div>` : ''}
+      <div class="or-pg-confirm">${txtConf}</div>
+      <div class="or-pg-sign">
+        <div>
+          <div>${lblSign}: ___________________________________</div>
+          <div>${lblDate}: ___________________________________</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('or-print-area').innerHTML =
+    buildPrintPage(false) + buildPrintPage(true);
+
+  const n = atualizarFOBProdutos(itens);
+  window.print();
+  toast(`✓ Diálogo de impressão aberto${n > 0 ? ` · FOB atualizado em ${n} produto${n>1?'s':''}` : ''}`);
 }
 
 function buildOrSheet(proc, obs, pt) {
@@ -3012,5 +3115,6 @@ async function _apiCarregar() {
 (async () => { await _apiCarregar(); renderDashboard(); })();
 </script>
 
+<div id="or-print-area"></div>
 </body>
 </html>
