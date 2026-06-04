@@ -3662,7 +3662,12 @@ function wizParsearTexto() {
 
     const qtdRolos = unidade === 'M' ? Math.ceil(qtdMetros / rolo) : qtdMetros;
 
-    const ncm = npmNCMdaFamilia(familia);
+    // Busca NCM: primeiro por código com prefixo, depois por campo familia
+    const ncm = npmNCMdaFamilia(familia) || (()=>{
+      const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
+      const ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.ncm);
+      return ref?.ncm || '';
+    })();
     const al  = wizAliquotasDaFamilia(familia);
 
     _wizItens.push({
@@ -3700,18 +3705,24 @@ function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
   const prefixo = `${familia}.${String(largura).padStart(3,'0')}.${String(gsm).padStart(3,'0')}.`;
   const extrairSeq = cod => parseInt(((cod||'').split('.')[3]||'0'),10);
   let max = 0;
+  // Verifica produtos já cadastrados
   JSON.parse(localStorage.getItem('pilar_produtos')||'[]').forEach(p => {
     if ((p.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
   });
+  // Verifica itens já gerados nessa sessão do wizard (para não repetir)
   itensAtuais.forEach(it => {
     if (it.is_novo && (it.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(it.codigo));
   });
-  return `${prefixo}${String(max + 1 + itensAtuais.filter(x => x.is_novo && (x.codigo||'').startsWith(prefixo)).length).padStart(4,'0')}`;
+  // Próximo sequencial = max + 1
+  return `${prefixo}${String(max + 1).padStart(4,'0')}`;
 }
 
 function wizAliquotasDaFamilia(familia) {
   const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
-  const ref   = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.aliquotas);
+  // Busca primeiro por código com prefixo da família
+  let ref = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.aliquotas);
+  // Se não achar, busca por campo familia
+  if (!ref) ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.aliquotas);
   return ref?.aliquotas || {
     ii:0.162, ipi:0, pis_importacao:0.021, cofins_importacao:0.1065,
     pis_venda:0.0165, cofins_venda:0.076,
@@ -3733,7 +3744,7 @@ function wizRenderPreview() {
   }
 
   tbody.innerHTML = _wizItens.map((it, i) => `
-    <tr>
+    <tr data-wiz-idx="${i}">
       <td style="text-align:center;color:#F9A825;font-weight:700">★</td>
       <td>${it.cor}</td>
       <td style="text-align:right">${(it.quantidade_m||0).toLocaleString('pt-BR')}</td>
@@ -3741,7 +3752,8 @@ function wizRenderPreview() {
       <td style="font-family:monospace;font-size:11px">${it.codigo}</td>
       <td><input type="number" step="0.001" min="0" placeholder="0.000"
         value="${it.fob_unit_usd||''}"
-        oninput="_wizItens[${i}].fob_unit_usd=parseFloat(this.value)||0"
+        data-wiz-idx="${i}"
+        oninput="wizFobUpdate(${i}, this.value)"
         style="width:85px;padding:4px 6px"></td>
     </tr>
   `).join('');
@@ -3754,13 +3766,33 @@ function wizRenderPreview() {
 function wizAplicarFobBulk() {
   const v = parseFloat(document.getElementById('wiz-fob-bulk-val').value) || 0;
   _wizItens.forEach(it => it.fob_unit_usd = v);
-  // Atualizar inputs da tabela
-  document.querySelectorAll('#wiz-preview-body input[type=number]').forEach(el => el.value = v || '');
+  // Atualizar inputs da tabela via data-wiz-idx
+  document.querySelectorAll('#wiz-preview-body input[data-wiz-idx]').forEach(el => {
+    el.value = v ? v.toFixed(3) : '';
+  });
+}
+
+// ── FOB update e coleta ─────────────────────────────────────
+function wizFobUpdate(idx, val) {
+  if (_wizItens[idx] !== undefined) {
+    _wizItens[idx].fob_unit_usd = parseFloat(val) || 0;
+  }
+}
+
+function wizColetarFob() {
+  // Sincroniza valores da tabela com _wizItens antes de salvar
+  document.querySelectorAll('#wiz-preview-body input[data-wiz-idx]').forEach(el => {
+    const idx = parseInt(el.dataset.wizIdx);
+    if (_wizItens[idx] !== undefined) {
+      _wizItens[idx].fob_unit_usd = parseFloat(el.value) || 0;
+    }
+  });
 }
 
 // ── Criar processo ──────────────────────────────────────────
 function wizCriarProcesso() {
   if (!_wizItens.length) { alert('Nenhum item para criar o processo.'); return; }
+  wizColetarFob(); // sincroniza valores da tabela
 
   const cfg = JSON.parse(localStorage.getItem('pilar_config')||'{}');
   const d   = cfg.defaults || {};
