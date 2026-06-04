@@ -630,7 +630,7 @@ pm2 startup
 
 ---
 
-## 15. ESTADO ATUAL DO SISTEMA (2026-05-29)
+## 15. ESTADO ATUAL DO SISTEMA (2026-06-03)
 
 ### Acesso
 - **Frontend:** https://henriquehog-cpu.github.io/pilar-calculadora/painel.html
@@ -643,21 +643,33 @@ pm2 startup
 | Dashboard | ✅ | KPIs, Próximos Eventos (−7/+30d), Pipeline 4 estágios, clique → editar |
 | Processos | ✅ | Lista, criar, editar (pré-preenchido), excluir |
 | Novo Processo | ✅ | 3 seções + Seção 4 Precificação com calc.js em tempo real |
-| Order Request | ✅ | Preview + .xlsx 2 abas (EN/PT) + atualiza FOB em pilar_produtos |
-| Resumo Despachante | ✅ | Banco DI (importação .xlsx, edição, busca) + geração .xlsx |
+| Order Request | ✅ | PDF 1 página em inglês, logo PILAR, código + descrição na tabela, email dinâmico da config |
+| Resumo Despachante | ✅ | Banco DI (importação .xlsx, edição, busca) + PDF (colunas fixas) + Excel (.xlsx) — dois botões coexistem |
 | Fluxo de Caixa | ✅ | Câmbios, parcelas % fornecedor, parcelas % cliente, alertas, resumo |
 | Catálogo Omie | ✅ | Importação .xlsx do Omie + busca + filtro por família |
 | Configurações | ✅ | Dados empresa + defaults dos processos |
+| Modal Novo Produto | ✅ | Gera código automático (PREFIXO.LARGURA.GSM.SEQUENCIAL), auto-preenche tipo/matéria/NCM pela família, campo prefixo customizado para famílias novas |
+| Exportação para Omie | ✅ | Detecta itens novos (★), gera .xlsx no formato template Omie_Produtos_v1_9_5 |
+| Gerador de Etiquetas de Rolo | ✅ | .xlsx com aba por item (duas etiquetas lado a lado) + aba QTYE PER CUSTOMER |
+| Campo Cliente por item | ✅ | Coluna Cliente na tabela de itens do processo |
 
 ### Pendente
 
 | Item | Prioridade |
 |---|---|
-| Integração Omie via API (CORS) | Alta — painel-proxy.js existe, falta resolver CORS em produção |
+| Templates de descrição DI por família | Alta — banco_DI_cruzado_PILAR_v2.xlsx gerado, aguarda preenchimento manual |
+| HTTPS + domínio próprio no VPS | Média |
+| Integração Omie via proxy funcionando | ✅ Resolvido — 817 produtos sincronizados via API |
 | Formatação visual dos arquivos Excel | Média — cores, logo, estilos |
 | PDF cotação para cliente | Média |
 | Timeline SVG de pagamentos | Baixa |
-| Deploy nginx + PM2 com proxy | Baixa — para quando migrar para VPS |
+
+### Infraestrutura
+- **VPS:** 217.9.14.234:8080 (Node.js + PM2)
+- **Projeto:** `/opt/pilar-calculadora`
+- **Dados persistidos:** `dados.json` e `produtos.json` no servidor
+- **Credenciais Omie:** `pilar-config.json` (não versionado)
+- **GitHub:** github.com/henriquehog-cpu/pilar-calculadora
 
 ### Regras de negócio confirmadas em produção
 - Ao gerar Order Request: atualiza automaticamente `valor_fob` e `menor_fob` em `pilar_produtos`

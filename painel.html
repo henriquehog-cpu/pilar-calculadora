@@ -1554,9 +1554,9 @@ function npRecalcular() {
           oninput="s4Change(${i},'margem_pct',this.value)">
       </td>
       <td style="padding:3px 4px">
-        <input type="number" value="${pvF}" min="0.001" step="0.001" placeholder="—"
+        <input type="text" inputmode="decimal" value="${pvF}" placeholder="0.0000"
           style="width:76px;padding:4px 6px;border:1px solid #F9A825;border-radius:3px;font-size:12px;text-align:right;background:#FFFDE7"
-          oninput="s4Change(${i},'pv_fixo_usd',this.value)">
+          oninput="s4Change(${i},'pv_fixo_usd',this.value.replace(',','.'))">
       </td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;color:var(--cinza-med)">${R(r.custoImpUnit)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;font-weight:700;color:var(--turquesa-dark)">${R(r.pv)}</td>
