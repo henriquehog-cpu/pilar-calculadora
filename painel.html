@@ -194,6 +194,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .or-pg:last-child{page-break-after:avoid}
   .or-pg-tbl thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* ── Wizard Montagem ─────────────────────────────────── */
+#wiz-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center}
+#wiz-overlay.open{display:flex}
+#wiz-box{background:#fff;border-radius:12px;width:min(96vw,860px);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+#wiz-head{background:var(--primary);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+#wiz-head h3{margin:0;font-size:16px}
+#wiz-steps{display:flex;gap:6px;align-items:center;font-size:12px;opacity:.85}
+#wiz-steps span{padding:2px 10px;border-radius:20px;background:rgba(255,255,255,.2)}
+#wiz-steps span.active{background:#fff;color:var(--primary);font-weight:700}
+#wiz-body{padding:22px;overflow-y:auto;flex:1}
+#wiz-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;flex-shrink:0;background:#fafafa}
+.wiz-step{display:none}
+.wiz-step.on{display:block}
+#wiz-body label{display:block;font-size:12px;font-weight:600;color:#555;margin:10px 0 3px}
+#wiz-body input,#wiz-body select,#wiz-body textarea{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px}
+#wiz-body textarea:focus,#wiz-body input:focus,#wiz-body select:focus{outline:none;border-color:var(--primary)}
+.wiz-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.wiz-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+#wiz-preview-tbl{width:100%;border-collapse:collapse;font-size:12px}
+#wiz-preview-tbl th{background:var(--primary);color:#fff;padding:7px 8px;text-align:left;font-weight:600}
+#wiz-preview-tbl td{padding:6px 8px;border-bottom:1px solid var(--border)}
+#wiz-preview-tbl tr:hover td{background:#f0f9fb}
+#wiz-preview-tbl input[type=number]{width:80px;padding:4px 6px}
+#wiz-fob-bulk{display:flex;align-items:center;gap:8px;margin-bottom:12px;background:#f0f9fb;padding:10px 12px;border-radius:6px}
+#wiz-fob-bulk label{margin:0;font-size:12px;white-space:nowrap}
+#wiz-fob-bulk input{width:90px;flex-shrink:0}
+
 </style>
 </head>
 <body>
@@ -1361,10 +1389,13 @@ function renderProcessos() {
   document.getElementById('vc').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="font-size:18px;font-weight:700">Processos</h2>
-      <button class="btn btn-p" onclick="
-        document.querySelectorAll('.nav-link').forEach(el=>el.classList.remove('active'));
-        document.querySelector('.nav-link[onclick*=renderNovoProcesso]').classList.add('active');
-        renderNovoProcesso()">+ Novo Processo</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" onclick="
+          document.querySelectorAll('.nav-link').forEach(el=>el.classList.remove('active'));
+          document.querySelector('.nav-link[onclick*=renderNovoProcesso]').classList.add('active');
+          renderNovoProcesso()">+ Novo Processo</button>
+        <button class="btn btn-s" onclick="wizAbrir()" style="white-space:nowrap">📋 Importar Montagem</button>
+      </div>
     </div>
     <div class="card" style="margin-bottom:0">
       <div style="overflow-x:auto">
@@ -3340,5 +3371,463 @@ async function _apiCarregar() {
 </script>
 
 <div id="or-print-area"></div>
+
+<!-- ── Wizard Montagem de Container ──────────────────────────────────────── -->
+<div id="wiz-overlay">
+  <div id="wiz-box">
+    <div id="wiz-head">
+      <h3>📋 Importar Montagem de Container</h3>
+      <div id="wiz-steps">
+        <span id="wiz-s1" class="active">1 · Texto</span>
+        <span style="opacity:.5">›</span>
+        <span id="wiz-s2">2 · Dados</span>
+        <span style="opacity:.5">›</span>
+        <span id="wiz-s3">3 · Preview</span>
+      </div>
+    </div>
+    <div id="wiz-body">
+
+      <!-- ── ETAPA 1 ── -->
+      <div class="wiz-step on" id="wiz-e1">
+        <label>Texto da montagem recebido do representante</label>
+        <textarea id="wiz-texto" rows="11" placeholder="Cole aqui o texto da montagem...
+Exemplo:
+Portioli - 22 mil metros
+Levi - 17 mil metros
+Branco 20.000
+..."></textarea>
+        <div class="wiz-row" style="margin-top:14px">
+          <div>
+            <label>Largura (cm)</label>
+            <input type="number" id="wiz-largura" placeholder="ex: 255" min="1">
+          </div>
+          <div>
+            <label>Gramatura (GSM)</label>
+            <input type="number" id="wiz-gsm" placeholder="ex: 85" min="1">
+          </div>
+        </div>
+        <div class="wiz-row" style="margin-top:4px">
+          <div>
+            <label>Família</label>
+            <select id="wiz-familia"></select>
+          </div>
+          <div>
+            <label>Unidade</label>
+            <select id="wiz-unidade" onchange="wizToggleRolo()">
+              <option value="M">M (metros)</option>
+              <option value="PC">PC (peças)</option>
+            </select>
+          </div>
+        </div>
+        <div id="wiz-rolo-wrap" style="margin-top:4px">
+          <label>Metros por rolo</label>
+          <input type="number" id="wiz-rolo" value="160" min="1">
+        </div>
+      </div>
+
+      <!-- ── ETAPA 2 ── -->
+      <div class="wiz-step" id="wiz-e2">
+        <div class="wiz-row">
+          <div>
+            <label>Número PIL</label>
+            <input type="text" id="wiz-numero" placeholder="PIL-001-2026">
+          </div>
+          <div>
+            <label>Número Proforma</label>
+            <input type="text" id="wiz-proforma">
+          </div>
+        </div>
+        <div class="wiz-row">
+          <div>
+            <label>Cliente</label>
+            <input type="text" id="wiz-cliente">
+          </div>
+          <div>
+            <label>Fornecedor</label>
+            <input type="text" id="wiz-fornecedor">
+          </div>
+        </div>
+        <div class="wiz-row">
+          <div>
+            <label>País</label>
+            <input type="text" id="wiz-pais" value="China">
+          </div>
+          <div>
+            <label>Incoterm</label>
+            <select id="wiz-incoterm">
+              <option>FOB</option><option>CIF</option><option>EXW</option><option>CFR</option>
+            </select>
+          </div>
+        </div>
+        <div class="wiz-row3">
+          <div>
+            <label>Previsão Embarque</label>
+            <input type="date" id="wiz-embarque">
+          </div>
+          <div>
+            <label>Chegada Porto</label>
+            <input type="date" id="wiz-porto">
+          </div>
+          <div>
+            <label>Chegada Cliente</label>
+            <input type="date" id="wiz-chegada">
+          </div>
+        </div>
+        <div class="wiz-row3" style="margin-top:4px">
+          <div>
+            <label>Câmbio DI</label>
+            <div style="display:flex;gap:6px">
+              <input type="number" id="wiz-cambio-di" step="0.0001" placeholder="0.0000" style="flex:1">
+              <button class="btn btn-s" style="padding:7px 8px;font-size:11px;white-space:nowrap" onclick="fetchPTAX('wiz-cambio-di')">PTAX ↓</button>
+            </div>
+          </div>
+          <div>
+            <label>Câmbio Fiscal</label>
+            <input type="number" id="wiz-cambio-fiscal" step="0.0001" placeholder="0.0000">
+          </div>
+          <div>
+            <label>Câmbio Cliente</label>
+            <input type="number" id="wiz-cambio-cliente" step="0.0001" placeholder="0.0000">
+          </div>
+        </div>
+        <div class="wiz-row">
+          <div>
+            <label>Frete Internacional (USD)</label>
+            <input type="number" id="wiz-frete" step="0.01" placeholder="0.00" min="0">
+          </div>
+          <div>
+            <label>Nº de Containers</label>
+            <input type="number" id="wiz-containers" value="1" min="1">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ETAPA 3 ── -->
+      <div class="wiz-step" id="wiz-e3">
+        <div id="wiz-fob-bulk">
+          <label>Preencher todos FOB com: USD</label>
+          <input type="number" id="wiz-fob-bulk-val" step="0.001" placeholder="0.000">
+          <button class="btn btn-p" style="padding:6px 14px;font-size:12px" onclick="wizAplicarFobBulk()">Aplicar</button>
+        </div>
+        <table id="wiz-preview-tbl">
+          <thead>
+            <tr>
+              <th style="width:24px">★</th>
+              <th>Cor</th>
+              <th style="text-align:right">Qtd (m)</th>
+              <th style="text-align:right">Qtd (rolos)</th>
+              <th>Código</th>
+              <th>FOB Unit USD</th>
+            </tr>
+          </thead>
+          <tbody id="wiz-preview-body"></tbody>
+        </table>
+        <div id="wiz-parse-info" style="margin-top:10px;font-size:12px;color:#666"></div>
+      </div>
+
+    </div><!-- /wiz-body -->
+    <div id="wiz-foot">
+      <button class="btn btn-s" id="wiz-btn-back" onclick="wizBack()">← Voltar</button>
+      <button class="btn btn-p" id="wiz-btn-next" onclick="wizNext()">Próximo →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// WIZARD — Montagem de Container
+// ════════════════════════════════════════════════════════════
+let _wizStep = 1;
+let _wizItens = [];
+
+function wizAbrir() {
+  _wizStep = 1;
+  _wizItens = [];
+  wizAtualizarUI();
+
+  // Popular select de famílias
+  const famSel = document.getElementById('wiz-familia');
+  famSel.innerHTML = npmFamiliasDosCatalogo().map(f => `<option value="${f}">${f}</option>`).join('');
+
+  // Sugerir número de processo
+  const numEl = document.getElementById('wiz-numero');
+  if (!numEl.value) numEl.value = gerarNumero();
+
+  document.getElementById('wiz-overlay').classList.add('open');
+}
+
+function wizFechar() {
+  document.getElementById('wiz-overlay').classList.remove('open');
+}
+
+function wizToggleRolo() {
+  const u = document.getElementById('wiz-unidade').value;
+  document.getElementById('wiz-rolo-wrap').style.display = u === 'M' ? '' : 'none';
+}
+
+function wizAtualizarUI() {
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`wiz-e${i}`).classList.toggle('on', i === _wizStep);
+    document.getElementById(`wiz-s${i}`).classList.toggle('active', i === _wizStep);
+  }
+  const back = document.getElementById('wiz-btn-back');
+  const next = document.getElementById('wiz-btn-next');
+  back.style.visibility = _wizStep === 1 ? 'hidden' : 'visible';
+  next.textContent = _wizStep === 3 ? '✓ Criar Processo' : 'Próximo →';
+}
+
+function wizNext() {
+  if (_wizStep === 1) {
+    if (!wizValidarE1()) return;
+    wizIrParaE2();
+  } else if (_wizStep === 2) {
+    if (!wizValidarE2()) return;
+    wizIrParaE3();
+  } else if (_wizStep === 3) {
+    wizCriarProcesso();
+  }
+}
+
+function wizBack() {
+  if (_wizStep > 1) { _wizStep--; wizAtualizarUI(); }
+}
+
+function wizValidarE1() {
+  const texto = (document.getElementById('wiz-texto').value || '').trim();
+  if (!texto) { alert('Cole o texto da montagem antes de continuar.'); return false; }
+  const larg = document.getElementById('wiz-largura').value;
+  const gsm  = document.getElementById('wiz-gsm').value;
+  if (!larg || !gsm) { alert('Informe Largura e Gramatura.'); return false; }
+  return true;
+}
+
+function wizValidarE2() {
+  const num = (document.getElementById('wiz-numero').value || '').trim();
+  if (!num) { alert('Informe o número PIL.'); return false; }
+  return true;
+}
+
+function wizIrParaE2() { _wizStep = 2; wizAtualizarUI(); }
+
+function wizIrParaE3() {
+  _wizStep = 3;
+  wizAtualizarUI();
+  wizParsearTexto();
+  wizRenderPreview();
+}
+
+// ── Parser ──────────────────────────────────────────────────
+function wizParsearTexto() {
+  const texto   = document.getElementById('wiz-texto').value || '';
+  const unidade = document.getElementById('wiz-unidade').value;
+  const rolo    = parseInt(document.getElementById('wiz-rolo').value) || 160;
+  const largura = parseInt(document.getElementById('wiz-largura').value) || 0;
+  const gsm     = parseInt(document.getElementById('wiz-gsm').value) || 0;
+  const familia = document.getElementById('wiz-familia').value || '';
+
+  // Ignorar linhas de header/total
+  const ignorar = /^(segue|total|largura|gramatura|rolos?|pe[çc]as?|fob|price|medidas|obs|peso|compos)/i;
+  const linhas  = texto.split('\n');
+
+  _wizItens = [];
+
+  linhas.forEach(linha => {
+    const l = linha.trim();
+    if (!l) return;
+    if (ignorar.test(l)) return;
+
+    // Tenta capturar cor e quantidade
+    let cor = '', qtdMetros = 0;
+
+    // Padrão: "Cor - XX mil metros" | "Cor - XX.XXX" | "Cor XX.XXX" | "Cor XXXXX"
+    const mHifen = l.match(/^(.+?)\s*[-–]\s*(.+)$/);
+    if (mHifen) {
+      cor = mHifen[1].trim();
+      qtdMetros = wizParseQtd(mHifen[2]);
+    } else {
+      // Sem hífen — últimas palavras são número
+      const mSemHifen = l.match(/^(.+?)\s+(\d[\d.,]*(\s*mil)?\s*(metros?)?)\s*$/i);
+      if (mSemHifen) {
+        cor = mSemHifen[1].trim();
+        qtdMetros = wizParseQtd(mSemHifen[2]);
+      }
+    }
+
+    if (!cor || !qtdMetros) return;
+
+    // Gerar código e descrição
+    const info = npmInferirDaFamilia(familia) || { tipo: '', mp: '', largura: '', gsm: '' };
+    const cod  = wizGerarCodigoWiz(familia, largura, gsm, _wizItens);
+    const desc = npmGerarDescricao(info.tipo, info.mp, largura, gsm, cor.toUpperCase());
+
+    const qtdRolos = unidade === 'M' ? Math.ceil(qtdMetros / rolo) : qtdMetros;
+
+    const ncm = npmNCMdaFamilia(familia);
+    const al  = wizAliquotasDaFamilia(familia);
+
+    _wizItens.push({
+      id:           Date.now() + Math.random(),
+      codigo:       cod,
+      descricao:    desc,
+      cor:          cor.toUpperCase(),
+      quantidade:   qtdRolos,
+      quantidade_m: qtdMetros,
+      unidade:      unidade,
+      fob_unit_usd: 0,
+      ncm:          ncm,
+      gsm:          gsm,
+      largura_cm:   largura,
+      peso_liq_unit: 0,
+      peso_bruto_unit: 0,
+      margem_pct:   0.20,
+      pv_fixo_usd:  0,
+      is_novo:      true,
+      aliquotas:    al
+    });
+  });
+}
+
+function wizParseQtd(str) {
+  const s = (str || '').toLowerCase().replace(/metros?/,'').trim();
+  const milMatch = s.match(/([\d.,]+)\s*mil/);
+  if (milMatch) return Math.round(parseFloat(milMatch[1].replace(',', '.')) * 1000);
+  const num = s.replace(/[^0-9.,]/g, '').replace(',', '.');
+  if (!num) return 0;
+  return Math.round(parseFloat(num));
+}
+
+function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
+  const prefixo = `${familia}.${String(largura).padStart(3,'0')}.${String(gsm).padStart(3,'0')}.`;
+  const extrairSeq = cod => parseInt(((cod||'').split('.')[3]||'0'),10);
+  let max = 0;
+  JSON.parse(localStorage.getItem('pilar_produtos')||'[]').forEach(p => {
+    if ((p.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
+  });
+  itensAtuais.forEach(it => {
+    if (it.is_novo && (it.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(it.codigo));
+  });
+  return `${prefixo}${String(max + 1 + itensAtuais.filter(x => x.is_novo && (x.codigo||'').startsWith(prefixo)).length).padStart(4,'0')}`;
+}
+
+function wizAliquotasDaFamilia(familia) {
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
+  const ref   = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.aliquotas);
+  return ref?.aliquotas || {
+    ii:0.162, ipi:0, pis_importacao:0.021, cofins_importacao:0.1065,
+    pis_venda:0.0165, cofins_venda:0.076,
+    icms_intra:0.14, icms_inter:0.04,
+    reg_espec_intra:0.14, reg_espec_inter:0.015
+  };
+}
+
+// ── Render preview ──────────────────────────────────────────
+function wizRenderPreview() {
+  const tbody = document.getElementById('wiz-preview-body');
+  const unidade = document.getElementById('wiz-unidade').value;
+  const rolo    = parseInt(document.getElementById('wiz-rolo').value) || 160;
+
+  if (!_wizItens.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#999">Nenhum item encontrado. Verifique o texto colado.</td></tr>';
+    document.getElementById('wiz-parse-info').textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = _wizItens.map((it, i) => `
+    <tr>
+      <td style="text-align:center;color:#F9A825;font-weight:700">★</td>
+      <td>${it.cor}</td>
+      <td style="text-align:right">${(it.quantidade_m||0).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${unidade==='M' ? Math.ceil((it.quantidade_m||0)/rolo).toLocaleString('pt-BR') : (it.quantidade_m||0).toLocaleString('pt-BR')}</td>
+      <td style="font-family:monospace;font-size:11px">${it.codigo}</td>
+      <td><input type="number" step="0.001" min="0" placeholder="0.000"
+        value="${it.fob_unit_usd||''}"
+        oninput="_wizItens[${i}].fob_unit_usd=parseFloat(this.value)||0"
+        style="width:85px;padding:4px 6px"></td>
+    </tr>
+  `).join('');
+
+  const total = _wizItens.reduce((s,it) => s+(it.quantidade_m||0), 0);
+  document.getElementById('wiz-parse-info').textContent =
+    `${_wizItens.length} item(ns) encontrado(s) · Total: ${total.toLocaleString('pt-BR')} metros`;
+}
+
+function wizAplicarFobBulk() {
+  const v = parseFloat(document.getElementById('wiz-fob-bulk-val').value) || 0;
+  _wizItens.forEach(it => it.fob_unit_usd = v);
+  // Atualizar inputs da tabela
+  document.querySelectorAll('#wiz-preview-body input[type=number]').forEach(el => el.value = v || '');
+}
+
+// ── Criar processo ──────────────────────────────────────────
+function wizCriarProcesso() {
+  if (!_wizItens.length) { alert('Nenhum item para criar o processo.'); return; }
+
+  const cfg = JSON.parse(localStorage.getItem('pilar_config')||'{}');
+  const d   = cfg.defaults || {};
+  const numero = document.getElementById('wiz-numero').value.trim() || gerarNumero();
+
+  const processo = {
+    id:          Date.now(),
+    numero:      numero,
+    status:      'ativo',
+    criado_em:   new Date().toISOString(),
+    atualizado_em: new Date().toISOString(),
+    dados_gerais: {
+      data_pedido:          new Date().toISOString().slice(0,10),
+      cliente:              document.getElementById('wiz-cliente').value.trim(),
+      fornecedor:           document.getElementById('wiz-fornecedor').value.trim(),
+      pais:                 document.getElementById('wiz-pais').value.trim() || 'China',
+      incoterm:             document.getElementById('wiz-incoterm').value,
+      numero_proforma:      document.getElementById('wiz-proforma').value.trim(),
+      prev_embarque:        document.getElementById('wiz-embarque').value,
+      prev_chegada_porto:   document.getElementById('wiz-porto').value,
+      prev_chegada_cliente: document.getElementById('wiz-chegada').value
+    },
+    cambios: {
+      di:      { taxa: parseFloat(document.getElementById('wiz-cambio-di').value)     || 0 },
+      fiscal:  { taxa: parseFloat(document.getElementById('wiz-cambio-fiscal').value) || 0 },
+      cliente: { taxa: parseFloat(document.getElementById('wiz-cambio-cliente').value)|| 0 }
+    },
+    frete: {
+      valor_usd:     parseFloat(document.getElementById('wiz-frete').value)      || 0,
+      containers:    parseInt(document.getElementById('wiz-containers').value)   || 1,
+      dif_frete_pct: d.dif_frete_pct || 0.025
+    },
+    custos_defaults: {
+      siscomex:           d.siscomex            || 192.79,
+      despachante:        d.despachante          || 2500,
+      agente_cargas:      d.agente_cargas        || 1700,
+      armazenagem:        d.armazenagem          || 2500,
+      capatazia:          d.capatazia            || 1010,
+      operador_logistico: d.operador_logistico   || 1000,
+      comissao_pct:       d.comissao_pct         || 0.015,
+      frete_rodoviario:   0
+    },
+    itens: _wizItens
+  };
+
+  const todos = JSON.parse(localStorage.getItem('pilar_processos')||'[]');
+  todos.push(processo);
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));
+
+  wizFechar();
+  showToast(`Processo ${numero} criado com ${_wizItens.length} item(ns)!`);
+
+  // Redirecionar para edição
+  setTimeout(() => {
+    const link = Array.from(document.querySelectorAll('.nav-link'))
+      .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
+    if (link) navTo(link, renderProcessos);
+    else renderProcessos();
+    // Abrir edição do processo recém-criado
+    setTimeout(() => renderNovoProcesso(processo), 200);
+  }, 300);
+}
+
+// Fechar ao clicar fora
+document.getElementById('wiz-overlay').addEventListener('click', function(e) {
+  if (e.target === this) wizFechar();
+});
+</script>
 </body>
 </html>
