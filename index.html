@@ -76,6 +76,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .aliq-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .aliq-tag{background:var(--cinza-light);border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:11px;color:var(--cinza-med)}
 .aliq-tag b{color:var(--cinza)}
+/* cadastro de produto no banco */
+.btn-cad{margin-top:8px;background:none;border:1px dashed var(--turquesa);color:var(--turquesa-dark);border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-cad:hover{background:#E0F7FA}
+.cad-box{margin-top:10px;border:1px solid var(--turquesa);border-radius:6px;padding:12px;background:#F8FEFF}
+.cad-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cad-f{display:flex;flex-direction:column;gap:3px}
+.cad-f label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med)}
+.cad-f input{padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--cinza);font-family:inherit}
+.cad-f input:focus{outline:none;border-color:var(--turquesa)}
+.cad-f input[readonly]{background:#F0FAFB;border-color:var(--turquesa);color:#006064}
+.cad-ft{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cad-ft button{padding:7px 14px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit}
+.btn-cad-save{background:var(--turquesa);color:#fff}
+.btn-cad-edit{background:var(--cinza-light);color:var(--cinza);border:1px solid var(--border)}
+.btn-cad-cancel{background:none;color:var(--cinza-med);border:1px solid var(--border)}
+.cad-note{font-size:11px;color:var(--cinza-med);font-style:italic}
+.cad-toast{position:fixed;bottom:24px;right:24px;background:#37474F;color:#fff;padding:12px 20px;border-radius:6px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);z-index:9999}
 /* cotação */
 #cotacao-sec{display:none}
 .cot-wrap{max-width:1020px;margin:40px auto;padding:40px;background:#fff;box-shadow:0 0 20px rgba(0,0,0,.1)}
@@ -519,6 +536,7 @@ function fmtUSD(v) { return isFinite(v) && !isNaN(v) ? 'USD ' + fmt(v, 4) : '—
 function fmtPct(v) { return isFinite(v) && !isNaN(v) ? fmt(v * 100, 2) + '%' : '—'; }
 
 function setEl(id, val) { const e = document.getElementById(id); if (e) e.textContent = val; }
+function esc(s) { return (s == null ? '' : String(s)).replace(/"/g, '&quot;'); }
 
 // ============================================================
 // AFRMM
@@ -888,10 +906,11 @@ function itemHTML(id) {
         <label>Produto</label>
         <div class="ac-wrap">
           <input type="text" id="prod_${id}" placeholder="Digite para buscar produto..."
-                 oninput="filterAC(${id})" onkeydown="acKey(event,${id})" autocomplete="off">
+                 oninput="filterAC(${id});updateCadastroUI(${id})" onkeydown="acKey(event,${id})" autocomplete="off">
           <div class="ac-list" id="ac_${id}"></div>
         </div>
         <div class="aliq-row" id="aliq_${id}"></div>
+        <div class="cad-cont" id="cadastro_${id}"></div>
       </div>
       <div class="field">
         <label>NCM</label>
@@ -1076,6 +1095,10 @@ function selectProd(itemId, prodIdx) {
     ['ICMS inter', fmtPct(a.icms_inter)], ['Reg.Espec', fmtPct(a.reg_espec_inter)]
   ].map(([k,v]) => `<span class="aliq-tag">${k}: <b>${v}</b></span>`).join('');
 
+  const cadCont = document.getElementById('cadastro_' + itemId);
+  if (cadCont) cadCont.dataset.state = '';
+  updateCadastroUI(itemId);
+
   calcAll();
 }
 
@@ -1087,6 +1110,189 @@ document.addEventListener('click', e => {
       ac.style.display = 'none';
   });
 });
+
+// ============================================================
+// CADASTRO DE PRODUTO NO BANCO
+// ============================================================
+// [cadKey/prodKey, label, default %, itemAliqKey]
+const CAD_ALIQ = [
+  ['ii',                'II %',              16.2,  'ii'],
+  ['ipi',               'IPI %',             0,     'ipi'],
+  ['pis_importacao',    'PIS Imp. %',        2.1,   'pis_imp'],
+  ['cofins_importacao', 'COFINS Imp. %',     10.65, 'cof_imp'],
+  ['icms_intra',        'ICMS Intra %',      14,    'icms_intra'],
+  ['icms_inter',        'ICMS Inter %',      4,     'icms_inter'],
+  ['reg_espec_inter',   'Reg. Esp. Inter %', 1.5,   'reg_espec_inter']
+];
+
+function findProdByName(name) {
+  const q = (name || '').trim().toLowerCase();
+  if (!q) return null;
+  return produtos.find(p => (p.produto || '').trim().toLowerCase() === q) || null;
+}
+
+function cadToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'cad-toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// Decide o que mostrar abaixo do campo Produto conforme o item existe ou não
+function updateCadastroUI(id) {
+  const cont = document.getElementById('cadastro_' + id);
+  if (!cont) return;
+  if (cont.dataset.state === 'form' || (cont.dataset.state || '').startsWith('edit:')) return; // não perturba form/edição aberta
+
+  const name = (document.getElementById('prod_' + id)?.value || '').trim();
+  if (!name) { cont.innerHTML = ''; cont.dataset.state = ''; return; }
+
+  const prod = findProdByName(name);
+  if (prod) {
+    if (cont.dataset.state !== 'ro:' + name) {
+      setAliq(id, prod);
+      cadRender(id, 'readonly');
+      cont.dataset.state = 'ro:' + name;
+      calcAll();
+    }
+  } else if (cont.dataset.state !== 'cad') {
+    cont.innerHTML = `<button type="button" class="btn-cad" onclick="cadAbrir(${id})">＋ Cadastrar no banco</button>`;
+    cont.dataset.state = 'cad';
+  }
+}
+
+function cadAbrir(id) {
+  cadRender(id, 'new');
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) cont.dataset.state = 'form';
+}
+
+function cadCancelar(id) {
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) cont.dataset.state = '';
+  updateCadastroUI(id);
+}
+
+function cadEditar(id) {
+  const name = (document.getElementById('prod_' + id)?.value || '').trim();
+  cadRender(id, 'editcalc');
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) cont.dataset.state = 'edit:' + name;
+}
+
+// mode: 'new' | 'readonly' | 'editcalc'
+function cadRender(id, mode) {
+  const cont = document.getElementById('cadastro_' + id);
+  if (!cont) return;
+  const ro     = mode === 'readonly';
+  const isNew  = mode === 'new';
+  const roAttr = ro ? 'readonly' : '';
+  const prod   = isNew ? null : findProdByName(document.getElementById('prod_' + id)?.value);
+  const a      = itemAliq[id] || {};
+
+  const val = (cadKey, aliqKey, def) => {
+    if (a[aliqKey] != null)             return +(a[aliqKey] * 100).toFixed(4);
+    if (prod && prod[cadKey] != null)   return +(prod[cadKey] * 100).toFixed(4);
+    return def;
+  };
+
+  const ncmVal = prod?.ncm || document.getElementById('ncm_' + id)?.value || '';
+  const fobMenor = prod?.menor_fob ?? '';
+  const fobValor = prod?.valor_fob ?? '';
+  const liveAttr = ro ? '' : `oninput="cadAliqLive(${id})"`;
+
+  const aliqInputs = CAD_ALIQ.map(([cadKey, label, def, aliqKey]) =>
+    `<div class="cad-f"><label>${label}</label>
+       <input type="number" step="0.01" id="cad_${cadKey}_${id}" value="${val(cadKey, aliqKey, def)}" ${roAttr} ${liveAttr}></div>`
+  ).join('');
+
+  const ncmField = `<div class="cad-f"><label>NCM ${isNew ? '*' : ''}</label>
+       <input type="text" id="cad_ncm_${id}" value="${esc(ncmVal)}" placeholder="0000.00.00" ${roAttr} ${ro ? '' : `oninput="cadAliqLive(${id})"`}></div>`;
+
+  const fobFields = `
+       <div class="cad-f"><label>menor_fob</label><input type="number" step="0.0001" id="cad_menorfob_${id}" value="${fobMenor}" ${roAttr}></div>
+       <div class="cad-f"><label>valor_fob</label><input type="number" step="0.0001" id="cad_valorfob_${id}" value="${fobValor}" ${roAttr}></div>`;
+
+  let footer;
+  if (isNew) {
+    footer = `<button type="button" class="btn-cad-save" onclick="cadSalvar(${id})">Salvar no banco</button>
+              <button type="button" class="btn-cad-cancel" onclick="cadCancelar(${id})">Cancelar</button>`;
+  } else if (ro) {
+    footer = `<button type="button" class="btn-cad-edit" onclick="cadEditar(${id})">✏ Editar alíquotas</button>`;
+  } else {
+    footer = `<span class="cad-note">Ajuste aplicado apenas neste cálculo (não salva no banco).</span>`;
+  }
+
+  cont.innerHTML = `<div class="cad-box">
+    <div class="cad-grid">${ncmField}${aliqInputs}${fobFields}</div>
+    <div class="cad-ft">${footer}</div>
+  </div>`;
+}
+
+// Edição manual das alíquotas (sem salvar no banco) — atualiza só este cálculo
+function cadAliqLive(id) {
+  const a = itemAliq[id] || (itemAliq[id] = {});
+  CAD_ALIQ.forEach(([cadKey, , , aliqKey]) => {
+    const el = document.getElementById('cad_' + cadKey + '_' + id);
+    if (el) a[aliqKey] = (parseFloat(el.value) || 0) / 100;
+  });
+  const ncmEl = document.getElementById('cad_ncm_' + id);
+  const ncmDest = document.getElementById('ncm_' + id);
+  if (ncmEl && ncmDest) ncmDest.value = ncmEl.value;
+  renderAliqTags(id);
+  calcAll();
+}
+
+function renderAliqTags(id) {
+  const a = itemAliq[id], el = document.getElementById('aliq_' + id);
+  if (!a || !el) return;
+  el.innerHTML = [
+    ['II', fmtPct(a.ii)], ['IPI', fmtPct(a.ipi)],
+    ['PIS imp', fmtPct(a.pis_imp)], ['COFINS imp', fmtPct(a.cof_imp)],
+    ['ICMS inter', fmtPct(a.icms_inter)], ['Reg.Espec', fmtPct(a.reg_espec_inter)]
+  ].map(([k, v]) => `<span class="aliq-tag">${k}: <b>${v}</b></span>`).join('');
+}
+
+function cadSalvar(id) {
+  const ncm  = (document.getElementById('cad_ncm_' + id)?.value || '').trim();
+  const name = (document.getElementById('prod_' + id)?.value || '').trim();
+  if (!name) { alert('Preencha o nome do produto.'); return; }
+  if (!ncm)  { alert('NCM é obrigatório.'); return; }
+
+  const pct = cadKey => (parseFloat(document.getElementById('cad_' + cadKey + '_' + id)?.value) || 0) / 100;
+  const novo = {
+    produto: name, codigo: '', ncm,
+    ii: pct('ii'), ipi: pct('ipi'),
+    pis_importacao: pct('pis_importacao'), cofins_importacao: pct('cofins_importacao'),
+    pis_venda: 0.0165, cofins_venda: 0.076,
+    icms_intra: pct('icms_intra'), icms_inter: pct('icms_inter'),
+    reg_espec_intra: 0.14, reg_espec_inter: pct('reg_espec_inter')
+  };
+  const mf = parseFloat(document.getElementById('cad_menorfob_' + id)?.value);
+  const vf = parseFloat(document.getElementById('cad_valorfob_' + id)?.value);
+  if (isFinite(mf)) novo.menor_fob = mf;
+  if (isFinite(vf)) novo.valor_fob = vf;
+
+  const idx = produtos.findIndex(p => (p.produto || '').trim().toLowerCase() === name.toLowerCase());
+  if (idx >= 0) produtos[idx] = { ...produtos[idx], ...novo };
+  else produtos.push(novo);
+
+  localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+  fetch('/api/produtos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(produtos)
+  })
+    .then(r => cadToast(r.ok ? '✓ Produto salvo no banco' : 'Salvo localmente (servidor recusou)'))
+    .catch(() => cadToast('Salvo localmente (servidor indisponível)'));
+
+  setAliq(id, novo);
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) cont.dataset.state = '';
+  updateCadastroUI(id);
+  calcAll();
+}
 
 // ============================================================
 // COTAÇÃO
