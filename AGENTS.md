@@ -650,13 +650,15 @@ pm2 startup
 | Configurações | ✅ | Dados empresa + defaults dos processos |
 | Modal Novo Produto | ✅ | Gera código automático (PREFIXO.LARGURA.GSM.SEQUENCIAL), auto-preenche tipo/matéria/NCM pela família, campo prefixo customizado para famílias novas |
 | Exportação para Omie | ✅ | Detecta itens novos (★), gera .xlsx no formato template Omie_Produtos_v1_9_5 |
-| Gerador de Etiquetas de Rolo | ✅ | .xlsx com aba por item (duas etiquetas lado a lado) + aba QTYE PER CUSTOMER |
+| Gerador de Etiquetas de Rolo | ✅ | .xlsx com xlsx-js-style (bordas, negrito, cores turquesa), duas etiquetas por aba, aba QTYE PER CUSTOMER |
 | Campo Cliente por item | ✅ | Coluna Cliente na tabela de itens do processo |
+| PV Fixo USD | ✅ | Campo texto livre, aceita vírgula e ponto, recalcula no onblur sem reset do cursor |
 
 ### Pendente
 
 | Item | Prioridade |
 |---|---|
+| Etiquetas: bordas visíveis nas células e coluna COMPOSIÇÃO mais larga | Alta |
 | Templates de descrição DI por família | Alta — banco_DI_cruzado_PILAR_v2.xlsx gerado, aguarda preenchimento manual |
 | HTTPS + domínio próprio no VPS | Média |
 | Integração Omie via proxy funcionando | ✅ Resolvido — 817 produtos sincronizados via API |
