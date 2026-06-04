@@ -133,6 +133,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pipe-future{background:var(--cinza-light);color:var(--cinza-med);border:1px solid var(--border)}
 .pipe-line{display:inline-block;width:14px;height:2px;flex-shrink:0;vertical-align:middle}
 
+/* ── Modal Novo Produto ── */
+.npm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center}
+.npm-box{background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.25);width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column}
+.npm-hd{background:var(--turquesa);color:#fff;padding:14px 20px;border-radius:10px 10px 0 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.npm-bd{padding:20px;display:flex;flex-direction:column;gap:12px}
+.npm-preview{background:var(--cinza-light);border-radius:6px;padding:10px 14px;font-size:12px}
+.npm-preview .npm-cod{font-family:monospace;font-size:14px;font-weight:700;color:var(--turquesa-dark)}
+.npm-preview .npm-desc{color:var(--cinza-med);margin-top:3px;font-size:12px}
+.npm-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.npm-field{display:flex;flex-direction:column;gap:3px}
+.npm-field label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med)}
+.npm-field input,.npm-field select{padding:7px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--cinza);font-family:inherit;background:#fff}
+.npm-field input:focus,.npm-field select:focus{outline:none;border-color:var(--turquesa)}
+.npm-ft{padding:14px 20px;border-top:1px solid var(--cinza-light);display:flex;justify-content:flex-end;gap:10px;flex-shrink:0}
+
 /* ── Autocomplete ── */
 .ac-wrap{position:relative}
 .ac-list{position:fixed;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:260px;overflow-y:auto;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;min-width:320px}
@@ -864,7 +879,197 @@ function renderNovoProcesso(proc) {
 }
 
 function npAddItem() {
-  _itens.push(newItemRow());
+  npmAbrir();
+}
+
+// ── Modal Novo Produto ─────────────────────────────────────────────────────
+const NPM_FAMILIAS = [
+  'BLKT','MICL','MICE','VOIL','COBT','CBLT','COLC','RODP','ESCO',
+  'SHER','FLFL','TAPT','ALMO','TOAL','TAPE','STOR','CORT'
+];
+
+function npmFamiliasDosCatalogo() {
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const set = new Set(NPM_FAMILIAS);
+  prods.forEach(p => {
+    const pref = (p.codigo || '').slice(0, 4).toUpperCase();
+    if (/^[A-Z]{4}$/.test(pref)) set.add(pref);
+  });
+  return [...set].sort();
+}
+
+function npmNCMdaFamilia(familia) {
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const ncms = {};
+  prods.filter(p => (p.codigo || '').startsWith(familia))
+       .forEach(p => { if (p.ncm) ncms[p.ncm] = (ncms[p.ncm] || 0) + 1; });
+  return Object.entries(ncms).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+
+function npmProximoSequencial(familia, tamanho, gramatura) {
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const prefixo = `${familia}.${String(tamanho).padStart(3,'0')}.${String(gramatura).padStart(3,'0')}.`;
+  let max = 0;
+  prods.forEach(p => {
+    if ((p.codigo || '').startsWith(prefixo)) {
+      const seq = parseInt((p.codigo.split('.')[3] || '0'), 10);
+      if (seq > max) max = seq;
+    }
+  });
+  return String(max + 1).padStart(4, '0');
+}
+
+function npmGerarCodigo(familia, tamanho, gramatura) {
+  if (!familia || !tamanho || !gramatura) return '—';
+  const seq = npmProximoSequencial(familia, tamanho, gramatura);
+  return `${familia}.${String(tamanho).padStart(3,'0')}.${String(gramatura).padStart(3,'0')}.${seq}`;
+}
+
+function npmGerarDescricao(tipo, mp, tamanho, gsm, cor) {
+  const partes = [tipo, mp, tamanho ? tamanho+'CM' : '', gsm ? gsm+'GSM' : '', cor].filter(Boolean);
+  return partes.join(' ').toUpperCase();
+}
+
+function npmAtualizar() {
+  const familia  = document.getElementById('npm-familia')?.value || '';
+  const tipo     = (document.getElementById('npm-tipo')?.value || '').trim();
+  const mp       = (document.getElementById('npm-mp')?.value || '').trim();
+  const tamanho  = document.getElementById('npm-tamanho')?.value || '';
+  const gsm      = document.getElementById('npm-gsm')?.value || '';
+  const cor      = (document.getElementById('npm-cor')?.value || '').trim();
+
+  const cod  = npmGerarCodigo(familia, tamanho, gsm);
+  const desc = npmGerarDescricao(tipo, mp, tamanho, gsm, cor);
+
+  const elCod  = document.getElementById('npm-preview-cod');
+  const elDesc = document.getElementById('npm-preview-desc');
+  if (elCod)  elCod.textContent  = cod;
+  if (elDesc) elDesc.textContent = desc;
+
+  // NCM automático ao trocar família
+  const elNcm = document.getElementById('npm-ncm');
+  if (elNcm && !elNcm.dataset.edited) elNcm.value = npmNCMdaFamilia(familia);
+}
+
+function npmAbrir() {
+  if (document.getElementById('npm-overlay')) return;
+  const familias = npmFamiliasDosCatalogo();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'npm-overlay';
+  overlay.className = 'npm-overlay';
+  overlay.innerHTML = `
+    <div class="npm-box" onclick="event.stopPropagation()">
+      <div class="npm-hd">＋ Novo Produto</div>
+      <div class="npm-bd">
+        <div class="npm-preview">
+          <div class="npm-cod" id="npm-preview-cod">—</div>
+          <div class="npm-desc" id="npm-preview-desc">Preencha os campos abaixo</div>
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field">
+            <label>Família / Prefixo</label>
+            <select id="npm-familia" onchange="npmAtualizar()">
+              <option value="">— selecione —</option>
+              ${familias.map(f => `<option value="${f}">${f}</option>`).join('')}
+              <option value="OUTR">Outro…</option>
+            </select>
+          </div>
+          <div class="npm-field">
+            <label>NCM</label>
+            <input id="npm-ncm" type="text" placeholder="0000.00.00"
+              oninput="this.dataset.edited='1';npmAtualizar()">
+          </div>
+        </div>
+        <div class="npm-field">
+          <label>Tipo do Produto</label>
+          <input id="npm-tipo" type="text" placeholder="TEC. BLACKOUT LISO" oninput="npmAtualizar()">
+        </div>
+        <div class="npm-field">
+          <label>Matéria Prima</label>
+          <input id="npm-mp" type="text" placeholder="100% POLIÉSTER" oninput="npmAtualizar()">
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field">
+            <label>Largura / Tamanho (cm)</label>
+            <input id="npm-tamanho" type="number" min="0" step="1" placeholder="280" oninput="npmAtualizar()">
+          </div>
+          <div class="npm-field">
+            <label>Gramatura (GSM)</label>
+            <input id="npm-gsm" type="number" min="0" step="1" placeholder="200" oninput="npmAtualizar()">
+          </div>
+        </div>
+        <div class="npm-field">
+          <label>Cor / Estampa</label>
+          <input id="npm-cor" type="text" placeholder="AZUL MARINHO" oninput="npmAtualizar()">
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field">
+            <label>Unidade</label>
+            <select id="npm-unidade">
+              <option>M</option><option>PC</option><option>KG</option><option>MT</option>
+            </select>
+          </div>
+          <div class="npm-field" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="npm-field">
+              <label>Peso Líquido (kg/un)</label>
+              <input id="npm-peso-liq" type="number" min="0" step="0.001" placeholder="0.000">
+            </div>
+            <div class="npm-field">
+              <label>Peso Bruto (kg/un)</label>
+              <input id="npm-peso-bruto" type="number" min="0" step="0.001" placeholder="0.000">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="npm-ft">
+        <button class="btn btn-s" onclick="npmFechar()">Cancelar</button>
+        <button class="btn btn-p" onclick="npmConfirmar()">Adicionar ao Processo</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', npmFechar);
+  document.body.appendChild(overlay);
+  document.getElementById('npm-familia')?.focus();
+}
+
+function npmFechar() {
+  document.getElementById('npm-overlay')?.remove();
+}
+
+function npmConfirmar() {
+  const familia = document.getElementById('npm-familia')?.value || '';
+  const tamanho = document.getElementById('npm-tamanho')?.value || '';
+  const gsm     = document.getElementById('npm-gsm')?.value || '';
+
+  const codigo   = npmGerarCodigo(familia, tamanho, gsm);
+  const tipo     = (document.getElementById('npm-tipo')?.value || '').trim();
+  const mp       = (document.getElementById('npm-mp')?.value || '').trim();
+  const cor      = (document.getElementById('npm-cor')?.value || '').trim();
+  const descricao = npmGerarDescricao(tipo, mp, tamanho, gsm, cor);
+  const ncm      = (document.getElementById('npm-ncm')?.value || '').trim();
+  const unidade  = document.getElementById('npm-unidade')?.value || 'M';
+  const pesoLiq  = parseFloat(document.getElementById('npm-peso-liq')?.value) || 0;
+  const pesoBruto= parseFloat(document.getElementById('npm-peso-bruto')?.value) || 0;
+
+  if (!familia) { alert('Selecione a família/prefixo.'); return; }
+  if (!tamanho || !gsm) { alert('Preencha Largura e Gramatura para gerar o código.'); return; }
+
+  const novoItem = {
+    ...newItemRow(),
+    codigo,
+    descricao,
+    ncm,
+    unidade,
+    gsm:            parseFloat(gsm) || 0,
+    largura_cm:     parseFloat(tamanho) || 0,
+    cor,
+    peso_liq_unit:  pesoLiq,
+    peso_bruto_unit: pesoBruto,
+    is_novo:        true
+  };
+
+  _itens.push(novoItem);
+  npmFechar();
   npRenderItens();
   npRecalcular();
 }
