@@ -630,7 +630,7 @@ pm2 startup
 
 ---
 
-## 15. ESTADO ATUAL DO SISTEMA (2026-06-03)
+## 15. ESTADO ATUAL DO SISTEMA (2026-06-04)
 
 ### Acesso
 - **Frontend:** https://henriquehog-cpu.github.io/pilar-calculadora/painel.html
@@ -653,6 +653,7 @@ pm2 startup
 | Gerador de Etiquetas de Rolo | ✅ | .xlsx com xlsx-js-style (bordas, negrito, cores turquesa), duas etiquetas por aba, aba QTYE PER CUSTOMER |
 | Campo Cliente por item | ✅ | Coluna Cliente na tabela de itens do processo |
 | PV Fixo USD | ✅ | Campo texto livre, aceita vírgula e ponto, recalcula no onblur sem reset do cursor |
+| Cadastro de Produto (Calculadora) | ✅ | index.html: produto inexistente → "＋ Cadastrar no banco" (form inline NCM + alíquotas), salva via POST /api/produtos + localStorage; produto existente → alíquotas read-only com "✏ Editar alíquotas" (ajuste só no cálculo) |
 
 ### Pendente
 
@@ -679,3 +680,4 @@ pm2 startup
 - Distribuição de parcelas de recebimento: redistribuição automática de % ao adicionar/remover
 - Custos operacionais no Resumo: soma direta dos `custos_defaults` (despachante fixo + container × n)
 - calc.js usa alocação proporcional ao FOB para distribuir frete e custos de container entre itens
+- Calculadora (index.html) e Painel compartilham o banco de produtos via `POST /api/produtos` (array completo) + `localStorage.pilar_produtos`; produto novo salvo na calculadora grava `pis_venda:0.0165`, `cofins_venda:0.076`, `reg_espec_intra:0.14` por padrão (não expostos no form)
