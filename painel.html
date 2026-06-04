@@ -1514,13 +1514,21 @@ function npCalcResultado(proc) {
   };
 }
 
-function s4Change(i, campo, valor) {
+// Atualiza apenas o modelo (sem re-renderizar) — usado no oninput para não perder o foco
+function s4Set(i, campo, valor) {
+  const num = parseFloat(String(valor).replace(',', '.'));
   if (campo === 'margem_pct') {
-    _itens[i].margem_pct  = parseFloat(valor) / 100 || 0;
+    _itens[i].margem_pct  = num / 100 || 0;
     _itens[i].pv_fixo_usd = 0;
   } else {
-    _itens[i].pv_fixo_usd = parseFloat(valor) || 0;
+    console.log('pv_fixo_usd alterado:', valor, num);
+    _itens[i].pv_fixo_usd = num || 0;
   }
+}
+
+// Atualiza o modelo e recalcula — usado no onblur (ao sair do campo)
+function s4Change(i, campo, valor) {
+  s4Set(i, campo, valor);
   npRecalcular();
 }
 
@@ -1555,12 +1563,12 @@ function npRecalcular() {
       <td style="padding:3px 4px">
         <input type="number" value="${mg}" min="0" max="99" step="0.1"
           style="width:58px;padding:4px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right"
-          oninput="s4Change(${i},'margem_pct',this.value)">
+          oninput="s4Set(${i},'margem_pct',this.value)" onblur="npRecalcular()">
       </td>
       <td style="padding:3px 4px">
         <input type="text" inputmode="decimal" value="${pvF}" placeholder="ex: 0.4700"
           style="width:76px;padding:4px 6px;border:1px solid #F9A825;border-radius:3px;font-size:12px;text-align:right;background:#FFFDE7"
-          oninput="s4Change(${i},'pv_fixo_usd',parseFloat(this.value.replace(',','.')))">
+          oninput="s4Set(${i},'pv_fixo_usd',this.value)" onblur="npRecalcular()">
       </td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;color:var(--cinza-med)">${R(r.custoImpUnit)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px;white-space:nowrap;font-weight:700;color:var(--turquesa-dark)">${R(r.pv)}</td>
