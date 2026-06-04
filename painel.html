@@ -901,9 +901,44 @@ function npmFamiliasDosCatalogo() {
 function npmNCMdaFamilia(familia) {
   const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
   const ncms = {};
-  prods.filter(p => (p.codigo || '').startsWith(familia))
+  prods.filter(p => (p.codigo || '').startsWith(familia + '.'))
        .forEach(p => { if (p.ncm) ncms[p.ncm] = (ncms[p.ncm] || 0) + 1; });
   return Object.entries(ncms).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+
+function npmInferirDaFamilia(familia) {
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const dafam = prods.filter(p => (p.codigo || '').startsWith(familia + '.'));
+  if (!dafam.length) return null;
+
+  // Extrair tipo e MP da primeira descrição encontrada
+  const desc = (dafam[0].produto || '').trim().toUpperCase();
+  let tipo = '', mp = '';
+  const mTipo = desc.match(/^(.*?)\s+(?=\d+%)/);
+  const mMp   = desc.match(/(\d+%[^0-9]+?)(?=\s+\d+CM)/i);
+  if (mTipo) {
+    tipo = mTipo[1].trim();
+  } else {
+    // sem composição % — tipo é tudo antes da dimensão CM
+    const mAlt = desc.match(/^(.*?)\s+\d+CM/i);
+    if (mAlt) tipo = mAlt[1].trim();
+  }
+  if (mMp) mp = mMp[1].trim();
+
+  // Moda de largura e gramatura a partir dos códigos (PREF.LAR.GSM.SEQ)
+  const larg = {}, gsms = {};
+  dafam.forEach(p => {
+    const parts = (p.codigo || '').split('.');
+    if (parts.length >= 3) {
+      const l = parseInt(parts[1], 10), g = parseInt(parts[2], 10);
+      if (l) larg[l] = (larg[l] || 0) + 1;
+      if (g) gsms[g] = (gsms[g] || 0) + 1;
+    }
+  });
+  const largura = Object.entries(larg).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  const gsm     = Object.entries(gsms).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
+  return { tipo, mp, largura, gsm };
 }
 
 function npmProximoSequencial(familia, tamanho, gramatura) {
@@ -930,13 +965,47 @@ function npmGerarDescricao(tipo, mp, tamanho, gsm, cor) {
   return partes.join(' ').toUpperCase();
 }
 
+function npmResolverFamilia() {
+  const val = document.getElementById('npm-familia')?.value || '';
+  if (val === 'OUTR')
+    return (document.getElementById('npm-prefixo-outro')?.value || '').toUpperCase().slice(0, 4);
+  return val;
+}
+
 function npmAtualizar() {
-  const familia  = document.getElementById('npm-familia')?.value || '';
-  const tipo     = (document.getElementById('npm-tipo')?.value || '').trim();
-  const mp       = (document.getElementById('npm-mp')?.value || '').trim();
-  const tamanho  = document.getElementById('npm-tamanho')?.value || '';
-  const gsm      = document.getElementById('npm-gsm')?.value || '';
-  const cor      = (document.getElementById('npm-cor')?.value || '').trim();
+  const elFamilia = document.getElementById('npm-familia');
+  const familiaVal = elFamilia?.value || '';
+
+  // Mostrar/esconder campo de prefixo customizado
+  const outroWrap = document.getElementById('npm-outro-wrap');
+  if (outroWrap) outroWrap.style.display = familiaVal === 'OUTR' ? 'block' : 'none';
+
+  const familia = npmResolverFamilia();
+
+  // Auto-preencher campos quando família muda (só se o usuário não editou manualmente)
+  if (familia.length === 4) {
+    const prev = elFamilia?.dataset.familiaAnterior || '';
+    if (familia !== prev && familiaVal !== 'OUTR') {
+      if (elFamilia) elFamilia.dataset.familiaAnterior = familia;
+      const info = npmInferirDaFamilia(familia);
+      if (info) {
+        const elTipo = document.getElementById('npm-tipo');
+        const elMp   = document.getElementById('npm-mp');
+        const elTam  = document.getElementById('npm-tamanho');
+        const elGsm  = document.getElementById('npm-gsm');
+        if (elTipo && !elTipo.dataset.edited && info.tipo)    elTipo.value   = info.tipo;
+        if (elMp   && !elMp.dataset.edited   && info.mp)      elMp.value     = info.mp;
+        if (elTam  && !elTam.dataset.edited   && info.largura) elTam.value   = info.largura;
+        if (elGsm  && !elGsm.dataset.edited   && info.gsm)    elGsm.value   = info.gsm;
+      }
+    }
+  }
+
+  const tipo    = (document.getElementById('npm-tipo')?.value    || '').trim();
+  const mp      = (document.getElementById('npm-mp')?.value      || '').trim();
+  const tamanho = document.getElementById('npm-tamanho')?.value  || '';
+  const gsm     = document.getElementById('npm-gsm')?.value      || '';
+  const cor     = (document.getElementById('npm-cor')?.value     || '').trim();
 
   const cod  = npmGerarCodigo(familia, tamanho, gsm);
   const desc = npmGerarDescricao(tipo, mp, tamanho, gsm, cor);
@@ -944,11 +1013,11 @@ function npmAtualizar() {
   const elCod  = document.getElementById('npm-preview-cod');
   const elDesc = document.getElementById('npm-preview-desc');
   if (elCod)  elCod.textContent  = cod;
-  if (elDesc) elDesc.textContent = desc;
+  if (elDesc) elDesc.textContent = desc || 'Preencha os campos abaixo';
 
-  // NCM automático ao trocar família
   const elNcm = document.getElementById('npm-ncm');
-  if (elNcm && !elNcm.dataset.edited) elNcm.value = npmNCMdaFamilia(familia);
+  if (elNcm && !elNcm.dataset.edited && familia && familiaVal !== 'OUTR')
+    elNcm.value = npmNCMdaFamilia(familia);
 }
 
 function npmAbrir() {
@@ -974,6 +1043,11 @@ function npmAbrir() {
               ${familias.map(f => `<option value="${f}">${f}</option>`).join('')}
               <option value="OUTR">Outro…</option>
             </select>
+            <div id="npm-outro-wrap" style="display:none;margin-top:8px">
+              <input id="npm-prefixo-outro" type="text" maxlength="4" placeholder="XXXX"
+                style="text-transform:uppercase;font-family:monospace;font-weight:700;letter-spacing:3px;width:100%"
+                oninput="this.value=this.value.replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,4);npmAtualizar()">
+            </div>
           </div>
           <div class="npm-field">
             <label>NCM</label>
@@ -983,20 +1057,24 @@ function npmAbrir() {
         </div>
         <div class="npm-field">
           <label>Tipo do Produto</label>
-          <input id="npm-tipo" type="text" placeholder="TEC. BLACKOUT LISO" oninput="npmAtualizar()">
+          <input id="npm-tipo" type="text" placeholder="TEC. BLACKOUT LISO"
+            oninput="this.dataset.edited='1';npmAtualizar()">
         </div>
         <div class="npm-field">
           <label>Matéria Prima</label>
-          <input id="npm-mp" type="text" placeholder="100% POLIÉSTER" oninput="npmAtualizar()">
+          <input id="npm-mp" type="text" placeholder="100% POLIÉSTER"
+            oninput="this.dataset.edited='1';npmAtualizar()">
         </div>
         <div class="npm-g2">
           <div class="npm-field">
             <label>Largura / Tamanho (cm)</label>
-            <input id="npm-tamanho" type="number" min="0" step="1" placeholder="280" oninput="npmAtualizar()">
+            <input id="npm-tamanho" type="number" min="0" step="1" placeholder="280"
+              oninput="this.dataset.edited='1';npmAtualizar()">
           </div>
           <div class="npm-field">
             <label>Gramatura (GSM)</label>
-            <input id="npm-gsm" type="number" min="0" step="1" placeholder="200" oninput="npmAtualizar()">
+            <input id="npm-gsm" type="number" min="0" step="1" placeholder="200"
+              oninput="this.dataset.edited='1';npmAtualizar()">
           </div>
         </div>
         <div class="npm-field">
@@ -1037,7 +1115,7 @@ function npmFechar() {
 }
 
 function npmConfirmar() {
-  const familia = document.getElementById('npm-familia')?.value || '';
+  const familia = npmResolverFamilia();
   const tamanho = document.getElementById('npm-tamanho')?.value || '';
   const gsm     = document.getElementById('npm-gsm')?.value || '';
 
@@ -1051,7 +1129,7 @@ function npmConfirmar() {
   const pesoLiq  = parseFloat(document.getElementById('npm-peso-liq')?.value) || 0;
   const pesoBruto= parseFloat(document.getElementById('npm-peso-bruto')?.value) || 0;
 
-  if (!familia) { alert('Selecione a família/prefixo.'); return; }
+  if (!familia || familia.length < 4) { alert('Selecione ou digite a família/prefixo (4 letras).'); return; }
   if (!tamanho || !gsm) { alert('Preencha Largura e Gramatura para gerar o código.'); return; }
 
   const novoItem = {
