@@ -35,25 +35,30 @@ FONT_NORMAL = Font(name='Arial', size=9)
 FONT_LABEL  = Font(name='Arial', size=9, bold=True)
 FONT_TURQ   = Font(name='Arial', size=9, bold=True, color='00B5AD')
 
-# linhas (0-index) cujo VALOR sai em negrito turquesa: ORDEM NRO, CODIGO, CLIENTE
-TURQ_ROWS = {0, 1, 5}
+# Fontes/alinhamentos da etiqueta (conforme o modelo: Calibri)
+F_ET_LABEL = Font(name='Calibri', size=11, bold=True)
+F_ET_VALUE = Font(name='Calibri', size=11)
+F_ET_COMP  = Font(name='Calibri', size=9)
+AL_CENTER  = Alignment(horizontal='center', vertical='center')
+AL_COMP    = Alignment(horizontal='left',   vertical='center', wrap_text=True)
 
 
-def label_rows(proc, item):
-    """Retorna as 10 linhas da etiqueta como tuplas de 4 colunas."""
-    largura = item.get('largura_cm')
-    gsm     = item.get('gsm')
+def label_rows(proc, item, cliente):
+    """As 10 linhas da etiqueta (label, valor, label2, valor2) — conforme o modelo.
+    Sem GRAMATURA; linha LARGURA traz 'QNTY ROLOS' como campo duplo."""
+    largura  = item.get('largura_cm')
+    larg_txt = f'{largura}CM' if largura not in (None, '') else ''
     return [
-        ['ORDEM NRO',      str(proc.get('numero', '') or ''),            '',           ''],
-        ['CODIGO',         str(item.get('codigo', '') or ''),            '',           ''],
-        ['COMPOSIÇÃO',     str(item.get('composicao', '') or ''),        '',           ''],
-        ['LARGURA',        f'{largura}CM' if largura not in (None, '') else '', 'GRAMATURA', f'{gsm}GSM' if gsm not in (None, '') else ''],
-        ['ROLO',           '',                                           'de',         ''],
-        ['CLIENTE',        str(proc.get('cliente', '') or ''),           '',           ''],
-        ['PESO LÍQUIDO',   '',                                           'PESO BRUTO', ''],
-        ['IMPORTADOR',     IMPORTADOR,                                   '',           ''],
-        ['CNPJ',           CNPJ,                                         '',           ''],
-        ['PAÍS DE ORIGEM', PAIS,                                         '',           ''],
+        ('ORDEM NRO',      str(proc.get('numero', '') or ''),      None,         None),
+        ('CODIGO',         str(item.get('codigo', '') or ''),      None,         None),
+        ('COMPOSIÇÃO',     str(item.get('composicao', '') or ''),  None,         None),
+        (' LARGURA',       larg_txt,                               'QNTY ROLOS', None),
+        ('ROLO',           None,                                   'de',         None),
+        ('CLIENTE',        str(cliente or ''),                     None,         None),
+        ('PESO LÍQUIDO',   None,                                   'PESO BRUTO', None),
+        ('IMPORTADOR',     IMPORTADOR,                             None,         None),
+        ('CNPJ',           CNPJ,                                   None,         None),
+        ('PAÍS DE ORIGEM', PAIS,                                   None,         None),
     ]
 
 
@@ -82,28 +87,53 @@ def style_cell(ws, r, c, value, is_label, is_turq=False):
     return cell
 
 
-def montar_aba(ws, proc, item, logo_img_factory):
-    rows = label_rows(proc, item)
-    # blocos: (labelCol, valueCol, label2Col, value2Col) — esquerda 1-4, direita 6-9
-    blocos = [(1, 2, 3, 4), (6, 7, 8, 9)]
-    for ri, row in enumerate(rows):
-        excel_row = ri + 1
-        ws.row_dimensions[excel_row].height = 13.5  # ~18px
-        for (lc, vc, l2, v2) in blocos:
-            style_cell(ws, excel_row, lc, row[0], is_label=True)
-            style_cell(ws, excel_row, vc, row[1], is_label=False, is_turq=(ri in TURQ_ROWS))
-            tem_l2 = row[2] not in (None, '')
-            style_cell(ws, excel_row, l2, row[2], is_label=tem_l2)
-            style_cell(ws, excel_row, v2, row[3], is_label=False)
+def escrever_etiqueta(ws, R, base, spec, logo_factory):
+    """Escreve uma etiqueta (10 linhas) a partir da linha R, com colunas:
+    base=label, base+1=valor, base+2=label2, base+3=valor2 (merge até base+4).
+    Logo fica nas 3 linhas acima (R-3..R-1), mesclado base..base+4."""
+    lab, val, lab2, val2, mend = base, base + 1, base + 2, base + 3, base + 4
 
-    larguras = {1: 15, 2: 20, 3: 15, 4: 12, 5: 2, 6: 15, 7: 20, 8: 15, 9: 12}
-    for col, w in larguras.items():
-        ws.column_dimensions[get_column_letter(col)].width = w
+    # bordas em todo o retângulo da etiqueta (antes de mesclar)
+    for i in range(10):
+        for c in range(lab, mend + 1):
+            cc = ws.cell(row=R + i, column=c)
+            cc.border = BORDER
+            cc.font = F_ET_VALUE
+            cc.alignment = AL_CENTER
 
-    # Logo flutuante à direita das etiquetas (não desloca a grade); silencioso se ausente
-    img = logo_img_factory()
+    for i, (l, v, l2, v2) in enumerate(spec):
+        r = R + i
+        lc = ws.cell(row=r, column=lab, value=l)
+        lc.font = F_ET_LABEL; lc.alignment = AL_CENTER; lc.border = BORDER
+        if l2 is None:
+            # valor de largura total (merge valor..fim)
+            ws.merge_cells(start_row=r, start_column=val, end_row=r, end_column=mend)
+            vc = ws.cell(row=r, column=val, value=(v if v not in (None, '') else None))
+            vc.border = BORDER
+            if l == 'COMPOSIÇÃO':
+                vc.font = F_ET_COMP; vc.alignment = AL_COMP
+                ws.row_dimensions[r].height = 45
+            else:
+                vc.font = F_ET_VALUE; vc.alignment = AL_CENTER
+        else:
+            # linha com campo duplo: valor em col única + label2 + valor2 (merge val2..fim)
+            vc = ws.cell(row=r, column=val, value=(v if v not in (None, '') else None))
+            vc.font = F_ET_VALUE; vc.alignment = AL_CENTER; vc.border = BORDER
+            l2c = ws.cell(row=r, column=lab2, value=l2)
+            l2c.font = F_ET_LABEL; l2c.alignment = AL_CENTER; l2c.border = BORDER
+            ws.merge_cells(start_row=r, start_column=val2, end_row=r, end_column=mend)
+            v2c = ws.cell(row=r, column=val2, value=(v2 if v2 not in (None, '') else None))
+            v2c.font = F_ET_VALUE; v2c.alignment = AL_CENTER; v2c.border = BORDER
+
+    # Logo acima da etiqueta (mesclado nas 3 linhas), 80x30px; silencioso se ausente
+    logo_top = R - 3
+    ws.merge_cells(start_row=logo_top, start_column=lab, end_row=R - 1, end_column=mend)
+    ws.row_dimensions[logo_top].height = 15
+    ws.row_dimensions[logo_top + 1].height = 15
+    ws.row_dimensions[R - 1].height = 31.5
+    img = logo_factory()
     if img is not None:
-        ws.add_image(img, 'K1')
+        ws.add_image(img, f'{get_column_letter(lab)}{logo_top}')
 
 
 def montar_qtye(wb, proc):
@@ -152,31 +182,45 @@ def main():
         sys.stderr.write('Processo sem itens.\n')
         sys.exit(1)
 
-    # Fábrica de imagem: cria uma instância nova por aba (openpyxl não reaproveita a mesma).
+    # Fábrica de imagem: instância nova por uso (openpyxl não reaproveita a mesma). 80x30px.
     def logo_img_factory():
         if not logo_path or not os.path.isfile(logo_path):
             return None
         try:
             from openpyxl.drawing.image import Image as XLImage
             img = XLImage(logo_path)
-            # limita altura a ~50px mantendo proporção
-            if img.height:
-                ratio = 50.0 / float(img.height)
-                img.height = 50
-                img.width = int(img.width * ratio)
+            img.width = 80
+            img.height = 30
             return img
         except Exception as e:
             sys.stderr.write('Logo ignorado (%s)\n' % e)
             return None
 
+    cliente_proc = str(proc.get('cliente', '') or '').strip()
+    nome_cliente = cliente_proc or str((itens[0].get('cliente') or '')).strip() or 'ETIQUETAS'
+
     wb = Workbook()
     wb.remove(wb.active)  # remove a planilha vazia inicial
     usados = set()
+    ws = wb.create_sheet(title=sanitize_sheet_name(nome_cliente, usados))
 
-    for i, item in enumerate(itens):
-        nome = sanitize_sheet_name('%d_%s' % (i + 1, item.get('codigo') or 'ITEM'), usados)
-        ws = wb.create_sheet(title=nome)
-        montar_aba(ws, proc, item, logo_img_factory)
+    # larguras de coluna conforme o modelo (A margem; B-F esquerda; G separador; H-L direita)
+    larguras = {1: 13, 2: 15.8, 3: 13, 4: 16.5, 5: 11.8, 6: 13.45,
+                7: 3.36, 8: 15.8, 9: 13, 10: 16.5, 11: 11.8, 12: 13.45}
+    for col, w in larguras.items():
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    # 2 etiquetas por linha; cada grupo ocupa 14 linhas (3 logo + 10 rótulos + 1 separação)
+    for p in range(0, len(itens), 2):
+        grupo = p // 2
+        R = 5 + grupo * 14  # linha inicial dos rótulos
+        esq = itens[p]
+        cli_e = str(esq.get('cliente') or cliente_proc or '')
+        escrever_etiqueta(ws, R, 2, label_rows(proc, esq, cli_e), logo_img_factory)
+        if p + 1 < len(itens):
+            dir_ = itens[p + 1]
+            cli_d = str(dir_.get('cliente') or cliente_proc or '')
+            escrever_etiqueta(ws, R, 8, label_rows(proc, dir_, cli_d), logo_img_factory)
 
     montar_qtye(wb, proc)
 
