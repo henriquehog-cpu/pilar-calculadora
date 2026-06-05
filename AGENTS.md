@@ -630,7 +630,7 @@ pm2 startup
 
 ---
 
-## 15. ESTADO ATUAL DO SISTEMA (2026-06-04)
+## 15. ESTADO ATUAL DO SISTEMA (2026-06-05)
 
 ### Acesso
 - **Frontend:** https://henriquehog-cpu.github.io/pilar-calculadora/painel.html
@@ -654,12 +654,17 @@ pm2 startup
 | Campo Cliente por item | ✅ | Coluna Cliente na tabela de itens do processo |
 | PV Fixo USD | ✅ | Campo texto livre, aceita vírgula e ponto, recalcula no onblur sem reset do cursor |
 | Cadastro de Produto (Calculadora) | ✅ | index.html: produto inexistente → "＋ Cadastrar no banco" (form inline NCM + alíquotas), salva via POST /api/produtos + localStorage; produto existente → alíquotas read-only com "✏ Editar alíquotas" (ajuste só no cálculo) |
+| Wizard Importar Montagem | ✅ | Botão "📋 Importar Montagem" ao lado de "+ Novo Processo"; 3 etapas: texto livre → dados do processo → preview com FOB editável por item; parser aceita "22 mil metros", "22.000" etc; cria processo completo com itens novos (★) |
+| Etiquetas HTML | ✅ | Sub-aba "🏷️ Etiquetas" dentro do Order Request; layout print-ready, 2 por linha, logo PILAR, @media print esconde o resto; substitui o gerador xlsx |
+| Persistência no servidor | ✅ | Processos salvos em dados.json via /api/processos (GET/POST/DELETE); localStorage como cache; servidor prevalece no init |
+| Banco DI automático | ✅ | banco_di.json servido por GET /api/banco-di; carrega automático ao abrir Resumo Despachante; lookup por prefixo (4 letras) com substituição de GSM e largura |
+| Alíquotas II corrigidas | ✅ | 28 itens nos processos PIL-005/006/048 corrigidos via script por NCM (produtos_com_aliquotas.json); II agora calculado corretamente (ex: 26% para NCMs 5407.x) |
 
 ### Pendente
 
 | Item | Prioridade |
 |---|---|
-| Etiquetas: bordas visíveis nas células e coluna COMPOSIÇÃO mais larga | Alta |
+| produtos.json do Omie não tem alíquotas de importação (ii=0); fonte correta é produtos_com_aliquotas.json (332 produtos, 325 com ii>0) — manter sincronizado com o banco da calculadora | Alta |
 | Templates de descrição DI por família | Alta — banco_DI_cruzado_PILAR_v2.xlsx gerado, aguarda preenchimento manual |
 | HTTPS + domínio próprio no VPS | Média |
 | Integração Omie via proxy funcionando | ✅ Resolvido — 817 produtos sincronizados via API |
