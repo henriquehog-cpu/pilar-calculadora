@@ -20,7 +20,9 @@ import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
-from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
+from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+from openpyxl.drawing.xdr import XDRPositiveSize2D
+from openpyxl.utils.units import pixels_to_EMU
 
 LOGO_PADRAO = '/opt/pilar-calculadora/logo_pilar.png'
 IMPORTADOR  = 'PILAR IMPORTS LTDA'
@@ -134,12 +136,13 @@ def escrever_etiqueta(ws, R, base, spec, logo_factory, logo_cols):
     ws.row_dimensions[R - 1].height = 31.5
     img = logo_factory()
     if img is not None:
-        # TwoCellAnchor centraliza o logo na área acima da etiqueta.
-        # Colunas (0-index) vêm de logo_cols; linhas: R-4 (topo) → R-1 (início dos rótulos).
-        anchor = TwoCellAnchor()
-        anchor._from = AnchorMarker(col=logo_cols[0], colOff=0, row=R - 4, rowOff=0)
-        anchor.to    = AnchorMarker(col=logo_cols[1], colOff=0, row=R - 1, rowOff=0)
-        img.anchor = anchor
+        # OneCellAnchor com ext fixo (200x55px) — posiciona sem distorcer.
+        # Âncora em logo_cols[0] (esquerda col=1/B, direita col=6/G), topo da área (R-4).
+        logo_row = R - 4
+        marker = AnchorMarker(col=logo_cols[0], colOff=pixels_to_EMU(10),
+                              row=logo_row, rowOff=pixels_to_EMU(5))
+        img.anchor = OneCellAnchor(_from=marker,
+                                   ext=XDRPositiveSize2D(pixels_to_EMU(200), pixels_to_EMU(55)))
         ws.add_image(img)
 
 
@@ -196,8 +199,7 @@ def main():
         try:
             from openpyxl.drawing.image import Image as XLImage
             img = XLImage(logo_path)
-            img.width = 200
-            img.height = 60
+            # tamanho controlado pelo XDRPositiveSize2D no anchor (sem distorção)
             return img
         except Exception as e:
             sys.stderr.write('Logo ignorado (%s)\n' % e)
