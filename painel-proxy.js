@@ -25,6 +25,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
   '.ico':  'image/x-icon',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
 function lerConfig() {
@@ -214,6 +215,38 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, {
           'Content-Type': MIME['.xlsx'],
           'Content-Disposition': `attachment; filename="ETIQUETAS_${numero}.xlsx"`,
+          'Content-Length': buf.length
+        });
+        res.end(buf);
+      });
+      py.stdin.write(JSON.stringify(data || {}));
+      py.stdin.end();
+    }).catch(() => json(res, 400, { erro: 'Body JSON inválido' }));
+    return;
+  }
+
+  // ── POST /api/proposta ─────────────────────────────────────────────────────
+  // Recebe os campos da proposta e devolve o .docx gerado por gerar_proposta.py.
+  if (req.method === 'POST' && url === '/api/proposta') {
+    readBody(req).then(data => {
+      const py = spawn('python3', [path.join(ROOT, 'gerar_proposta.py')]);
+      const chunks = [];
+      let errBuf = '';
+      py.stdout.on('data', c => chunks.push(c));
+      py.stderr.on('data', c => { errBuf += c; });
+      py.on('error', err =>
+        json(res, 500, { erro: 'Falha ao executar python3: ' + err.message }));
+      py.on('close', code => {
+        if (code !== 0)
+          return json(res, 500, { erro: 'gerar_proposta.py falhou', detalhe: errBuf.trim() });
+        const buf = Buffer.concat(chunks);
+        const numero = (data && data.numero_pil) || 'PROPOSTA';
+        const cliente = ((data && data.cliente) || '').replace(/[\\/:*?"<>|]/g, '').trim();
+        const nomeArq = `Proposta Comercial ${numero}${cliente ? ' - ' + cliente : ''}.docx`;
+        cors(res);
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(nomeArq)}`,
           'Content-Length': buf.length
         });
         res.end(buf);

@@ -280,6 +280,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <a class="nav-link" href="#" onclick="return navTo(this, renderOrderRequest)">
       <span class="nav-icon">📋</span> Order Request
     </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderProposta)">
+      <span class="nav-icon">📄</span> Proposta Comercial
+    </a>
     <a class="nav-link" href="#" onclick="return navTo(this, renderResumoDespachante)">
       <span class="nav-icon">📄</span> Resumo Despachante
     </a>
@@ -2741,6 +2744,222 @@ function toast(msg) {
   el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#37474F;color:#fff;padding:12px 20px;border-radius:6px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);z-index:9999;max-width:400px;animation:toastIn .2s ease';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 4000);
+}
+
+// ── Proposta Comercial ──────────────────────────────────────────────────────
+let _propProcesso = null;
+
+function renderProposta() {
+  _propProcesso = null;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+
+  const opts = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione um processo —</option>' +
+      todos.map(p => {
+        const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${p.numero} — ${g.cliente || g.fornecedor || 'sem nome'}</option>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:980px">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:14px">Proposta Comercial</h2>
+
+      <div class="card">
+        <div class="card-hd tq">Selecionar Processo</div>
+        <div class="card-bd">
+          <div class="field" style="margin-bottom:0">
+            <label>Processo</label>
+            <select id="prop-select" onchange="propSelecionar(this.value)">${opts}</select>
+          </div>
+        </div>
+      </div>
+
+      <div id="prop-form" style="display:none">
+        <div class="card">
+          <div class="card-hd">Mercadoria</div>
+          <div class="card-bd">
+            <div class="field">
+              <label>Descrição resumida</label>
+              <input id="prop-desc" type="text" oninput="propRecalc()"
+                placeholder="Ex: Tecido Microfibra 85gsm estampada 250cm de largura">
+            </div>
+            <div class="g3">
+              <div class="field"><label>Quantidade total</label>
+                <input id="prop-qtd" type="number" step="any" min="0" oninput="propRecalc()"></div>
+              <div class="field"><label>Unidade</label>
+                <input id="prop-unidade" type="text" placeholder="metros"></div>
+              <div class="field"><label>FOB unitário (USD)</label>
+                <input id="prop-fobunit" type="number" step="any" min="0" oninput="propRecalc()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">Sinal</div>
+          <div class="card-bd">
+            <div class="g3">
+              <div class="field"><label>% do sinal</label>
+                <input id="prop-pctsinal" type="number" step="any" min="0" max="100" value="20" oninput="propRecalc()"></div>
+              <div class="field"><label>Câmbio do sinal (R$/USD)</label>
+                <input id="prop-cambio" type="number" step="any" min="0" oninput="propRecalc()"></div>
+              <div class="field"><label>&nbsp;</label>
+                <div style="font-size:12px;color:var(--cinza-med);padding-top:9px">Saldo: <b id="prop-pctsaldo">80</b>%</div></div>
+            </div>
+            <div class="g2">
+              <div class="field"><label>Data do fechamento do câmbio</label>
+                <input id="prop-datasinal" type="date"></div>
+              <div class="field"><label>Vencimento do sinal</label>
+                <input id="prop-datavenc" type="date"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">Condições gerais</div>
+          <div class="card-bd">
+            <div class="g3">
+              <div class="field"><label>Dias antes do desembarque (saldo)</label>
+                <input id="prop-diasantes" type="number" step="1" min="0" value="20"></div>
+              <div class="field"><label>Frete por container (USD)</label>
+                <input id="prop-frete" type="number" step="any" min="0" placeholder="2200"></div>
+              <div class="field"><label>Prazo de entrega (dias)</label>
+                <input id="prop-prazo" type="number" step="1" min="0" value="60"></div>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Observações adicionais</label>
+              <textarea id="prop-obs" rows="3" placeholder="Texto opcional inserido antes da formalização."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd tq">Resumo</div>
+          <div class="card-bd">
+            <div class="sum-grid">
+              <div class="sum-item"><div class="val">USD <span id="prop-fobtotal">0,00</span></div><div class="lbl">FOB Total</div></div>
+              <div class="sum-item"><div class="val">USD <span id="prop-sinalusd">0,00</span></div><div class="lbl">Sinal (USD)</div></div>
+              <div class="sum-item"><div class="val">R$ <span id="prop-sinalbrl">0,00</span></div><div class="lbl">Sinal (R$)</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:30px">
+          <button class="btn btn-p" id="btn-prop-gerar" onclick="gerarProposta()">📄 Gerar Proposta (.docx)</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function propSelecionar(id) {
+  const form = document.getElementById('prop-form');
+  if (!id) { _propProcesso = null; form.style.display = 'none'; return; }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _propProcesso = todos.find(p => p.id == id) || null;
+  if (!_propProcesso) { form.style.display = 'none'; return; }
+
+  const proc = _propProcesso;
+  const g     = proc.dados_gerais || {};
+  const c     = proc.cambios || {};
+  const itens = proc.itens || [];
+
+  const qtd = itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0), 0);
+  const fobTotal = (proc.resultado && proc.resultado.fob_total_usd)
+    || itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0) * (parseFloat(it.fob_unit_usd) || 0), 0);
+  const fobUnit = qtd > 0 ? fobTotal / qtd : (parseFloat((itens[0] || {}).fob_unit_usd) || 0);
+
+  // unidade mais comum entre os itens
+  const cont = {};
+  itens.forEach(it => { const u = (it.unidade || '').trim(); if (u) cont[u] = (cont[u] || 0) + 1; });
+  const unidade = Object.keys(cont).sort((a, b) => cont[b] - cont[a])[0] || 'metros';
+
+  const desc = (itens[0] && (itens[0].descricao || itens[0].codigo)) || '';
+  const frete = (parseFloat(proc.frete_internacional_usd) || 0) >= 100
+    ? parseFloat(proc.frete_internacional_usd) : 2200;
+  const isoData = v => /^\d{4}-\d{2}-\d{2}/.test(v || '') ? String(v).slice(0, 10) : '';
+
+  document.getElementById('prop-desc').value     = desc;
+  document.getElementById('prop-qtd').value      = qtd || '';
+  document.getElementById('prop-unidade').value  = unidade;
+  document.getElementById('prop-fobunit').value  = fobUnit ? +fobUnit.toFixed(4) : '';
+  document.getElementById('prop-pctsinal').value = 20;
+  document.getElementById('prop-cambio').value   = parseFloat(c.cambio_sinal) || '';
+  document.getElementById('prop-datasinal').value = isoData(g.data_pedido);
+  document.getElementById('prop-datavenc').value  = '';
+  document.getElementById('prop-diasantes').value = 20;
+  document.getElementById('prop-frete').value     = frete;
+  document.getElementById('prop-prazo').value     = 60;
+  document.getElementById('prop-obs').value       = '';
+
+  form.style.display = 'block';
+  propRecalc();
+}
+
+function propRecalc() {
+  const n = id => parseFloat(document.getElementById(id).value) || 0;
+  const qtd = n('prop-qtd'), fobUnit = n('prop-fobunit'),
+        pct = n('prop-pctsinal'), cambio = n('prop-cambio');
+  const fobTotal = qtd * fobUnit;
+  const sinalUsd = fobTotal * pct / 100;
+  const sinalBrl = sinalUsd * cambio;
+  document.getElementById('prop-pctsaldo').textContent = fmtN(100 - pct, 0).split(',')[0];
+  document.getElementById('prop-fobtotal').textContent = fmtN(fobTotal, 2);
+  document.getElementById('prop-sinalusd').textContent = fmtN(sinalUsd, 2);
+  document.getElementById('prop-sinalbrl').textContent = fmtN(sinalBrl, 2);
+}
+
+async function gerarProposta() {
+  if (!_propProcesso) { toast('Selecione um processo.'); return; }
+  const v = id => document.getElementById(id).value;
+  const numero  = _propProcesso.numero || '';
+  const cliente = (_propProcesso.dados_gerais || {}).cliente || '';
+
+  const payload = {
+    numero_pil: numero,
+    cliente,
+    descricao_resumida: v('prop-desc'),
+    qtd_total: parseFloat(v('prop-qtd')) || 0,
+    unidade: v('prop-unidade') || 'metros',
+    fob_unit: parseFloat(v('prop-fobunit')) || 0,
+    pct_sinal: parseFloat(v('prop-pctsinal')) || 0,
+    cambio_sinal: parseFloat(v('prop-cambio')) || 0,
+    data_sinal: v('prop-datasinal'),
+    data_venc_sinal: v('prop-datavenc'),
+    dias_antes_desembarque: parseFloat(v('prop-diasantes')) || 0,
+    frete_usd: parseFloat(v('prop-frete')) || 0,
+    prazo_entrega: parseFloat(v('prop-prazo')) || 0,
+    observacoes: v('prop-obs')
+  };
+
+  const btn = document.getElementById('btn-prop-gerar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/proposta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      let det = '';
+      try { det = (await r.json()).detalhe || ''; } catch {}
+      toast(`Erro ao gerar proposta (HTTP ${r.status})${det ? ': ' + det : ''}`);
+      return;
+    }
+    const blob = await r.blob();
+    const link = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = link;
+    a.download = `Proposta Comercial ${numero}${cliente ? ' - ' + cliente : ''}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(link);
+    toast(`✓ Proposta gerada: ${a.download}`);
+  } catch (e) {
+    toast('Falha na conexão com o servidor.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Order Request ──────────────────────────────────────────────────────────

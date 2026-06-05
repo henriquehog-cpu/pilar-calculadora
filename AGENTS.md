@@ -659,6 +659,7 @@ pm2 startup
 | Persistência no servidor | ✅ | Processos salvos em dados.json via /api/processos (GET/POST/DELETE); localStorage como cache; servidor prevalece no init |
 | Banco DI automático | ✅ | banco_di.json servido por GET /api/banco-di; carrega automático ao abrir Resumo Despachante; lookup por prefixo (4 letras) com substituição de GSM e largura |
 | Alíquotas II corrigidas | ✅ | 28 itens nos processos PIL-005/006/048 corrigidos via script por NCM (produtos_com_aliquotas.json); II agora calculado corretamente (ex: 26% para NCMs 5407.x) |
+| Proposta Comercial | ✅ | Módulo entre Order Request e Resumo Despachante; gera .docx a partir de `proposta_modelo.docx` (modelo Word real com placeholders `{{...}}`) via `POST /api/proposta` → `gerar_proposta.py`; campos editáveis pré-preenchidos do processo (descrição, qtd, FOB unit, % sinal, câmbio, datas, dias antes desembarque, frete, prazo, observações); valores e extenso em PT-BR calculados em Python sem dependências; modelo preparado por `_preparar_modelo.py` |
 
 ### Pendente
 
