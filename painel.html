@@ -2507,9 +2507,81 @@ function gerarResumoDespachante() {
 
   const numeroDI = val('rd-duimp');
   const obs      = val('rd-obs');
+  const built    = buildDespachante(_rdProcesso, numeroDI, obs);
   const wb       = XLSX.utils.book_new();
-  const ws       = XLSX.utils.aoa_to_sheet(buildDespachante(_rdProcesso, numeroDI, obs));
-  ws['!cols']    = [{wch:22},{wch:38},{wch:38},{wch:14},{wch:8},{wch:6},{wch:13},{wch:13},{wch:10},{wch:10},{wch:6},{wch:10}];
+  const ws       = XLSX.utils.aoa_to_sheet(built.rows);
+  ws['!cols']    = [{wch:22},{wch:38},{wch:40},{wch:14},{wch:8},{wch:6},{wch:13},{wch:13},{wch:10},{wch:10},{wch:6},{wch:10}];
+
+  // ── Estilos — identidade visual Pilar Imports ──
+  const NCOLS  = 12;
+  const thin   = { style: 'thin',   color: { rgb: 'BFBFBF' } };
+  const medium = { style: 'medium', color: { rgb: '1F3864' } };
+  const bThin  = { top: thin,   bottom: thin,   left: thin,   right: thin };
+  const bMed   = { top: medium, bottom: medium, left: medium, right: medium };
+  const numCols = new Set([4, 6, 7, 8, 9, 10, 11]); // QTD, FOB unit/total, pesos, GSM, largura
+  const usdCols = new Set([6, 7]);                   // FOB unit/total → 2 casas
+  const cell = (r, c) => {
+    const a = XLSX.utils.encode_cell({ r, c });
+    if (!ws[a]) ws[a] = { t: 's', v: '' };
+    return ws[a];
+  };
+  const alignOf = c => ({ horizontal: numCols.has(c) ? 'right' : 'left', vertical: 'center', wrapText: true });
+
+  // Título — fundo azul escuro Pilar, branco, negrito, Calibri 13
+  for (let c = 0; c < NCOLS; c++) {
+    cell(built.titleRow, c).s = {
+      font: { name: 'Calibri', sz: 13, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } },
+      alignment: { horizontal: 'left', vertical: 'center' }, border: bThin
+    };
+  }
+  ws['!merges'] = ws['!merges'] || [];
+  ws['!merges'].push({ s: { r: built.titleRow, c: 0 }, e: { r: built.titleRow, c: NCOLS - 1 } });
+
+  // Info (importador/fornecedor/país/DI) — fundo #E8F6F8, texto preto
+  built.infoRows.forEach(r => {
+    for (let c = 0; c < NCOLS; c++) {
+      cell(r, c).s = {
+        font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+        fill: { patternType: 'solid', fgColor: { rgb: 'E8F6F8' } }, border: bThin
+      };
+    }
+  });
+
+  // Cabeçalho da tabela — fundo turquesa Pilar, branco, negrito, Calibri 10
+  for (let c = 0; c < NCOLS; c++) {
+    cell(built.headerRow, c).s = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '00B0C8' } },
+      alignment: alignOf(c), border: bThin
+    };
+  }
+
+  // Linhas de dados — alternância branco / #F2F9FA, Calibri 10, bordas finas
+  for (let r = built.dataStart; r <= built.dataEnd; r++) {
+    const bg = ((r - built.dataStart) % 2 === 0) ? 'FFFFFF' : 'F2F9FA';
+    for (let c = 0; c < NCOLS; c++) {
+      const cc = cell(r, c);
+      cc.s = {
+        font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+        fill: { patternType: 'solid', fgColor: { rgb: bg } },
+        alignment: alignOf(c), border: bThin
+      };
+      if (usdCols.has(c)) cc.z = '0.00';
+    }
+  }
+
+  // Linha TOTAL — fundo azul claro #BDD7EE, preto, negrito, borda média
+  for (let c = 0; c < NCOLS; c++) {
+    const cc = cell(built.totalRow, c);
+    cc.s = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'BDD7EE' } },
+      alignment: alignOf(c), border: bMed
+    };
+    if (usdCols.has(c)) cc.z = '0.00';
+  }
+
   XLSX.utils.book_append_sheet(wb, ws, 'Resumo Despachante');
   XLSX.writeFile(wb, `DI_${_rdProcesso.numero}.xlsx`);
   toast(`✓ Resumo Despachante gerado: DI_${_rdProcesso.numero}.xlsx`);
@@ -2596,13 +2668,21 @@ function gerarDespachantePDF() {
 function buildDespachante(proc, numeroDI, obs) {
   const g    = proc.dados_gerais || {};
   const rows = [];
-  rows.push([`RESUMO PARA DESPACHANTE — ${proc.numero}`]);
+  const infoRows = [];
+
+  rows.push([`RESUMO PARA DESPACHANTE — ${proc.numero}`]);            // título
+  const titleRow = 0;
+
   rows.push(['Importador: PILAR IMPORTS LTDA', '', `Fornecedor: ${g.fornecedor||''}`, '', `País: ${g.pais||''}`]);
-  if (numeroDI) rows.push([`DI / DUIMP: ${numeroDI}`]);
-  rows.push([]);
+  infoRows.push(rows.length - 1);
+  if (numeroDI) { rows.push([`DI / DUIMP: ${numeroDI}`]); infoRows.push(rows.length - 1); }
+
+  rows.push([]);                                                      // espaçador
+  const headerRow = rows.length;
   rows.push(['CÓDIGO OMIE','DESCRIÇÃO','DESCRIÇÃO DI','NCM','QTD','UN',
              'FOB UNIT USD','FOB TOTAL USD','PESO LÍQ (kg)','PESO BRUTO (kg)','GSM','LARGURA CM']);
 
+  const dataStart = rows.length;
   let totQty=0, totFOB=0, totPL=0, totPB=0;
   (proc.itens||[]).forEach((it, i) => {
     const descDI = document.getElementById(`di-${i}`)?.value.trim() || '';
@@ -2618,12 +2698,16 @@ function buildDespachante(proc, numeroDI, obs) {
       it.gsm||'', it.largura_cm||''
     ]);
   });
+  const dataEnd = rows.length - 1;
 
-  rows.push([]);
+  rows.push([]);                                                      // espaçador
+  const totalRow = rows.length;
   rows.push(['TOTAL','','','', totQty,'', '', parseFloat(totFOB.toFixed(2)),
              parseFloat(totPL.toFixed(3)), parseFloat(totPB.toFixed(3))]);
+
   if (obs) { rows.push([]); rows.push(['Obs:', obs]); }
-  return rows;
+
+  return { rows, titleRow, infoRows, headerRow, dataStart, dataEnd, totalRow };
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
