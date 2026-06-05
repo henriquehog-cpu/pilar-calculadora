@@ -88,10 +88,10 @@ def style_cell(ws, r, c, value, is_label, is_turq=False):
     return cell
 
 
-def escrever_etiqueta(ws, R, base, spec, logo_factory):
+def escrever_etiqueta(ws, R, base, spec, logo_factory, logo_cols):
     """Escreve uma etiqueta (10 linhas) a partir da linha R, com colunas:
     base=label, base+1=valor, base+2=label2, base+3=valor2 (merge até base+4).
-    Logo fica nas 3 linhas acima (R-3..R-1), mesclado base..base+4."""
+    Logo fica nas 3 linhas acima (R-3..R-1); logo_cols=(from_col, to_col) 0-index."""
     lab, val, lab2, val2, mend = base, base + 1, base + 2, base + 3, base + 4
 
     # bordas em todo o retângulo da etiqueta (antes de mesclar)
@@ -135,11 +135,10 @@ def escrever_etiqueta(ws, R, base, spec, logo_factory):
     img = logo_factory()
     if img is not None:
         # TwoCellAnchor centraliza o logo na área acima da etiqueta.
-        # Colunas derivadas da coluna-base (0-index): esquerda B→E (1→4); direita H→K (7→10).
-        # Linhas (0-index): R-4 (topo da área do logo) → R-1 (início dos rótulos).
+        # Colunas (0-index) vêm de logo_cols; linhas: R-4 (topo) → R-1 (início dos rótulos).
         anchor = TwoCellAnchor()
-        anchor._from = AnchorMarker(col=lab - 1, colOff=0, row=R - 4, rowOff=0)
-        anchor.to    = AnchorMarker(col=lab + 2, colOff=0, row=R - 1, rowOff=0)
+        anchor._from = AnchorMarker(col=logo_cols[0], colOff=0, row=R - 4, rowOff=0)
+        anchor.to    = AnchorMarker(col=logo_cols[1], colOff=0, row=R - 1, rowOff=0)
         img.anchor = anchor
         ws.add_image(img)
 
@@ -224,11 +223,11 @@ def main():
         R = 5 + grupo * 14  # linha inicial dos rótulos
         esq = itens[p]
         cli_e = str(esq.get('cliente') or cliente_proc or '')
-        escrever_etiqueta(ws, R, 2, label_rows(proc, esq, cli_e), logo_img_factory)
+        escrever_etiqueta(ws, R, 2, label_rows(proc, esq, cli_e), logo_img_factory, (1, 5))
         if p + 1 < len(itens):
             dir_ = itens[p + 1]
             cli_d = str(dir_.get('cliente') or cliente_proc or '')
-            escrever_etiqueta(ws, R, 8, label_rows(proc, dir_, cli_d), logo_img_factory)
+            escrever_etiqueta(ws, R, 8, label_rows(proc, dir_, cli_d), logo_img_factory, (6, 10))
 
     montar_qtye(wb, proc)
 
