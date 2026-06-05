@@ -3,6 +3,7 @@ const http  = require('http');
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
+const { spawn } = require('child_process');
 
 const PORT        = process.env.PORT || 8080;
 const ROOT        = __dirname;
@@ -127,6 +128,36 @@ const server = http.createServer((req, res) => {
       fs.writeFileSync(PROD_FILE, JSON.stringify(data, null, 2));
       json(res, 200, { ok: true });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── POST /api/etiquetas ──────────────────────────────────────────────────
+  // Recebe { processo: {...}, logoPath } e devolve o .xlsx gerado pelo Python.
+  if (req.method === 'POST' && url === '/api/etiquetas') {
+    readBody(req).then(data => {
+      const py = spawn('python3', [path.join(ROOT, 'gerar_etiquetas.py')]);
+      const chunks = [];
+      let errBuf = '';
+      py.stdout.on('data', c => chunks.push(c));
+      py.stderr.on('data', c => { errBuf += c; });
+      py.on('error', err =>
+        json(res, 500, { erro: 'Falha ao executar python3: ' + err.message }));
+      py.on('close', code => {
+        if (code !== 0)
+          return json(res, 500, { erro: 'gerar_etiquetas.py falhou', detalhe: errBuf.trim() });
+        const buf = Buffer.concat(chunks);
+        const numero = (data && data.processo && data.processo.numero) || 'PROCESSO';
+        cors(res);
+        res.writeHead(200, {
+          'Content-Type': MIME['.xlsx'],
+          'Content-Disposition': `attachment; filename="ETIQUETAS_${numero}.xlsx"`,
+          'Content-Length': buf.length
+        });
+        res.end(buf);
+      });
+      py.stdin.write(JSON.stringify(data || {}));
+      py.stdin.end();
+    }).catch(() => json(res, 400, { erro: 'Body JSON inválido' }));
     return;
   }
 

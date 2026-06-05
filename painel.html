@@ -2804,115 +2804,53 @@ function gerarOrderRequestPDF() {
   toast(`✓ Diálogo de impressão aberto${n > 0 ? ` · FOB atualizado em ${n} produto${n>1?'s':''}` : ''}`);
 }
 
-function gerarEtiquetas() {
+async function gerarEtiquetas() {
   if (!_orProcesso) return;
-  if (typeof XLSX === 'undefined') { toast('SheetJS não carregado.'); return; }
-
-  const proc       = _orProcesso;
-  const g          = proc.dados_gerais || {};
-  const itens      = proc.itens || [];
-  const clienteProc = g.cliente || '';
-
+  const proc  = _orProcesso;
+  const g     = proc.dados_gerais || {};
+  const itens = proc.itens || [];
   if (!itens.length) { toast('Processo sem itens.'); return; }
 
-  const IMPORTADOR = 'PILAR IMPORTS LTDA';
-  const CNPJ       = '43.954.200/0001-96';
-  const PAIS       = 'CHINA';
+  // Frontend envia os dados do processo diretamente no corpo do POST
+  const payload = {
+    processo: {
+      numero:  proc.numero || '',
+      cliente: g.cliente || '',
+      itens: itens.map(it => ({
+        codigo:     it.codigo || '',
+        composicao: it.descricao || '',
+        largura_cm: it.largura_cm || '',
+        gsm:        it.gsm || ''
+      }))
+    },
+    logoPath: null
+  };
 
-  // Estrutura de uma etiqueta (4 colunas)
-  function labelRows(it) {
-    const cliente = (it.cliente || '').trim() || clienteProc;
-    return [
-      ['ORDEM NRO',      proc.numero || '',                          '',           ''],
-      ['CODIGO',         it.codigo || '',                            '',           ''],
-      ['COMPOSIÇÃO',     it.descricao || '',                         '',           ''],
-      ['LARGURA',        it.largura_cm ? `${it.largura_cm}CM` : '',  'QNTY ROLOS', ''],
-      ['ROLO',           '',                                         'de',         ''],
-      ['CLIENTE',        cliente,                                    '',           ''],
-      ['PESO LÍQUIDO',   '',                                         'PESO BRUTO', ''],
-      ['IMPORTADOR',     IMPORTADOR,                                 '',           ''],
-      ['CNPJ',           CNPJ,                                       '',           ''],
-      ['PAÍS DE ORIGEM', PAIS,                                       '',           '']
-    ];
-  }
-
-  // ── Estilos (xlsx-js-style) ──
-  const THIN   = { style: 'thin', color: { rgb: '000000' } };
-  const BORDER = { top: THIN, bottom: THIN, left: THIN, right: THIN };
-  function mkStyle({ bold = false, fill = false, turq = false } = {}) {
-    const s = {
-      font: { name: 'Arial', sz: 9, bold: bold || turq },
-      border: BORDER,
-      alignment: { vertical: 'center', wrapText: true }
-    };
-    if (turq) s.font.color = { rgb: '00B5AD' };
-    if (fill) s.fill = { patternType: 'solid', fgColor: { rgb: 'F5F5F5' } };
-    return s;
-  }
-  function setStyle(ws, r, c, s) {
-    const addr = XLSX.utils.encode_cell({ r, c });
-    if (!ws[addr]) ws[addr] = { t: 's', v: '' };
-    ws[addr].s = s;
-  }
-
-  const wb = XLSX.utils.book_new();
-  const nomesUsados = new Set();
-
-  function nomeAba(it, i) {
-    let base = `${i + 1}_${(it.codigo || 'ITEM').replace(/[:\\/?*\[\]]/g, '-')}`.slice(0, 31);
-    let nome = base, c = 1;
-    while (nomesUsados.has(nome)) { nome = base.slice(0, 28) + '_' + (++c); }
-    nomesUsados.add(nome);
-    return nome;
-  }
-
-  const TURQ_ROWS = new Set([0, 1, 5]); // ORDEM NRO, CODIGO, CLIENTE → valor em negrito turquesa
-
-  itens.forEach((it, i) => {
-    const left = labelRows(it);
-    // Duas etiquetas lado a lado: esquerda (cols 0-3) | gap (col 4) | direita (cols 5-8)
-    const aoa = left.map(row => [...row, '', ...row]);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:15},{wch:20},{wch:15},{wch:12},{wch:2},{wch:15},{wch:20},{wch:15},{wch:12}];
-    ws['!rows'] = aoa.map(() => ({ hpx: 18 }));
-
-    // (labelCol, valueCol, label2Col, value2Col) por etiqueta
-    const blocks = [[0, 1, 2, 3], [5, 6, 7, 8]];
-    for (let r = 0; r < aoa.length; r++) {
-      blocks.forEach(([lc, vc, l2, v2]) => {
-        setStyle(ws, r, lc, mkStyle({ bold: true, fill: true }));
-        setStyle(ws, r, vc, TURQ_ROWS.has(r) ? mkStyle({ turq: true }) : mkStyle());
-        const hasL2 = aoa[r][l2] !== '' && aoa[r][l2] != null;
-        setStyle(ws, r, l2, hasL2 ? mkStyle({ bold: true, fill: true }) : mkStyle());
-        setStyle(ws, r, v2, mkStyle());
-      });
+  try {
+    const r = await fetch('/api/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      let det = '';
+      try { det = (await r.json()).detalhe || ''; } catch {}
+      toast(`Erro ao gerar etiquetas (HTTP ${r.status})${det ? ': ' + det : ''}`);
+      return;
     }
-    XLSX.utils.book_append_sheet(wb, ws, nomeAba(it, i));
-  });
-
-  // Aba "QTYE PER CUSTOMER": cliente → código → descrição → quantidade total
-  const agreg = {};
-  itens.forEach(it => {
-    const cli = (it.cliente || '').trim() || clienteProc || '(sem cliente)';
-    const cod = it.codigo || '';
-    const key = cli + '||' + cod;
-    if (!agreg[key]) agreg[key] = { cliente: cli, codigo: cod, descricao: it.descricao || '', qtd: 0 };
-    agreg[key].qtd += (it.quantidade || 0);
-  });
-  const qpcRows = [['CLIENTE', 'CÓDIGO', 'DESCRIÇÃO', 'QUANTIDADE']];
-  Object.values(agreg)
-    .sort((a, b) => a.cliente.localeCompare(b.cliente) || a.codigo.localeCompare(b.codigo))
-    .forEach(r => qpcRows.push([r.cliente, r.codigo, r.descricao, r.qtd]));
-  const wsQ = XLSX.utils.aoa_to_sheet(qpcRows);
-  wsQ['!cols'] = [{wch:24},{wch:22},{wch:42},{wch:12}];
-  wsQ['!rows'] = qpcRows.map(() => ({ hpx: 18 }));
-  for (let r = 0; r < qpcRows.length; r++)
-    for (let c = 0; c < 4; c++)
-      setStyle(wsQ, r, c, mkStyle(r === 0 ? { bold: true, fill: true } : {}));
-  XLSX.utils.book_append_sheet(wb, wsQ, 'QTYE PER CUSTOMER');
-
-  XLSX.writeFile(wb, `ETIQUETAS_${proc.numero}.xlsx`);
-  toast(`✓ Etiquetas geradas: ETIQUETAS_${proc.numero}.xlsx`);
+    const blob = await r.blob();
+    const link = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = link;
+    a.download = `ETIQUETAS_${proc.numero}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(link);
+    toast(`✓ Etiquetas geradas: ETIQUETAS_${proc.numero}.xlsx`);
+  } catch (e) {
+    toast('Falha na conexão com o servidor de etiquetas.');
+  }
 }
 
 function buildOrSheet(proc, obs, pt) {
