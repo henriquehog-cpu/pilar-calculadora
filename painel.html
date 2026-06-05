@@ -290,7 +290,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 function navTo(link, renderFn) {
   document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
   link.classList.add('active');
-  renderFn();
+  // Garante dados frescos do servidor antes de renderizar o módulo
+  _apiCarregarProcessos().then(renderFn);
   return false; // cancela o href="#"
 }
 
@@ -1353,6 +1354,7 @@ function npSalvar() {
   }
 
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
+  _apiSalvarProcessos(todos);
 
   const link = Array.from(document.querySelectorAll('.nav-link'))
     .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
@@ -1423,8 +1425,10 @@ function procDeletar(id) {
   if (!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]')
     .filter(p => p.id !== id);
-  localStorage.setItem('pilar_processos', JSON.stringify(todos));
-  renderProcessos();
+  localStorage.setItem('pilar_processos', JSON.stringify(todos)); // cache local
+  fetch('/api/processos/' + encodeURIComponent(id), { method: 'DELETE' })
+    .catch(() => {})
+    .finally(() => _apiCarregarProcessos().then(renderProcessos));
 }
 
 // ── Precificação — Seção 4 ────────────────────────────────────────────────
@@ -2158,6 +2162,7 @@ function fcSalvar() {
     todos[idx].recebimentos_cliente  = _fcRecebimentos;
     todos[idx].atualizado_em = new Date().toISOString();
     localStorage.setItem('pilar_processos', JSON.stringify(todos));
+    _apiSalvarProcessos(todos);
     toast('✓ Fluxo de caixa salvo');
   }
 }
@@ -3340,8 +3345,28 @@ async function _apiCarregar() {
   } catch { /* offline — usa cache localStorage */ }
 }
 
+// ── Processos: servidor é a fonte da verdade; localStorage é cache rápido ────
+// Lê do servidor e atualiza o cache (sem disparar o hook de sync para não criar loop)
+async function _apiCarregarProcessos() {
+  try {
+    const r = await fetch('/api/processos');
+    if (r.ok) {
+      const arr = await r.json();
+      if (Array.isArray(arr)) _lsSetOrig('pilar_processos', JSON.stringify(arr));
+    }
+  } catch { /* offline — usa cache localStorage */ }
+}
+// Escreve o array completo no servidor (POST /api/processos)
+function _apiSalvarProcessos(arr) {
+  fetch('/api/processos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(arr)
+  }).catch(() => {});
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
-(async () => { await _apiCarregar(); renderDashboard(); })();
+(async () => { await _apiCarregar(); await _apiCarregarProcessos(); renderDashboard(); })();
 </script>
 
 <div id="or-print-area"></div>
@@ -3815,6 +3840,7 @@ function wizCriarProcesso() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos')||'[]');
   todos.push(processo);
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
+  _apiSalvarProcessos(todos);
 
   wizFechar();
   showToast(`Processo ${numero} criado com ${_wizItens.length} item(ns)!`);

@@ -39,8 +39,23 @@ function lerJson(file, fallback) {
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+// dados.json — lê garantindo a chave pilar_processos; cria o arquivo se não existir
+function lerDados() {
+  const d = lerJson(DADOS_FILE, null);
+  if (!d || typeof d !== 'object') return { pilar_processos: [] };
+  if (!Array.isArray(d.pilar_processos)) d.pilar_processos = [];
+  return d;
+}
+function salvarDados(d) {
+  fs.writeFileSync(DADOS_FILE, JSON.stringify(d, null, 2));
+}
+if (!fs.existsSync(DADOS_FILE)) {
+  try { fs.writeFileSync(DADOS_FILE, JSON.stringify({ pilar_processos: [] }, null, 2)); }
+  catch {}
 }
 
 function json(res, code, obj) {
@@ -129,6 +144,47 @@ const server = http.createServer((req, res) => {
       fs.writeFileSync(PROD_FILE, JSON.stringify(data, null, 2));
       json(res, 200, { ok: true });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── GET /api/processos ─────────────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/processos') {
+    json(res, 200, lerDados().pilar_processos);
+    return;
+  }
+
+  // ── POST /api/processos ────────────────────────────────────────────────────
+  // Body: array completo de processos (ou { pilar_processos: [...] }).
+  if (req.method === 'POST' && url === '/api/processos') {
+    readBody(req).then(body => {
+      const arr = Array.isArray(body) ? body
+                : (body && Array.isArray(body.pilar_processos) ? body.pilar_processos : null);
+      if (!arr) return json(res, 400, { erro: 'Esperado array de processos' });
+      const dados = lerDados();
+      dados.pilar_processos = arr;
+      salvarDados(dados);
+      json(res, 200, { ok: true, total: arr.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── GET /api/processos/:id ─────────────────────────────────────────────────
+  if (req.method === 'GET' && url.startsWith('/api/processos/')) {
+    const id   = decodeURIComponent(url.slice('/api/processos/'.length));
+    const proc = lerDados().pilar_processos.find(p => String(p.id) === id);
+    if (!proc) return json(res, 404, { erro: 'Processo não encontrado' });
+    json(res, 200, proc);
+    return;
+  }
+
+  // ── DELETE /api/processos/:id ──────────────────────────────────────────────
+  if (req.method === 'DELETE' && url.startsWith('/api/processos/')) {
+    const id    = decodeURIComponent(url.slice('/api/processos/'.length));
+    const dados = lerDados();
+    const antes = dados.pilar_processos.length;
+    dados.pilar_processos = dados.pilar_processos.filter(p => String(p.id) !== id);
+    salvarDados(dados);
+    json(res, 200, { ok: true, removidos: antes - dados.pilar_processos.length });
     return;
   }
 
