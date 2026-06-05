@@ -20,6 +20,7 @@ import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
 
 LOGO_PADRAO = '/opt/pilar-calculadora/logo_pilar.png'
 IMPORTADOR  = 'PILAR IMPORTS LTDA'
@@ -125,7 +126,7 @@ def escrever_etiqueta(ws, R, base, spec, logo_factory):
             v2c = ws.cell(row=r, column=val2, value=(v2 if v2 not in (None, '') else None))
             v2c.font = F_ET_VALUE; v2c.alignment = AL_CENTER; v2c.border = BORDER
 
-    # Logo acima da etiqueta (mesclado nas 3 linhas), 80x30px; silencioso se ausente
+    # Logo acima da etiqueta (mesclado nas 3 linhas); silencioso se ausente
     logo_top = R - 3
     ws.merge_cells(start_row=logo_top, start_column=lab, end_row=R - 1, end_column=mend)
     ws.row_dimensions[logo_top].height = 15
@@ -133,7 +134,14 @@ def escrever_etiqueta(ws, R, base, spec, logo_factory):
     ws.row_dimensions[R - 1].height = 31.5
     img = logo_factory()
     if img is not None:
-        ws.add_image(img, f'{get_column_letter(lab)}{logo_top}')
+        # TwoCellAnchor centraliza o logo na área acima da etiqueta.
+        # Colunas derivadas da coluna-base (0-index): esquerda B→E (1→4); direita H→K (7→10).
+        # Linhas (0-index): R-4 (topo da área do logo) → R-1 (início dos rótulos).
+        anchor = TwoCellAnchor()
+        anchor._from = AnchorMarker(col=lab - 1, colOff=0, row=R - 4, rowOff=0)
+        anchor.to    = AnchorMarker(col=lab + 2, colOff=0, row=R - 1, rowOff=0)
+        img.anchor = anchor
+        ws.add_image(img)
 
 
 def montar_qtye(wb, proc):
@@ -189,8 +197,8 @@ def main():
         try:
             from openpyxl.drawing.image import Image as XLImage
             img = XLImage(logo_path)
-            img.width = 80
-            img.height = 30
+            img.width = 200
+            img.height = 60
             return img
         except Exception as e:
             sys.stderr.write('Logo ignorado (%s)\n' % e)
