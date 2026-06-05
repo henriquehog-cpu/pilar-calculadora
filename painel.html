@@ -3547,27 +3547,44 @@ async function _apiCarregarProcessos() {
   } catch { /* offline — usa cache localStorage */ }
 }
 
-// Migra processos antigos: itens com aliquotas.ii zerado mas com campos planos
-// (item.ii > 0) recebem as alíquotas copiadas para o objeto aliquotas.
+// Migra processos antigos com aliquotas.ii zerado:
+//  (a) se há campo plano item.ii > 0, copia os planos do próprio item;
+//  (b) senão, faz lookup no banco (pilar_produtos) pelo prefixo do código.
 function _migrarAliquotasProcessos(procs) {
   let mudou = false;
+  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const fromFields = src => ({
+    ii:                src.ii                || 0,
+    ipi:               src.ipi               || 0,
+    pis_importacao:    src.pis_importacao    || src.pis    || 0.021,
+    cofins_importacao: src.cofins_importacao || src.cofins || 0.1065,
+    pis_venda:         src.pis_venda          || 0.0165,
+    cofins_venda:      src.cofins_venda       || 0.076,
+    icms_intra:        src.icms_intra         || 0.14,
+    icms_inter:        src.icms_inter         || 0.04,
+    reg_espec_intra:   src.reg_espec_intra    || 0.14,
+    reg_espec_inter:   src.reg_espec_inter    || 0.015
+  });
   procs.forEach(p => {
     (p.itens || []).forEach(it => {
       const semAliq = !it.aliquotas || !it.aliquotas.ii;
-      if (semAliq && it.ii > 0) {
-        it.aliquotas = {
-          ii:                it.ii                || 0,
-          ipi:               it.ipi               || 0,
-          pis_importacao:    it.pis_importacao    || it.pis    || 0.021,
-          cofins_importacao: it.cofins_importacao || it.cofins || 0.1065,
-          pis_venda:         it.pis_venda          || 0.0165,
-          cofins_venda:      it.cofins_venda       || 0.076,
-          icms_intra:        it.icms_intra         || 0.14,
-          icms_inter:        it.icms_inter         || 0.04,
-          reg_espec_intra:   it.reg_espec_intra    || 0.14,
-          reg_espec_inter:   it.reg_espec_inter    || 0.015
-        };
+      if (!semAliq) return;
+      if (it.ii > 0) {
+        // (a) fonte plana no próprio item
+        it.aliquotas = fromFields(it);
         mudou = true;
+      } else {
+        // (b) lookup no banco pelo prefixo do código
+        const prefixo = (it.codigo || '').slice(0, 4).toUpperCase();
+        if (!prefixo) return;
+        const ref = prods.find(pr => pr.ii > 0 && (
+          (pr.codigo || '').startsWith(prefixo + '.') ||
+          (pr.familia || '').toUpperCase() === prefixo
+        ));
+        if (ref) {
+          it.aliquotas = fromFields(ref);
+          mudou = true;
+        }
       }
     });
   });
