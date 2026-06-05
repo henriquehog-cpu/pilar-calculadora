@@ -2168,6 +2168,16 @@ let _diEditando = null;
 
 function renderResumoDespachante() {
   _rdProcesso = null; _diEditando = null;
+
+  // Carrega o banco DI do servidor (substitui a importação manual)
+  fetch('/api/banco-di')
+    .then(r => r.ok ? r.json() : [])
+    .then(banco => {
+      if (Array.isArray(banco) && banco.length)
+        localStorage.setItem('pilar_banco_di', JSON.stringify(banco));
+    })
+    .catch(() => {});
+
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
   const opts = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
@@ -2429,13 +2439,21 @@ function rdSelecionarProcesso(id) {
   if (!_rdProcesso) return;
 
   const banco = JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}');
+  // Banco DI por prefixo (4 primeiras letras do código) → { PREFIXO: descricao }
+  const bancoPrefixo = {};
+  (JSON.parse(localStorage.getItem('pilar_banco_di') || '[]')).forEach(e => {
+    if (e && e.codigo) bancoPrefixo[String(e.codigo).toUpperCase()] = e.descricao || '';
+  });
   const g     = _rdProcesso.dados_gerais || {};
   const itens = _rdProcesso.itens || [];
   let totalQty = 0, totalFOB = 0;
 
   const linhas = itens.map((it, i) => {
     const tot    = (it.quantidade||0)*(it.fob_unit_usd||0);
-    const descDI = rdSubstituirDescDI(banco[it.codigo] || '', it);
+    // 1º tenta o banco DI por prefixo; se não achar, usa o banco de descrições por código
+    const prefixo  = (it.codigo || '').slice(0, 4).toUpperCase();
+    const baseDesc = bancoPrefixo[prefixo] || banco[it.codigo] || '';
+    const descDI   = rdSubstituirDescDI(baseDesc, it);
     totalQty += it.quantidade||0; totalFOB += tot;
     return `<tr>
       <td style="font-family:monospace;font-size:11px;font-weight:700;color:var(--cinza);white-space:nowrap">${it.codigo||'—'}</td>

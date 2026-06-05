@@ -10,6 +10,7 @@ const ROOT        = __dirname;
 const CONFIG_FILE = path.join(ROOT, 'pilar-config.json');
 const DADOS_FILE  = path.join(ROOT, 'dados.json');
 const PROD_FILE   = path.join(ROOT, 'produtos.json');
+const BANCODI_FILE = path.join(ROOT, 'banco_di.json');
 const OMIE_HOST   = 'app.omie.com.br';
 const OMIE_PATH   = '/api/v1/geral/produtos/';
 
@@ -128,6 +129,12 @@ const server = http.createServer((req, res) => {
       fs.writeFileSync(PROD_FILE, JSON.stringify(data, null, 2));
       json(res, 200, { ok: true });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── GET /api/banco-di ──────────────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/banco-di') {
+    json(res, 200, lerJson(BANCODI_FILE, []));
     return;
   }
 
