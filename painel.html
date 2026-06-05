@@ -3538,9 +3538,40 @@ async function _apiCarregarProcessos() {
     const r = await fetch('/api/processos');
     if (r.ok) {
       const arr = await r.json();
-      if (Array.isArray(arr)) _lsSetOrig('pilar_processos', JSON.stringify(arr));
+      if (Array.isArray(arr)) {
+        const migrou = _migrarAliquotasProcessos(arr);
+        _lsSetOrig('pilar_processos', JSON.stringify(arr));
+        if (migrou) _apiSalvarProcessos(arr); // persiste a correção no servidor
+      }
     }
   } catch { /* offline — usa cache localStorage */ }
+}
+
+// Migra processos antigos: itens com aliquotas.ii zerado mas com campos planos
+// (item.ii > 0) recebem as alíquotas copiadas para o objeto aliquotas.
+function _migrarAliquotasProcessos(procs) {
+  let mudou = false;
+  procs.forEach(p => {
+    (p.itens || []).forEach(it => {
+      const semAliq = !it.aliquotas || !it.aliquotas.ii;
+      if (semAliq && it.ii > 0) {
+        it.aliquotas = {
+          ii:                it.ii                || 0,
+          ipi:               it.ipi               || 0,
+          pis_importacao:    it.pis_importacao    || it.pis    || 0.021,
+          cofins_importacao: it.cofins_importacao || it.cofins || 0.1065,
+          pis_venda:         it.pis_venda          || 0.0165,
+          cofins_venda:      it.cofins_venda       || 0.076,
+          icms_intra:        it.icms_intra         || 0.14,
+          icms_inter:        it.icms_inter         || 0.04,
+          reg_espec_intra:   it.reg_espec_intra    || 0.14,
+          reg_espec_inter:   it.reg_espec_inter    || 0.015
+        };
+        mudou = true;
+      }
+    });
+  });
+  return mudou;
 }
 // Escreve o array completo no servidor (POST /api/processos)
 function _apiSalvarProcessos(arr) {
@@ -3905,11 +3936,22 @@ function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
 
 function wizAliquotasDaFamilia(familia) {
   const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
-  // Busca primeiro por código com prefixo da família
-  let ref = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.aliquotas);
-  // Se não achar, busca por campo familia
-  if (!ref) ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.aliquotas);
-  return ref?.aliquotas || {
+  // Busca produto do banco com alíquota plana preenchida (p.ii > 0)
+  let ref = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.ii > 0);
+  if (!ref) ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.ii > 0);
+  if (ref) return {
+    ii:                ref.ii                || 0,
+    ipi:               ref.ipi               || 0,
+    pis_importacao:    ref.pis_importacao    || 0.021,
+    cofins_importacao: ref.cofins_importacao || 0.1065,
+    pis_venda:         ref.pis_venda         || 0.0165,
+    cofins_venda:      ref.cofins_venda      || 0.076,
+    icms_intra:        ref.icms_intra        || 0.14,
+    icms_inter:        ref.icms_inter        || 0.04,
+    reg_espec_intra:   ref.reg_espec_intra   || 0.14,
+    reg_espec_inter:   ref.reg_espec_inter   || 0.015
+  };
+  return {
     ii:0.162, ipi:0, pis_importacao:0.021, cofins_importacao:0.1065,
     pis_venda:0.0165, cofins_venda:0.076,
     icms_intra:0.14, icms_inter:0.04,

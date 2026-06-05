@@ -36,6 +36,23 @@ const Calc = (() => {
       custos          // { siscomex, despachante, agente, armazenagem, capatazia, oplog, frodRodov }
     } = ctx;
 
+    // Normalizador: se faltam alíquotas (ou ii=0), usa os campos planos do item
+    // (cobre processos antigos e itens de importadores que não montam aliquotas)
+    if (!item.aliquotas || !item.aliquotas.ii) {
+      item = { ...item, aliquotas: {
+        ii:                item.ii                || item.aliquotas?.ii                || 0,
+        ipi:               item.ipi               || item.aliquotas?.ipi               || 0,
+        pis_importacao:    item.pis_importacao    || item.aliquotas?.pis_importacao    || 0,
+        cofins_importacao: item.cofins_importacao || item.aliquotas?.cofins_importacao || 0,
+        pis_venda:         item.pis_venda         || item.aliquotas?.pis_venda         || 0.0165,
+        cofins_venda:      item.cofins_venda      || item.aliquotas?.cofins_venda      || 0.076,
+        icms_intra:        item.icms_intra        || item.aliquotas?.icms_intra        || 0.14,
+        icms_inter:        item.icms_inter        || item.aliquotas?.icms_inter        || 0.04,
+        reg_espec_intra:   item.reg_espec_intra   || item.aliquotas?.reg_espec_intra   || 0.14,
+        reg_espec_inter:   item.reg_espec_inter   || item.aliquotas?.reg_espec_inter   || 0.015
+      }};
+    }
+
     const aliq = { ...defaultAliq(), ...(item.aliquotas || {}) };
     const qtd  = Number(item.quantidade)   || 0;
     const fob  = Number(item.fob_unit_usd) || 0;
