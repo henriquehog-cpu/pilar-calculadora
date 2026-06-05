@@ -2399,6 +2399,21 @@ function diDeletar(codigo) {
   renderBancoTabela();
 }
 
+// Substitui na Descrição DI do banco a gramatura e a largura pelos valores reais do item
+function rdSubstituirDescDI(desc, it) {
+  if (!desc) return desc;
+  let out = desc;
+  // gramatura: <num>(G/M2 | G/M² | GSM) → gsm real do item
+  if (it && it.gsm)
+    out = out.replace(/\d+(?:[.,]\d+)?\s*(?:G\/M2|G\/M²|GSM)/gi, `${it.gsm}G/M2`);
+  // largura: <num decimal>M (seguido de . , espaço ou fim) → largura_cm/100 com vírgula
+  if (it && it.largura_cm) {
+    const m = (parseFloat(it.largura_cm) / 100).toFixed(2).replace('.', ',');
+    out = out.replace(/(\d+(?:[.,]\d+)?)\s*M(?=[.,\s]|$)/gi, `${m}M`);
+  }
+  return out;
+}
+
 function rdSelecionarProcesso(id) {
   const btn    = document.getElementById('btn-rd-gerar');
   const btnPdf = document.getElementById('btn-rd-pdf');
@@ -2420,7 +2435,7 @@ function rdSelecionarProcesso(id) {
 
   const linhas = itens.map((it, i) => {
     const tot    = (it.quantidade||0)*(it.fob_unit_usd||0);
-    const descDI = banco[it.codigo] || '';
+    const descDI = rdSubstituirDescDI(banco[it.codigo] || '', it);
     totalQty += it.quantidade||0; totalFOB += tot;
     return `<tr>
       <td style="font-family:monospace;font-size:11px;font-weight:700;color:var(--cinza);white-space:nowrap">${it.codigo||'—'}</td>
@@ -2820,7 +2835,9 @@ async function gerarEtiquetas() {
         codigo:     it.codigo || '',
         composicao: it.descricao || '',
         largura_cm: it.largura_cm || '',
-        gsm:        it.gsm || ''
+        gsm:        it.gsm || '',
+        quantidade: it.quantidade || 0,
+        cliente:    it.cliente || ''
       }))
     },
     logoPath: null
@@ -3104,8 +3121,9 @@ function npAcFilter(i, campo, q) {
   const ql      = q.toLowerCase();
   const todos   = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
   const matches = todos.filter(p =>
-    (p.codigo  || '').toLowerCase().includes(ql) ||
-    (p.produto || '').toLowerCase().includes(ql)
+    campo === 'cod'
+      ? (p.codigo || '').toLowerCase().includes(ql)
+      : (p.produto || p.descricao || '').toLowerCase().includes(ql)
   ).slice(0, 8);
   console.log('matches encontrados:', matches.length, 'query:', q);
 

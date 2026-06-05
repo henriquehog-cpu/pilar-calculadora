@@ -106,6 +106,36 @@ def montar_aba(ws, proc, item, logo_img_factory):
         ws.add_image(img, 'K1')
 
 
+def montar_qtye(wb, proc):
+    """Aba QTYE PER CUSTOMERS: A=CLIENTE, B=CÓDIGO, C=COMPOSIÇÃO, D=LARGURA, E=QUANTIDADE."""
+    ws = wb.create_sheet(title='QTYE PER CUSTOMERS')
+    headers = ['CLIENTE', 'CÓDIGO', 'COMPOSIÇÃO', 'LARGURA', 'QUANTIDADE']
+    for c, h in enumerate(headers, start=1):
+        style_cell(ws, 1, c, h, is_label=True)
+    ws.row_dimensions[1].height = 13.5
+
+    cliente_proc = str(proc.get('cliente', '') or '')
+    itens = proc.get('itens') or []
+
+    def chave(it):
+        return (str(it.get('cliente') or cliente_proc).lower(), str(it.get('codigo') or '').lower())
+
+    for ri, item in enumerate(sorted(itens, key=chave), start=2):
+        ws.row_dimensions[ri].height = 13.5
+        cliente = str(item.get('cliente') or cliente_proc)
+        largura = item.get('largura_cm')
+        largura_txt = f'{largura}CM' if largura not in (None, '') else ''
+        qtd = item.get('quantidade')
+        style_cell(ws, ri, 1, cliente, is_label=False)
+        style_cell(ws, ri, 2, str(item.get('codigo') or ''), is_label=False)
+        style_cell(ws, ri, 3, str(item.get('composicao') or ''), is_label=False)
+        style_cell(ws, ri, 4, largura_txt, is_label=False)
+        style_cell(ws, ri, 5, qtd if qtd not in (None, '') else None, is_label=False)
+
+    for col, w in {1: 24, 2: 22, 3: 42, 4: 12, 5: 12}.items():
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+
 def main():
     raw = sys.stdin.read()
     try:
@@ -147,6 +177,8 @@ def main():
         nome = sanitize_sheet_name('%d_%s' % (i + 1, item.get('codigo') or 'ITEM'), usados)
         ws = wb.create_sheet(title=nome)
         montar_aba(ws, proc, item, logo_img_factory)
+
+    montar_qtye(wb, proc)
 
     buf = io.BytesIO()
     wb.save(buf)
