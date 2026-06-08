@@ -223,7 +223,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pe-doc{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:10pt;background:#fff;padding:16mm 14mm;box-sizing:border-box}
 .pe-hd{display:flex;align-items:center;gap:16px;padding-bottom:10px;border-bottom:2.5px solid #00BCD4;margin-bottom:16px}
 .pe-hd img{height:50px;width:auto}
-.pe-hd .pe-co{font-size:16pt;font-weight:700;color:#37474F}
+.pe-hd .pe-co{font-size:16pt;font-weight:700;color:#37474F;margin-left:auto}
 .pe-info{margin-bottom:16px;font-size:10pt;line-height:1.8}
 .pe-info span{font-weight:700}
 .pe-info .sep{color:#B0BEC5;font-weight:400;margin:0 8px}
@@ -3164,8 +3164,7 @@ function peDocHTML(forPrint) {
       <div class="pe-info">
         <div>
           <span>ORDER:</span> ${esc(proc.numero || '—')}<span class="sep">|</span>
-          <span>DATE:</span> ${peFmtData(g.data_pedido)}<span class="sep">|</span>
-          <span>INCOTERM:</span> ${esc(g.incoterm || 'FOB')}
+          <span>DATE:</span> ${peFmtData(g.data_pedido)}
         </div>
         <div>
           <span>CLIENTE:</span> ${esc(cliente)}<span class="sep">|</span>
