@@ -219,19 +219,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .et-v{font-weight:400}
 .et-page{margin-bottom:14px}
 
-/* ── Pedido de Embarque — documento ── */
-.pe-doc{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#000;font-size:11px;background:#fff;padding:16mm 12mm;box-sizing:border-box}
-.pe-doc .pe-logo{text-align:center;margin-bottom:10px}
-.pe-doc .pe-logo img{width:200px;max-width:200px;height:auto}
-.pe-doc .pe-title{text-align:center;font-weight:700;font-size:14pt;margin-bottom:16px}
-.pe-tbl{width:100%;border-collapse:collapse;margin-bottom:14px}
-.pe-tbl td,.pe-tbl th{border:1px solid #000;padding:5px 7px;font-size:11px;vertical-align:middle}
-.pe-tbl .lbl{font-weight:700;background:#F2F2F2;white-space:nowrap}
-.pe-tbl thead th,.pe-tbl .tq{background:#00BCD4;color:#fff;font-weight:700;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.pe-tbl .r{text-align:right;white-space:nowrap}
-.pe-tbl tfoot td{font-weight:700;background:#F2F2F2}
-.pe-saldo-txt{margin:16px 0;font-size:11px;line-height:1.6;text-align:justify}
-.pe-doc input.pe-qtd{width:80px;font:inherit;text-align:right;border:1px solid #90A4AE;border-radius:3px;padding:2px 5px}
+/* ── Pedido de Embarque — documento (layout Order Request) ── */
+.pe-doc{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:10pt;background:#fff;padding:16mm 14mm;box-sizing:border-box}
+.pe-hd{display:flex;align-items:center;gap:16px;padding-bottom:10px;border-bottom:2.5px solid #00BCD4;margin-bottom:16px}
+.pe-hd img{height:50px;width:auto}
+.pe-hd .pe-co{font-size:16pt;font-weight:700;color:#37474F}
+.pe-info{margin-bottom:16px;font-size:10pt;line-height:1.8}
+.pe-info span{font-weight:700}
+.pe-info .sep{color:#B0BEC5;font-weight:400;margin:0 8px}
+.pe-fin{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10pt}
+.pe-fin td{border:1px solid #ccc;padding:5px 9px}
+.pe-fin .lbl{font-weight:700;background:#F5F7F8;width:40%}
+.pe-fin .r{text-align:right;white-space:nowrap}
+.pe-fin tr.saldo-pagar td{background:#00BCD4;color:#fff;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pe-itens{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9.5pt}
+.pe-itens thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:left;font-size:8.5pt;font-weight:700;text-transform:uppercase;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pe-itens thead th.r{text-align:right}
+.pe-itens tbody td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:middle}
+.pe-itens tbody tr:nth-child(even) td{background:#F7F9FA}
+.pe-itens tbody td.r{text-align:right;white-space:nowrap}
+.pe-itens tbody td .cod{font-family:monospace;font-size:8pt;color:#607D8B;line-height:1.3}
+.pe-itens tfoot td{padding:6px;border-top:2px solid #37474F;font-weight:700;font-size:10pt}
+.pe-itens tfoot td.r{text-align:right;white-space:nowrap}
+.pe-saldo-txt{margin:16px 0;font-size:10pt;line-height:1.6;text-align:justify}
+.pe-datas{width:100%;border-collapse:collapse;margin-top:8px;font-size:9.5pt}
+.pe-datas th{background:#F5F7F8;border:1px solid #ccc;padding:5px 7px;font-weight:700;text-align:center;text-transform:uppercase;font-size:8.5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pe-datas td{border:1px solid #ccc;padding:6px 7px;text-align:center}
+.pe-doc input.pe-qtd{width:74px;font:inherit;text-align:right;border:1px solid #90A4AE;border-radius:3px;padding:2px 5px}
 
 /* ── Wizard Montagem ─────────────────────────────────── */
 #wiz-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center}
@@ -3108,7 +3122,7 @@ function peCompute() {
   const sinalBrl = sinalUsd * cambioSinal;
   const saldoPagarUsd = totUsd - sinalUsd;
   const saldoPagarBrl = saldoPagarUsd * cambioSaldo;
-  return { rows, totQtd, totUsd, totBrl, sinalUsd, sinalBrl, saldoPagarUsd, saldoPagarBrl, cambioSinal, cambioSaldo };
+  return { rows, totQtd, totUsd, totBrl, sinalUsd, sinalBrl, saldoPagarUsd, saldoPagarBrl, cambioSinal, cambioSaldo, pctSinal };
 }
 
 function peDocHTML(forPrint) {
@@ -3116,83 +3130,109 @@ function peDocHTML(forPrint) {
   const g = proc.dados_gerais || {};
   const d = peCompute();
   const cliente   = g.cliente || g.fornecedor || '—';
-  const condPgto  = val('pe-cond-pgto') || '—';
-  const dataSinal = peFmtData(val('pe-data-sinal'));
   const dataPag   = peFmtData(val('pe-data-pagamento'));
+
+  const pctSinal = (d.pctSinal || 0) * 100;
+  const pctSaldo = 100 - pctSinal;
 
   const linhas = d.rows.map((r, i) => {
     const qtdCell = forPrint
       ? fmtN(r.qtd, 0)
       : `<input class="pe-qtd" type="number" min="0" step="any" value="${r.qtd}" oninput="peSetQtd(${i}, this.value)">`;
     return `<tr>
-      <td style="font-family:monospace;white-space:nowrap">${esc(r.it.codigo || '—')}</td>
-      <td>${esc(r.it.descricao || '—')}</td>
+      <td>${i + 1}</td>
+      <td>
+        ${r.it.codigo ? `<div class="cod">${esc(r.it.codigo)}</div>` : ''}
+        <div>${esc(r.it.descricao || r.it.codigo || '—')}</div>
+      </td>
+      <td>${esc(r.it.cor || '—')}</td>
       <td class="r">${qtdCell}</td>
-      <td class="r">USD ${fmtN(r.fobUnit, 4)}</td>
+      <td>${esc(r.it.unidade || 'PC')}</td>
+      <td class="r">${fmtN(r.fobUnit, 4)}</td>
       <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
-      <td class="r">R$ ${fmtN(r.precoBrl, 4)}</td>
+      <td class="r">${fmtN(r.precoBrl, 4)}</td>
       <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
+      <td class="r">${r.it.gsm || '—'}</td>
+      <td class="r">${r.it.largura_cm || '—'}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+  }).join('') || `<tr><td colspan="11" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   return `
     <div class="pe-doc">
-      <div class="pe-logo"><img src="logo_pilar.png" alt="PILAR IMPORTS"></div>
-      <div class="pe-title">PEDIDO DE EMBARQUE - PILAR IMPORTS</div>
+      <div class="pe-hd">
+        <img src="logo_pilar.png" alt="PILAR IMPORTS">
+        <div class="pe-co">PILAR IMPORTS LTDA</div>
+      </div>
 
-      <table class="pe-tbl">
+      <div class="pe-info">
+        <div>
+          <span>ORDER:</span> ${esc(proc.numero || '—')}<span class="sep">|</span>
+          <span>DATE:</span> ${peFmtData(g.data_pedido)}<span class="sep">|</span>
+          <span>INCOTERM:</span> ${esc(g.incoterm || 'FOB')}
+        </div>
+        <div>
+          <span>CLIENTE:</span> ${esc(cliente)}<span class="sep">|</span>
+          <span>CÂMBIO SINAL:</span> R$ ${fmtN(d.cambioSinal, 4)}<span class="sep">|</span>
+          <span>CÂMBIO SALDO:</span> R$ ${fmtN(d.cambioSaldo, 4)}
+        </div>
+      </div>
+
+      <table class="pe-fin">
         <tr>
-          <td class="lbl">CLIENTE</td><td>${esc(cliente)}</td>
-          <td class="lbl">CÂMBIO SINAL</td><td class="r">R$ ${fmtN(d.cambioSinal, 4)}</td>
-          <td class="tq">VALORES USD</td><td class="tq">VALOR R$ DEPÓSITO</td>
+          <td class="lbl">SINAL (${fmtN(pctSinal, 0)}%)</td>
+          <td class="r">USD ${fmtN(d.sinalUsd, 2)}</td>
+          <td class="r" id="pe-info-sinalbrl">R$ ${fmtN(d.sinalBrl, 2)}</td>
         </tr>
         <tr>
-          <td class="lbl">CND. PAGAMENTO</td><td>${esc(condPgto)}</td>
-          <td class="lbl">CÂMBIO SALDO</td><td class="r">R$ ${fmtN(d.cambioSaldo, 4)}</td>
-          <td class="r">USD ${fmtN(d.sinalUsd, 2)}</td><td class="r" id="pe-info-sinalbrl">R$ ${fmtN(d.sinalBrl, 2)}</td>
-        </tr>
-        <tr>
-          <td></td><td></td>
-          <td class="lbl">DATA</td><td class="r">${dataSinal}</td>
-          <td class="r" id="pe-info-totusd">USD ${fmtN(d.totUsd, 2)}</td>
+          <td class="lbl">SALDO (${fmtN(pctSaldo, 0)}%)</td>
+          <td class="r" id="pe-info-saldousd">USD ${fmtN(d.saldoPagarUsd, 2)}</td>
           <td class="r" id="pe-info-saldobrl">R$ ${fmtN(d.saldoPagarBrl, 2)}</td>
         </tr>
-        <tr>
-          <td class="tq" colspan="4">SALDO A PAGAR</td>
-          <td class="r" id="pe-info-saldousd">USD ${fmtN(d.saldoPagarUsd, 2)}</td>
+        <tr class="saldo-pagar">
+          <td class="lbl">SALDO A PAGAR</td>
+          <td class="r" id="pe-info-sptusd">USD ${fmtN(d.saldoPagarUsd, 2)}</td>
           <td class="r" id="pe-info-saldopbrl">R$ ${fmtN(d.saldoPagarBrl, 2)}</td>
         </tr>
       </table>
 
-      <table class="pe-tbl">
+      <table class="pe-itens">
         <thead><tr>
-          <th>Código</th><th>Descrição</th><th>Qtd Embarcada</th>
-          <th>Preço Unit USD</th><th>Total USD</th><th>Preço Unit R$</th><th>Total R$</th>
+          <th>#</th><th>Descrição</th><th>Cor/Estampa</th>
+          <th class="r">Qtd Embarcada</th><th>Un</th>
+          <th class="r">FOB Unit USD</th><th class="r">Total USD</th>
+          <th class="r">Preço Unit R$</th><th class="r">Total R$</th>
+          <th class="r">GSM</th><th class="r">Larg. cm</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
         <tfoot><tr>
-          <td colspan="2" style="text-align:right">TOTAL</td>
+          <td colspan="3" style="text-align:right">TOTAL</td>
           <td class="r" id="pe-tot-qtd">${fmtN(d.totQtd, 0)}</td>
-          <td></td>
+          <td></td><td></td>
           <td class="r" id="pe-tot-usd">USD ${fmtN(d.totUsd, 2)}</td>
           <td></td>
           <td class="r" id="pe-tot-brl">R$ ${fmtN(d.totBrl, 2)}</td>
+          <td></td><td></td>
         </tr></tfoot>
       </table>
 
       <div class="pe-saldo-txt">
         Prezado cliente, segue confirmação de pedido com as quantidades embarcadas,
-        solicitamos pagamento SALDO de no valor de <b id="pe-saldo-valor">R$ ${fmtN(d.saldoPagarBrl, 2)}</b>
-        a ser depositado na conta da Pilar Imports Ltda:
+        solicitamos pagamento SALDO de <b id="pe-saldo-valor">R$ ${fmtN(d.saldoPagarBrl, 2)}</b>
+        na conta da Pilar Imports Ltda:
         (BANCO ITAU-341 / AGENCIA: 0196 / CONTA 99701-9 / CNPJ: 43.954.200/0001-96),
         no dia: ${dataPag}.
       </div>
 
-      <table class="pe-tbl" style="max-width:440px">
-        <tr><td class="lbl">EMBARQUE</td><td>${peFmtData(g.prev_embarque)}</td></tr>
-        <tr><td class="lbl">PREV. PAGAMENTO</td><td>${dataPag}</td></tr>
-        <tr><td class="lbl">PREV. CHEG. PORTO</td><td>${peFmtData(g.prev_chegada_porto)}</td></tr>
-        <tr><td class="lbl">PREV. CHEG. CLIENTE</td><td>${peFmtData(g.prev_chegada_cliente)}</td></tr>
+      <table class="pe-datas">
+        <thead><tr>
+          <th>Embarque</th><th>Prev. Pagamento</th><th>Prev. Cheg. Porto</th><th>Prev. Cheg. Cliente</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>${peFmtData(g.prev_embarque)}</td>
+          <td>${dataPag}</td>
+          <td>${peFmtData(g.prev_chegada_porto)}</td>
+          <td>${peFmtData(g.prev_chegada_cliente)}</td>
+        </tr></tbody>
       </table>
     </div>`;
 }
@@ -3222,9 +3262,9 @@ function peRefreshNumbers() {
   set('pe-tot-qtd', fmtN(d.totQtd, 0));
   set('pe-tot-usd', `USD ${fmtN(d.totUsd, 2)}`);
   set('pe-tot-brl', `R$ ${fmtN(d.totBrl, 2)}`);
-  set('pe-info-totusd', `USD ${fmtN(d.totUsd, 2)}`);
-  set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
   set('pe-info-saldousd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
+  set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  set('pe-info-sptusd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
   set('pe-info-saldopbrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
   set('pe-saldo-valor', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
 }
