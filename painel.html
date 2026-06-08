@@ -219,6 +219,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .et-v{font-weight:400}
 .et-page{margin-bottom:14px}
 
+/* ── Pedido de Embarque — documento ── */
+.pe-doc{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#000;font-size:11px;background:#fff;padding:16mm 12mm;box-sizing:border-box}
+.pe-doc .pe-logo{text-align:center;margin-bottom:10px}
+.pe-doc .pe-logo img{width:200px;max-width:200px;height:auto}
+.pe-doc .pe-title{text-align:center;font-weight:700;font-size:14pt;margin-bottom:16px}
+.pe-tbl{width:100%;border-collapse:collapse;margin-bottom:14px}
+.pe-tbl td,.pe-tbl th{border:1px solid #000;padding:5px 7px;font-size:11px;vertical-align:middle}
+.pe-tbl .lbl{font-weight:700;background:#F2F2F2;white-space:nowrap}
+.pe-tbl thead th,.pe-tbl .tq{background:#00BCD4;color:#fff;font-weight:700;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pe-tbl .r{text-align:right;white-space:nowrap}
+.pe-tbl tfoot td{font-weight:700;background:#F2F2F2}
+.pe-saldo-txt{margin:16px 0;font-size:11px;line-height:1.6;text-align:justify}
+.pe-doc input.pe-qtd{width:80px;font:inherit;text-align:right;border:1px solid #90A4AE;border-radius:3px;padding:2px 5px}
+
 /* ── Wizard Montagem ─────────────────────────────────── */
 #wiz-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center}
 #wiz-overlay.open{display:flex}
@@ -282,6 +296,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </a>
     <a class="nav-link" href="#" onclick="return navTo(this, renderProposta)">
       <span class="nav-icon">📄</span> Proposta Comercial
+    </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderPedidoEmbarque)">
+      <span class="nav-icon">🚢</span> Pedido de Embarque
     </a>
     <a class="nav-link" href="#" onclick="return navTo(this, renderResumoDespachante)">
       <span class="nav-icon">📄</span> Resumo Despachante
@@ -2960,6 +2977,263 @@ async function gerarProposta() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ── Pedido de Embarque ──────────────────────────────────────────────────────
+let _peProcesso = null;
+let _peQtd = [];   // qtd embarcada por item (estado em memória)
+
+function renderPedidoEmbarque() {
+  _peProcesso = null; _peQtd = [];
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const opts = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione um processo —</option>' +
+      todos.map(p => {
+        const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${p.numero} — ${g.cliente || g.fornecedor || 'sem nome'}</option>`;
+      }).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1100px">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:14px">Pedido de Embarque</h2>
+
+      <div class="card">
+        <div class="card-hd tq">Selecionar Processo</div>
+        <div class="card-bd">
+          <div class="field" style="margin-bottom:0">
+            <label>Processo</label>
+            <select id="pe-select" onchange="peSelecionar(this.value)">${opts}</select>
+          </div>
+        </div>
+      </div>
+
+      <div id="pe-controls" style="display:none">
+        <div class="card">
+          <div class="card-hd">Dados do Embarque (editáveis antes de imprimir)</div>
+          <div class="card-bd">
+            <div class="g3">
+              <div class="field"><label>Câmbio Sinal (R$)</label>
+                <input type="number" id="pe-cambio-sinal" step="0.0001" min="0" placeholder="0,0000" oninput="peRenderPreview()"></div>
+              <div class="field"><label>Data do Câmbio Sinal</label>
+                <input type="date" id="pe-data-sinal" oninput="peRenderPreview()"></div>
+              <div class="field"><label>Câmbio Saldo (R$)</label>
+                <input type="number" id="pe-cambio-saldo" step="0.0001" min="0" placeholder="0,0000" oninput="peRenderPreview()"></div>
+            </div>
+            <div class="g3">
+              <div class="field"><label>Data prev. pagamento saldo</label>
+                <input type="date" id="pe-data-pagamento" oninput="peRenderPreview()"></div>
+              <div class="field"><label>Condição de pagamento</label>
+                <input type="text" id="pe-cond-pgto" placeholder="Ex: 20% Sinal / 80% Saldo" oninput="peRenderPreview()"></div>
+              <div class="field"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+          <button class="btn btn-p" onclick="pePrint()">🖨️ Imprimir / Salvar PDF</button>
+        </div>
+      </div>
+
+      <div id="pe-preview"></div>
+    </div>`;
+}
+
+function peFindPag(proc, tipo) {
+  return (proc.pagamentos_fornecedor || []).find(p => (p.descricao || '').toLowerCase().includes(tipo)) || null;
+}
+
+function peCondPgto(proc) {
+  const pgs = proc.pagamentos_fornecedor || [];
+  if (!pgs.length) return '';
+  return pgs.map(p => `${fmtN((p.percentual || 0) * 100, 0)}% ${(p.descricao || '').trim()}`.trim()).join(' / ');
+}
+
+function peFmtData(v) {
+  if (!v) return '—';
+  const m = String(v).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v);
+}
+
+function peSelecionar(id) {
+  const controls = document.getElementById('pe-controls');
+  document.getElementById('pe-preview').innerHTML = '';
+  if (!id) { _peProcesso = null; _peQtd = []; controls.style.display = 'none'; return; }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _peProcesso = todos.find(p => p.id == id) || null;
+  if (!_peProcesso) { controls.style.display = 'none'; return; }
+
+  const proc = _peProcesso;
+  const g = proc.dados_gerais || {};
+  const sinalPg = peFindPag(proc, 'sinal');
+  const saldoPg = peFindPag(proc, 'saldo');
+  const camFiscal = proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || 0;
+  const isoData = v => /^\d{4}-\d{2}-\d{2}/.test(v || '') ? String(v).slice(0, 10) : '';
+
+  document.getElementById('pe-cambio-sinal').value   = (sinalPg?.cambio || camFiscal) || '';
+  document.getElementById('pe-data-sinal').value     = isoData(sinalPg?.data_realizada || sinalPg?.data_prevista || g.data_pedido);
+  document.getElementById('pe-cambio-saldo').value   = (saldoPg?.cambio || camFiscal) || '';
+  document.getElementById('pe-data-pagamento').value = isoData(saldoPg?.data_prevista || g.prev_embarque);
+  document.getElementById('pe-cond-pgto').value      = peCondPgto(proc);
+
+  // Qtd Embarcada pré-preenchida com a qtd original do processo
+  _peQtd = (proc.itens || []).map(it => parseFloat(it.quantidade) || 0);
+
+  controls.style.display = 'block';
+  peRenderPreview();
+}
+
+function peCompute() {
+  const proc = _peProcesso || {};
+  const itens = proc.itens || [];
+  const cambioSinal = parseFloat(val('pe-cambio-sinal')) || 0;
+  const cambioSaldo = parseFloat(val('pe-cambio-saldo')) || 0;
+  const sinalPg = peFindPag(proc, 'sinal');
+  const pctSinal = (sinalPg && sinalPg.percentual != null) ? sinalPg.percentual : 0.20;
+  const fobOriginal = (proc.resultado && proc.resultado.fob_total_usd)
+    || itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0) * (parseFloat(it.fob_unit_usd) || 0), 0);
+  const sinalUsd = (sinalPg && sinalPg.valor_usd > 0) ? sinalPg.valor_usd : fobOriginal * pctSinal;
+
+  const rows = itens.map((it, i) => {
+    const qtd = _peQtd[i] || 0;
+    const fobUnit = parseFloat(it.fob_unit_usd) || 0;
+    const totUsd = qtd * fobUnit;
+    const precoBrl = fobUnit * cambioSaldo;
+    const totBrl = qtd * precoBrl;
+    return { it, qtd, fobUnit, totUsd, precoBrl, totBrl };
+  });
+  const totQtd = rows.reduce((s, r) => s + r.qtd, 0);
+  const totUsd = rows.reduce((s, r) => s + r.totUsd, 0);
+  const totBrl = rows.reduce((s, r) => s + r.totBrl, 0);
+  const sinalBrl = sinalUsd * cambioSinal;
+  const saldoPagarUsd = totUsd - sinalUsd;
+  const saldoPagarBrl = saldoPagarUsd * cambioSaldo;
+  return { rows, totQtd, totUsd, totBrl, sinalUsd, sinalBrl, saldoPagarUsd, saldoPagarBrl, cambioSinal, cambioSaldo };
+}
+
+function peDocHTML(forPrint) {
+  const proc = _peProcesso;
+  const g = proc.dados_gerais || {};
+  const d = peCompute();
+  const cliente   = g.cliente || g.fornecedor || '—';
+  const condPgto  = val('pe-cond-pgto') || '—';
+  const dataSinal = peFmtData(val('pe-data-sinal'));
+  const dataPag   = peFmtData(val('pe-data-pagamento'));
+
+  const linhas = d.rows.map((r, i) => {
+    const qtdCell = forPrint
+      ? fmtN(r.qtd, 0)
+      : `<input class="pe-qtd" type="number" min="0" step="any" value="${r.qtd}" oninput="peSetQtd(${i}, this.value)">`;
+    return `<tr>
+      <td style="font-family:monospace;white-space:nowrap">${esc(r.it.codigo || '—')}</td>
+      <td>${esc(r.it.descricao || '—')}</td>
+      <td class="r">${qtdCell}</td>
+      <td class="r">USD ${fmtN(r.fobUnit, 4)}</td>
+      <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
+      <td class="r">R$ ${fmtN(r.precoBrl, 4)}</td>
+      <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+
+  return `
+    <div class="pe-doc">
+      <div class="pe-logo"><img src="logo_pilar.png" alt="PILAR IMPORTS"></div>
+      <div class="pe-title">PEDIDO DE EMBARQUE - PILAR IMPORTS</div>
+
+      <table class="pe-tbl">
+        <tr>
+          <td class="lbl">CLIENTE</td><td>${esc(cliente)}</td>
+          <td class="lbl">CÂMBIO SINAL</td><td class="r">R$ ${fmtN(d.cambioSinal, 4)}</td>
+          <td class="tq">VALORES USD</td><td class="tq">VALOR R$ DEPÓSITO</td>
+        </tr>
+        <tr>
+          <td class="lbl">CND. PAGAMENTO</td><td>${esc(condPgto)}</td>
+          <td class="lbl">CÂMBIO SALDO</td><td class="r">R$ ${fmtN(d.cambioSaldo, 4)}</td>
+          <td class="r">USD ${fmtN(d.sinalUsd, 2)}</td><td class="r" id="pe-info-sinalbrl">R$ ${fmtN(d.sinalBrl, 2)}</td>
+        </tr>
+        <tr>
+          <td></td><td></td>
+          <td class="lbl">DATA</td><td class="r">${dataSinal}</td>
+          <td class="r" id="pe-info-totusd">USD ${fmtN(d.totUsd, 2)}</td>
+          <td class="r" id="pe-info-saldobrl">R$ ${fmtN(d.saldoPagarBrl, 2)}</td>
+        </tr>
+        <tr>
+          <td class="tq" colspan="4">SALDO A PAGAR</td>
+          <td class="r" id="pe-info-saldousd">USD ${fmtN(d.saldoPagarUsd, 2)}</td>
+          <td class="r" id="pe-info-saldopbrl">R$ ${fmtN(d.saldoPagarBrl, 2)}</td>
+        </tr>
+      </table>
+
+      <table class="pe-tbl">
+        <thead><tr>
+          <th>Código</th><th>Descrição</th><th>Qtd Embarcada</th>
+          <th>Preço Unit USD</th><th>Total USD</th><th>Preço Unit R$</th><th>Total R$</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr>
+          <td colspan="2" style="text-align:right">TOTAL</td>
+          <td class="r" id="pe-tot-qtd">${fmtN(d.totQtd, 0)}</td>
+          <td></td>
+          <td class="r" id="pe-tot-usd">USD ${fmtN(d.totUsd, 2)}</td>
+          <td></td>
+          <td class="r" id="pe-tot-brl">R$ ${fmtN(d.totBrl, 2)}</td>
+        </tr></tfoot>
+      </table>
+
+      <div class="pe-saldo-txt">
+        Prezado cliente, segue confirmação de pedido com as quantidades embarcadas,
+        solicitamos pagamento SALDO de no valor de <b id="pe-saldo-valor">R$ ${fmtN(d.saldoPagarBrl, 2)}</b>
+        a ser depositado na conta da Pilar Imports Ltda:
+        (BANCO ITAU-341 / AGENCIA: 0196 / CONTA 99701-9 / CNPJ: 43.954.200/0001-96),
+        no dia: ${dataPag}.
+      </div>
+
+      <table class="pe-tbl" style="max-width:440px">
+        <tr><td class="lbl">EMBARQUE</td><td>${peFmtData(g.prev_embarque)}</td></tr>
+        <tr><td class="lbl">PREV. PAGAMENTO</td><td>${dataPag}</td></tr>
+        <tr><td class="lbl">PREV. CHEG. PORTO</td><td>${peFmtData(g.prev_chegada_porto)}</td></tr>
+        <tr><td class="lbl">PREV. CHEG. CLIENTE</td><td>${peFmtData(g.prev_chegada_cliente)}</td></tr>
+      </table>
+    </div>`;
+}
+
+function peRenderPreview() {
+  if (!_peProcesso) return;
+  document.getElementById('pe-preview').innerHTML = `
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="card-hd">Pré-visualização — ${_peProcesso.numero}</div>
+      <div style="background:#fff;overflow-x:auto">${peDocHTML(false)}</div>
+    </div>`;
+}
+
+function peSetQtd(i, v) {
+  _peQtd[i] = parseFloat(v) || 0;
+  peRefreshNumbers();
+}
+
+// Atualiza só os números calculados (preserva o foco no input de Qtd)
+function peRefreshNumbers() {
+  const d = peCompute();
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  d.rows.forEach((r, i) => {
+    set(`pe-rtu-${i}`, `USD ${fmtN(r.totUsd, 2)}`);
+    set(`pe-rtb-${i}`, `R$ ${fmtN(r.totBrl, 2)}`);
+  });
+  set('pe-tot-qtd', fmtN(d.totQtd, 0));
+  set('pe-tot-usd', `USD ${fmtN(d.totUsd, 2)}`);
+  set('pe-tot-brl', `R$ ${fmtN(d.totBrl, 2)}`);
+  set('pe-info-totusd', `USD ${fmtN(d.totUsd, 2)}`);
+  set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  set('pe-info-saldousd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
+  set('pe-info-saldopbrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  set('pe-saldo-valor', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+}
+
+function pePrint() {
+  if (!_peProcesso) { toast('Selecione um processo.'); return; }
+  document.getElementById('or-print-area').innerHTML = peDocHTML(true);
+  window.print();
+  toast('✓ Diálogo de impressão aberto');
 }
 
 // ── Order Request ──────────────────────────────────────────────────────────
