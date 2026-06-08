@@ -3145,17 +3145,14 @@ function peDocHTML(forPrint) {
         ${r.it.codigo ? `<div class="cod">${esc(r.it.codigo)}</div>` : ''}
         <div>${esc(r.it.descricao || r.it.codigo || '—')}</div>
       </td>
-      <td>${esc(r.it.cor || '—')}</td>
       <td class="r">${qtdCell}</td>
       <td>${esc(r.it.unidade || 'PC')}</td>
       <td class="r">${fmtN(r.fobUnit, 4)}</td>
       <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
       <td class="r">${fmtN(r.precoBrl, 4)}</td>
       <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
-      <td class="r">${r.it.gsm || '—'}</td>
-      <td class="r">${r.it.largura_cm || '—'}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="11" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+  }).join('') || `<tr><td colspan="8" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   return `
     <div class="pe-doc">
@@ -3197,21 +3194,19 @@ function peDocHTML(forPrint) {
 
       <table class="pe-itens">
         <thead><tr>
-          <th>#</th><th>Descrição</th><th>Cor/Estampa</th>
+          <th>#</th><th style="width:100%">Descrição</th>
           <th class="r">Qtd Embarcada</th><th>Un</th>
           <th class="r">FOB Unit USD</th><th class="r">Total USD</th>
           <th class="r">Preço Unit R$</th><th class="r">Total R$</th>
-          <th class="r">GSM</th><th class="r">Larg. cm</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
         <tfoot><tr>
-          <td colspan="3" style="text-align:right">TOTAL</td>
+          <td colspan="2" style="text-align:right">TOTAL</td>
           <td class="r" id="pe-tot-qtd">${fmtN(d.totQtd, 0)}</td>
           <td></td><td></td>
           <td class="r" id="pe-tot-usd">USD ${fmtN(d.totUsd, 2)}</td>
           <td></td>
           <td class="r" id="pe-tot-brl">R$ ${fmtN(d.totBrl, 2)}</td>
-          <td></td><td></td>
         </tr></tfoot>
       </table>
 
