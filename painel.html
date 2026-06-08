@@ -3102,27 +3102,41 @@ function peCompute() {
   const itens = proc.itens || [];
   const cambioSinal = parseFloat(val('pe-cambio-sinal')) || 0;
   const cambioSaldo = parseFloat(val('pe-cambio-saldo')) || 0;
+
+  // Percentuais das parcelas do fornecedor (fração 0–1)
   const sinalPg = peFindPag(proc, 'sinal');
+  const saldoPg = peFindPag(proc, 'saldo');
+  const temParcelas = !!(proc.pagamentos_fornecedor && proc.pagamentos_fornecedor.length);
   const pctSinal = (sinalPg && sinalPg.percentual != null) ? sinalPg.percentual : 0.20;
-  const fobOriginal = (proc.resultado && proc.resultado.fob_total_usd)
-    || itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0) * (parseFloat(it.fob_unit_usd) || 0), 0);
-  const sinalUsd = (sinalPg && sinalPg.valor_usd > 0) ? sinalPg.valor_usd : fobOriginal * pctSinal;
+  const pctSaldo = (saldoPg && saldoPg.percentual != null) ? saldoPg.percentual : (1 - pctSinal);
+
+  // Câmbio médio ponderado pelos percentuais; sem parcelas → câmbio saldo
+  const cambioMedio = temParcelas
+    ? (pctSinal * 100 * cambioSinal + pctSaldo * 100 * cambioSaldo) / 100
+    : cambioSaldo;
 
   const rows = itens.map((it, i) => {
     const qtd = _peQtd[i] || 0;
-    const fobUnit = parseFloat(it.fob_unit_usd) || 0;
-    const totUsd = qtd * fobUnit;
-    const precoBrl = fobUnit * cambioSaldo;
+    const pvUsd = parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || 0;
+    const totUsd = qtd * pvUsd;
+    const precoBrl = pvUsd * cambioMedio;
     const totBrl = qtd * precoBrl;
-    return { it, qtd, fobUnit, totUsd, precoBrl, totBrl };
+    return { it, qtd, pvUsd, totUsd, precoBrl, totBrl };
   });
   const totQtd = rows.reduce((s, r) => s + r.qtd, 0);
   const totUsd = rows.reduce((s, r) => s + r.totUsd, 0);
   const totBrl = rows.reduce((s, r) => s + r.totBrl, 0);
+
+  // Tabela financeira: SINAL/SALDO sobre o total embarcado (PV USD)
+  const sinalUsd = totUsd * pctSinal;
   const sinalBrl = sinalUsd * cambioSinal;
-  const saldoPagarUsd = totUsd - sinalUsd;
-  const saldoPagarBrl = saldoPagarUsd * cambioSaldo;
-  return { rows, totQtd, totUsd, totBrl, sinalUsd, sinalBrl, saldoPagarUsd, saldoPagarBrl, cambioSinal, cambioSaldo, pctSinal };
+  const saldoUsd = totUsd * pctSaldo;
+  const saldoBrl = saldoUsd * cambioSaldo;
+  const saldoPagarUsd = saldoUsd;   // SALDO A PAGAR = SALDO
+  const saldoPagarBrl = saldoBrl;
+
+  return { rows, totQtd, totUsd, totBrl, sinalUsd, sinalBrl,
+           saldoPagarUsd, saldoPagarBrl, cambioSinal, cambioSaldo, cambioMedio, pctSinal, pctSaldo };
 }
 
 function peDocHTML(forPrint) {
@@ -3133,7 +3147,7 @@ function peDocHTML(forPrint) {
   const dataPag   = peFmtData(val('pe-data-pagamento'));
 
   const pctSinal = (d.pctSinal || 0) * 100;
-  const pctSaldo = 100 - pctSinal;
+  const pctSaldo = (d.pctSaldo || 0) * 100;
 
   const linhas = d.rows.map((r, i) => {
     const qtdCell = forPrint
@@ -3147,7 +3161,7 @@ function peDocHTML(forPrint) {
       </td>
       <td class="r">${qtdCell}</td>
       <td>${esc(r.it.unidade || 'PC')}</td>
-      <td class="r">${fmtN(r.fobUnit, 4)}</td>
+      <td class="r">${fmtN(r.pvUsd, 4)}</td>
       <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
       <td class="r">${fmtN(r.precoBrl, 4)}</td>
       <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
@@ -3176,7 +3190,7 @@ function peDocHTML(forPrint) {
       <table class="pe-fin">
         <tr>
           <td class="lbl">SINAL (${fmtN(pctSinal, 0)}%)</td>
-          <td class="r">USD ${fmtN(d.sinalUsd, 2)}</td>
+          <td class="r" id="pe-info-sinalusd">USD ${fmtN(d.sinalUsd, 2)}</td>
           <td class="r" id="pe-info-sinalbrl">R$ ${fmtN(d.sinalBrl, 2)}</td>
         </tr>
         <tr>
@@ -3195,7 +3209,7 @@ function peDocHTML(forPrint) {
         <thead><tr>
           <th>#</th><th style="width:100%">Descrição</th>
           <th class="r">Qtd Embarcada</th><th>Un</th>
-          <th class="r">FOB Unit USD</th><th class="r">Total USD</th>
+          <th class="r">Preço Unit USD</th><th class="r">Total USD</th>
           <th class="r">Preço Unit R$</th><th class="r">Total R$</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
@@ -3256,6 +3270,8 @@ function peRefreshNumbers() {
   set('pe-tot-qtd', fmtN(d.totQtd, 0));
   set('pe-tot-usd', `USD ${fmtN(d.totUsd, 2)}`);
   set('pe-tot-brl', `R$ ${fmtN(d.totBrl, 2)}`);
+  set('pe-info-sinalusd', `USD ${fmtN(d.sinalUsd, 2)}`);
+  set('pe-info-sinalbrl', `R$ ${fmtN(d.sinalBrl, 2)}`);
   set('pe-info-saldousd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
   set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
   set('pe-info-sptusd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
