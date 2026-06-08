@@ -633,7 +633,7 @@ pm2 startup
 ## 15. ESTADO ATUAL DO SISTEMA (2026-06-05)
 
 ### Acesso
-- **Frontend:** https://henriquehog-cpu.github.io/pilar-calculadora/painel.html
+- **Frontend:** https://painel.pilarimports.com.br/painel.html
 - **Local:** `bash serve.sh` → http://localhost:8080/painel.html
 
 ### Módulos funcionando (localStorage, sem backend)
