@@ -2022,9 +2022,10 @@ function npRenderResumoFiscal(proc, res) {
 let _fcProcesso     = null;
 let _fcPagamentos   = [];
 let _fcRecebimentos = [];
+let _fcNumerario    = [];
 
 function renderFluxoCaixa() {
-  _fcProcesso = null; _fcPagamentos = []; _fcRecebimentos = [];
+  _fcProcesso = null; _fcPagamentos = []; _fcRecebimentos = []; _fcNumerario = [];
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
   const opts  = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
@@ -2111,6 +2112,22 @@ function renderFluxoCaixa() {
           <div class="card-bd" id="fc-resumo"></div>
         </div>
 
+        <div class="card">
+          <div class="card-hd tq">5 — Numerário ao Despachante</div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Descrição</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Data Prevista</th>
+                <th>Status</th><th>Ações</th>
+              </tr></thead>
+              <tbody id="fc-num-tbody"></tbody>
+              <tfoot id="fc-num-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+
         <div style="text-align:right;margin-top:4px;padding-bottom:40px">
           <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="fcSalvar()">Salvar Fluxo</button>
         </div>
@@ -2129,7 +2146,7 @@ function fcSelecionarProcesso(id) {
   const corpo = document.getElementById('fc-corpo');
   const btn   = document.getElementById('btn-fc-salvar');
   if (!id) {
-    _fcProcesso = null;
+    _fcProcesso = null; _fcNumerario = [];
     corpo.style.display = 'none';
     btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
     return;
@@ -2171,10 +2188,14 @@ function fcSelecionarProcesso(id) {
     }];
   }
 
+  // Numerário ao Despachante (calculado do processo; preserva datas/status salvos)
+  _fcNumerario = fcBuildNumerario();
+
   fcRenderCambios();
   fcRenderPagamentos();
   fcRenderRecebimentos();
   fcRenderResumo();
+  fcRenderNumerario();
 }
 
 function fcRenderCambios() {
@@ -2495,6 +2516,118 @@ function fcEditarProcesso() {
   renderNovoProcesso(_fcProcesso);
 }
 
+// ── Bloco 5 — Numerário ao Despachante ──────────────────────────────────────
+// Calcula os itens do numerário a partir do processo (mesma base da Simulação
+// de Numerário do Resumo Despachante); preserva datas/status já salvos.
+function fcBuildNumerario() {
+  const proc = _fcProcesso;
+  if (!proc || typeof Calc === 'undefined') return [];
+  const calcProc = rdBuildProcParaCalc(proc);
+  const res = npCalcResultado(calcProc);
+  if (!res) return [];
+
+  const fi   = res.imp_imp || {};
+  const cd   = calcProc.custos_defaults;
+  const cont = calcProc.frete.containers || 1;
+  const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
+  const freteBRL = (calcProc.frete.valor_usd || 0) * cambioDI;
+
+  const base = [
+    { descricao: 'Frete Internacional', valor_reais: freteBRL },
+    { descricao: 'II',                  valor_reais: fi.ii      || 0 },
+    { descricao: 'IPI Importação',      valor_reais: fi.ipi     || 0 },
+    { descricao: 'PIS Importação',      valor_reais: fi.pis     || 0 },
+    { descricao: 'COFINS Importação',   valor_reais: fi.cofins  || 0 },
+    { descricao: 'AFRMM',               valor_reais: fi.afrmm   || 0 },
+    { descricao: 'Siscomex',            valor_reais: fi.siscomex|| 0 },
+    { descricao: 'Dif. Frete Intl',     valor_reais: fi.dif_frete || 0 },
+    { descricao: 'Despachante',         valor_reais: cd.despachante },
+    { descricao: 'Agente de Cargas',    valor_reais: cd.agente_cargas      * cont },
+    { descricao: 'Armazenagem Porto',   valor_reais: cd.armazenagem        * cont },
+    { descricao: 'Capatazia',           valor_reais: cd.capatazia          * cont },
+    { descricao: 'Operador Logístico',  valor_reais: cd.operador_logistico * cont }
+  ];
+
+  // Recupera datas/status já salvos no processo, casando pela descrição
+  const salvos = {};
+  (proc.numerario_despachante || []).forEach(s => { if (s && s.descricao) salvos[s.descricao] = s; });
+
+  return base.map(it => {
+    const s = salvos[it.descricao] || {};
+    return {
+      descricao:      it.descricao,
+      valor_reais:    it.valor_reais,
+      data_prevista:  s.data_prevista  || '',
+      data_realizada: s.data_realizada || null,
+      status:         s.status         || 'previsto'
+    };
+  });
+}
+
+function fcRenderNumerario() {
+  const tbody = document.getElementById('fc-num-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = _fcNumerario.map((n, i) => {
+    const statusSel = ['previsto','pago','atrasado'].map(s =>
+      `<option${n.status===s?' selected':''}>${s}</option>`).join('');
+    const pagoStyle  = n.status === 'pago'     ? 'color:#2E7D32;font-weight:600' : '';
+    const atrasStyle = n.status === 'atrasado' ? 'color:#C62828;font-weight:600' : '';
+    return `<tr style="${n.status==='pago'?'opacity:.75':''}">
+      <td>${esc(n.descricao)}</td>
+      <td style="text-align:right;padding:5px 8px;white-space:nowrap;font-weight:600;color:var(--turquesa-dark)">
+        R$ ${fmtN(n.valor_reais)}
+      </td>
+      <td><input type="date" value="${n.data_prevista||''}" style="width:132px"
+        oninput="fcChangeNumerario(${i},'data_prevista',this.value)"></td>
+      <td>
+        <select style="width:88px;padding:4px 6px;${pagoStyle||atrasStyle}"
+          oninput="fcChangeNumerario(${i},'status',this.value)">${statusSel}</select>
+      </td>
+      <td style="white-space:nowrap">
+        ${n.status !== 'pago'
+          ? `<button class="btn btn-s btn-sm" onclick="fcNumerarioPago(${i})" style="margin-right:4px">✓ Pago</button>`
+          : ''}
+        <button class="btn btn-s btn-sm" style="color:#c62828" title="Resetar status para previsto"
+          onclick="fcNumerarioReset(${i})">✕</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--cinza-med)">Selecione um processo</td></tr>';
+  fcAtualizarFootNum();
+}
+
+function fcAtualizarFootNum() {
+  const tfoot = document.getElementById('fc-num-tfoot');
+  if (!tfoot) return;
+  const tot = _fcNumerario.reduce((s, n) => s + (n.valor_reais || 0), 0);
+  tfoot.innerHTML = `
+    <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
+      <td style="padding:7px 8px">Total Numerário</td>
+      <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(tot)}</td>
+      <td colspan="3"></td>
+    </tr>`;
+}
+
+function fcChangeNumerario(i, campo, valor) {
+  const n = _fcNumerario[i];
+  if (!n) return;
+  n[campo] = valor;
+}
+
+function fcNumerarioPago(i) {
+  if (!_fcNumerario[i]) return;
+  _fcNumerario[i].status = 'pago';
+  _fcNumerario[i].data_realizada = today();
+  fcRenderNumerario();
+}
+
+// ✕ não remove o item (é fixo) — apenas reseta o status para "previsto"
+function fcNumerarioReset(i) {
+  if (!_fcNumerario[i]) return;
+  _fcNumerario[i].status = 'previsto';
+  _fcNumerario[i].data_realizada = null;
+  fcRenderNumerario();
+}
+
 function fcSalvar() {
   if (!_fcProcesso) return;
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
@@ -2502,6 +2635,7 @@ function fcSalvar() {
   if (idx >= 0) {
     todos[idx].pagamentos_fornecedor = _fcPagamentos;
     todos[idx].recebimentos_cliente  = _fcRecebimentos;
+    todos[idx].numerario_despachante = _fcNumerario;
     todos[idx].atualizado_em = new Date().toISOString();
     localStorage.setItem('pilar_processos', JSON.stringify(todos));
     _apiSalvarProcessos(todos);
