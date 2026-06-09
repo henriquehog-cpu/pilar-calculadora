@@ -660,6 +660,7 @@ pm2 startup
 | Etiquetas HTML | ✅ | Sub-aba "🏷️ Etiquetas" dentro do Order Request; layout print-ready, 2 por linha, logo PILAR, @media print esconde o resto; substitui o gerador xlsx |
 | Persistência no servidor | ✅ | Processos salvos em dados.json via /api/processos (GET/POST/DELETE); localStorage como cache; servidor prevalece no init |
 | Banco DI automático | ✅ | banco_di.json servido por GET /api/banco-di; carrega automático ao abrir Resumo Despachante; lookup por prefixo (4 letras) com substituição de GSM e largura |
+| Banco DI automático por família | ✅ | banco_di.json atualizado com 21 templates por prefixo (MICL, MICE, MICC, MICS, BLKT, VOIL, VOFL, TEJQ, CORF, SHER, FLFE, FLFL, COLC, ESCO, ESCP, ESCR, GRUA, JACQ, CBLT, COBT, MQIL). Função `rdSubstituirDescDI` aprimorada para substituir automaticamente GSM, largura (em M e CM) e cor/design do item no template da família. Pendente: substituição de tamanho/medida para famílias de cama (COLC, CBLT, COBT) |
 | Alíquotas II corrigidas | ✅ | 28 itens nos processos PIL-005/006/048 corrigidos via script por NCM (produtos_com_aliquotas.json); II agora calculado corretamente (ex: 26% para NCMs 5407.x) |
 | Proposta Comercial | ✅ | Módulo entre Order Request e Resumo Despachante; gera .docx a partir de `proposta_modelo.docx` (modelo Word real com placeholders `{{...}}`) via `POST /api/proposta` → `gerar_proposta.py`; campos editáveis pré-preenchidos do processo (descrição, qtd, FOB unit, % sinal, câmbio, datas, dias antes desembarque, frete, prazo, observações); valores e extenso em PT-BR calculados em Python sem dependências; modelo preparado por `_preparar_modelo.py` |
 | Resumo Fiscal (Seção 5) | ✅ | Seção 5 no formulário do processo: lista linear com todos os impostos (importação e venda) e custos do processo |
@@ -676,7 +677,7 @@ pm2 startup
 | Item | Prioridade |
 |---|---|
 | produtos.json do Omie não tem alíquotas de importação (ii=0); fonte correta é produtos_com_aliquotas.json (332 produtos, 325 com ii>0) — manter sincronizado com o banco da calculadora | Alta |
-| Templates de descrição DI por família | Alta — banco_DI_cruzado_PILAR_v2.xlsx gerado, aguarda preenchimento manual |
+| Substituição de tamanho/medida nos templates DI das famílias de cama (COLC, CBLT, COBT) | Média — templates por família concluídos; falta automatizar a medida |
 | HTTPS + domínio próprio no VPS | Média |
 | Integração Omie via proxy funcionando | ✅ Resolvido — 817 produtos sincronizados via API |
 | Formatação visual dos arquivos Excel | Média — cores, logo, estilos |
