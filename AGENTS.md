@@ -1,6 +1,6 @@
 # AGENTS.md — Painel Operacional PILAR Imports
 > Documento de referência para o Claude Code construir e manter o sistema.
-> Atualizado em: 2026-05-29
+> Atualizado em: 2026-06-09
 
 ---
 
@@ -298,6 +298,7 @@ Regras:
 - Mínimo 1 parcela, sem máximo
 - Soma dos percentuais deve totalizar 100% (alerta visual, não bloquear)
 - Câmbio de cada parcela é independente e editável
+- Valor USD editável manualmente: cálculo automático (% × FOB total) é apenas o valor inicial; ao sobrescrever recalcula Valor R$ = valor_usd × câmbio, mantém o % como referência (não altera), marca `usd_manual:true` e exibe borda turquesa. Editar o % volta ao valor automático e limpa a marca.
 - Taxa média ponderada calculada automaticamente
 - Status: previsto | pago | atrasado
 
@@ -337,6 +338,7 @@ Regras:
 Regras:
 - Total de referência = resultado.nf_total_brl / câmbio_cliente
 - Ao adicionar/remover parcela: redistribui % igualmente entre todas
+- Valor USD editável manualmente: cálculo automático (% × NF total USD) é apenas o valor inicial; ao sobrescrever recalcula Valor R$ = valor_usd × câmbio spot, mantém o % como referência (não altera), marca `usd_manual:true` e exibe borda turquesa. Editar o % volta ao valor automático e limpa a marca.
 - Rodapé mostra Total % com alerta se ≠ 100%
 
 ### 5.5 Visão da Tela de Fluxo de Caixa
@@ -645,7 +647,7 @@ pm2 startup
 | Novo Processo | ✅ | 3 seções + Seção 4 Precificação com calc.js em tempo real |
 | Order Request | ✅ | PDF 1 página em inglês, logo PILAR, código + descrição na tabela, email dinâmico da config |
 | Resumo Despachante | ✅ | Banco DI (importação .xlsx, edição, busca) + PDF (colunas fixas) + Excel (.xlsx) — dois botões coexistem |
-| Fluxo de Caixa | ✅ | Câmbios, parcelas % fornecedor, parcelas % cliente, alertas, resumo |
+| Fluxo de Caixa | ✅ | Câmbios, parcelas % fornecedor, parcelas % cliente, alertas, resumo; Valor USD editável manualmente nos Blocos 2 e 3 (sobrescreve o auto % × total, recalcula R$ pelo câmbio, borda turquesa, `usd_manual`) |
 | Catálogo Omie | ✅ | Importação .xlsx do Omie + busca + filtro por família |
 | Configurações | ✅ | Dados empresa + defaults dos processos |
 | Modal Novo Produto | ✅ | Gera código automático (PREFIXO.LARGURA.GSM.SEQUENCIAL), auto-preenche tipo/matéria/NCM pela família, campo prefixo customizado para famílias novas |
