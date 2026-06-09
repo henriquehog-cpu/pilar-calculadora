@@ -2885,6 +2885,7 @@ function rdNumerarioHTML(proc) {
   const freteUSD = calcProc.frete.valor_usd || 0;
   const cifUSD   = (res.fob_total_usd || 0) + freteUSD;
   const cifBRL   = cifUSD * cambioDI;
+  const freteBRL = freteUSD * cambioDI;
 
   const despachante = cd.despachante;
   const agente      = cd.agente_cargas      * cont;
@@ -2893,6 +2894,7 @@ function rdNumerarioHTML(proc) {
   const oplog       = cd.operador_logistico * cont;
 
   const totalNumerario =
+    freteBRL +
     (fi.ii || 0) + (fi.ipi || 0) + (fi.pis || 0) + (fi.cofins || 0) +
     (fi.afrmm || 0) + (fi.siscomex || 0) + (fi.dif_frete || 0) +
     despachante + agente + armaz + capat + oplog;
@@ -2909,6 +2911,7 @@ function rdNumerarioHTML(proc) {
         ${titl('Importação')}
         ${row('CIF Total USD', U(cifUSD))}
         ${row('CIF Total R$',  R(cifBRL))}
+        ${row('Frete Internacional', `USD ${fmtN(freteUSD, 2)} → R$ ${fmtN(freteBRL, 2)}`)}
         ${sep}
         ${row('II',                R(fi.ii))}
         ${row('IPI Importação',    R(fi.ipi))}
