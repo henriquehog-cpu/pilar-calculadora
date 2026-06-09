@@ -201,17 +201,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .et-page{page-break-after:always}
   .et-page:last-child{page-break-after:auto}
 
-  /* Pedido de Embarque — caber na largura A4 (210mm) sem extrapolar */
+  /* Pedido de Embarque — larguras fixadas por colgroup p/ impressão = preview */
   @page{margin:10mm}
-  .pe-doc{max-width:100%;font-size:8.5pt}
-  .pe-itens{width:100%;table-layout:auto;font-size:8pt}
-  .pe-itens thead th,.pe-itens tbody td,.pe-itens tfoot td{padding:3px 4px}
-  /* Descrição: ocupa o espaço e quebra palavras longas */
-  .pe-itens thead th:nth-child(2),.pe-itens tbody td:nth-child(2){width:35%;min-width:120px;word-break:break-word;white-space:normal}
-  /* Código do produto não quebra em duas linhas */
-  .pe-itens tbody td .cod{white-space:nowrap;word-break:keep-all}
-  /* Colunas numéricas não quebram e ganham fonte menor p/ dar espaço à descrição */
-  .pe-itens tbody td.r,.pe-itens tfoot td.r,.pe-itens thead th.r{white-space:nowrap;font-size:7.5pt}
+  .pe-doc{max-width:100%}
+  #pe-doc table{width:100%;table-layout:auto;font-size:8pt}
+  #pe-doc table td,#pe-doc table th{padding:3px 4px}
+  #pe-doc .pe-item-codigo{white-space:nowrap;font-size:7pt}
+  #pe-doc col.col-desc{width:32%}
+  #pe-doc col.col-num{width:10%;white-space:nowrap}
 }
 
 /* ── Order Request — abas ── */
@@ -250,7 +247,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pe-itens tbody td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:middle}
 .pe-itens tbody tr:nth-child(even) td{background:#F7F9FA}
 .pe-itens tbody td.r{text-align:right;white-space:nowrap}
-.pe-itens tbody td .cod{font-family:monospace;font-size:8pt;color:#607D8B;line-height:1.3}
+.pe-itens tbody td .pe-item-codigo{font-family:monospace;font-size:8pt;color:#607D8B;line-height:1.3}
 .pe-itens tfoot td{padding:6px;border-top:2px solid #37474F;font-weight:700;font-size:10pt}
 .pe-itens tfoot td.r{text-align:right;white-space:nowrap}
 .pe-saldo-txt{margin:16px 0;font-size:10pt;line-height:1.6;text-align:justify}
@@ -3173,7 +3170,7 @@ function peDocHTML(forPrint) {
     return `<tr>
       <td>${i + 1}</td>
       <td>
-        ${r.it.codigo ? `<div class="cod">${esc(r.it.codigo)}</div>` : ''}
+        ${r.it.codigo ? `<div class="pe-item-codigo">${esc(r.it.codigo)}</div>` : ''}
         <div>${esc(r.it.descricao || r.it.codigo || '—')}</div>
       </td>
       <td class="r">${qtdCell}</td>
@@ -3186,7 +3183,7 @@ function peDocHTML(forPrint) {
   }).join('') || `<tr><td colspan="8" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   return `
-    <div class="pe-doc">
+    <div class="pe-doc" id="pe-doc">
       <div class="pe-hd">
         <img src="logo_pilar.png" alt="PILAR IMPORTS">
         <div class="pe-co">PILAR IMPORTS LTDA</div>
@@ -3234,8 +3231,18 @@ function peDocHTML(forPrint) {
       </table>
 
       <table class="pe-itens">
+        <colgroup>
+          <col class="col-num"><!-- # -->
+          <col class="col-desc"><!-- Descrição -->
+          <col class="col-num"><!-- Qtd Embarcada -->
+          <col class="col-num"><!-- Un -->
+          <col class="col-num"><!-- Preço Unit USD -->
+          <col class="col-num"><!-- Total USD -->
+          <col class="col-num"><!-- Preço Unit R$ -->
+          <col class="col-num"><!-- Total R$ -->
+        </colgroup>
         <thead><tr>
-          <th>#</th><th style="width:100%">Descrição</th>
+          <th>#</th><th>Descrição</th>
           <th class="r">Qtd Embarcada</th><th>Un</th>
           <th class="r">Preço Unit USD</th><th class="r">Total USD</th>
           <th class="r">Preço Unit R$</th><th class="r">Total R$</th>
