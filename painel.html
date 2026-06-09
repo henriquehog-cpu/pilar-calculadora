@@ -275,6 +275,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .rel-tbl td{padding:3px 5px;border-bottom:1px solid #ECEFF1}
 .rel-tbl td.r{text-align:right;white-space:nowrap}
 .rel-sep{border-top:3px double #37474F;margin:12px 0}
+/* Visão resumida — tabela única */
+.rel-res-tbl{width:100%;border-collapse:collapse;font-size:8.5pt;margin-top:6px}
+.rel-res-tbl th{background:#37474F;color:#fff;padding:4px 6px;text-align:left;font-size:8pt;font-weight:700;text-transform:uppercase;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.rel-res-tbl th.r{text-align:right}
+.rel-res-tbl td{padding:3px 6px;border-bottom:1px solid #ECEFF1;white-space:nowrap}
+.rel-res-tbl td.r{text-align:right}
+.rel-res-tbl tbody tr:nth-child(even) td{background:#F2F9FA;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 
 /* ── Pedido de Embarque — documento (layout Order Request) ── */
 .pe-doc{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:10pt;background:#fff;padding:16mm 14mm;box-sizing:border-box}
@@ -3328,11 +3335,17 @@ function buildDespachante(proc, numeroDI, obs) {
 }
 
 // ── Relatório Geral ─────────────────────────────────────────────────────────
+let _relView = 'detalhado';
+
 function renderRelatorioGeral() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   document.getElementById('vc').innerHTML = `
     <div style="max-width:1000px">
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:20px">Relatório Geral</h2>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:14px">Relatório Geral</h2>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button id="rel-tab-detalhado" class="btn" onclick="relSetView('detalhado')">Detalhado</button>
+        <button id="rel-tab-resumido" class="btn" onclick="relSetView('resumido')">Resumido</button>
+      </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-hd tq">Filtros</div>
         <div class="card-bd">
@@ -3356,11 +3369,36 @@ function renderRelatorioGeral() {
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-p" onclick="relGerarPDF()">🖨️ Imprimir / Salvar PDF</button>
+            <button class="btn btn-s" id="rel-btn-copy" style="display:none" onclick="relCopiarTabela()">📋 Copiar Tabela</button>
             <span style="font-size:12px;color:var(--cinza-med)">${todos.length} processo(s) cadastrado(s).</span>
           </div>
         </div>
       </div>
     </div>`;
+  relSetView(_relView);
+}
+
+// Alterna entre Detalhado e Resumido (mostra o botão Copiar só no resumido)
+function relSetView(v) {
+  _relView = (v === 'resumido') ? 'resumido' : 'detalhado';
+  const det = document.getElementById('rel-tab-detalhado');
+  const res = document.getElementById('rel-tab-resumido');
+  if (det) det.className = 'btn ' + (_relView === 'detalhado' ? 'btn-p' : 'btn-s');
+  if (res) res.className = 'btn ' + (_relView === 'resumido'  ? 'btn-p' : 'btn-s');
+  const copy = document.getElementById('rel-btn-copy');
+  if (copy) copy.style.display = _relView === 'resumido' ? '' : 'none';
+}
+
+// Orientação da página para a impressão (resumido = paisagem)
+function relSetPageOrientation(landscape) {
+  let st = document.getElementById('rel-page-style');
+  if (!st) { st = document.createElement('style'); st.id = 'rel-page-style'; document.head.appendChild(st); }
+  st.textContent = `@media print{@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:10mm}}`;
+}
+
+function relGerarPDF() {
+  if (_relView === 'resumido') relGerarResumido();
+  else relGerarDetalhado();
 }
 
 function relFiltrarProcessos() {
@@ -3390,7 +3428,7 @@ function relResultado(proc) {
   return r;
 }
 
-function relGerarPDF() {
+function relGerarDetalhado() {
   const lista = relFiltrarProcessos();
   if (!lista.length) { toast('Nenhum processo no filtro selecionado.'); return; }
 
@@ -3479,8 +3517,108 @@ function relGerarPDF() {
       ${procsHTML}
     </div>`;
 
+  relSetPageOrientation(false);
   window.print();
   toast('✓ Diálogo de impressão aberto');
+}
+
+// Dados da visão resumida (compartilhado por impressão e cópia TSV)
+function relStatusResumo(arr, paidWord) {
+  if (!arr || !arr.length) return '—';
+  const pagos = arr.filter(x => x.status === paidWord).length;
+  if (pagos === 0) return 'previsto';
+  if (pagos === arr.length) return paidWord;
+  return 'parcial';
+}
+
+function relResumoData() {
+  const lista = relFiltrarProcessos();
+  const header = ['PIL','Cliente','Fornecedor','Embarque','Porto','Cliente',
+    'FOB USD','CIF R$','Custo Final R$','NF Total R$','Lucro R$','Margem %',
+    'Pag. Fornecedor R$','Status Pag.','Numerário R$','Status Num.',
+    'Recebimento R$','Status Rec.'];
+  const D = v => peFmtData(v);
+  const N = v => fmtN(v || 0, 2);
+  const sum = arr => (arr || []).reduce((s, x) => s + (x.valor_reais || 0), 0);
+  const rows = lista.map(proc => {
+    const g    = proc.dados_gerais || {};
+    const res  = relResultado(proc);
+    const pags = proc.pagamentos_fornecedor || [];
+    const recs = proc.recebimentos_cliente || [];
+    const num  = proc.numerario_despachante || [];
+    return [
+      proc.numero || '—',
+      g.cliente || '—',
+      g.fornecedor || '—',
+      D(g.prev_embarque),
+      D(g.prev_chegada_porto),
+      D(g.prev_chegada_cliente),
+      N(res.fob_total_usd),
+      N(res.cif_total_brl),
+      N(res.custo_final_total),
+      N(res.nf_total_brl),
+      N(res.lucro_brl),
+      fmtN((res.margem_pct || 0) * 100, 2),
+      N(sum(pags)),
+      relStatusResumo(pags, 'pago'),
+      N(sum(num)),
+      (num[0] && num[0].status) ? num[0].status : '—',
+      N(sum(recs)),
+      relStatusResumo(recs, 'recebido')
+    ];
+  });
+  return { header, rows };
+}
+
+function relGerarResumido() {
+  const { header, rows } = relResumoData();
+  if (!rows.length) { toast('Nenhum processo no filtro selecionado.'); return; }
+  const dataGer = new Date().toLocaleDateString('pt-BR');
+  const numCols = new Set([6,7,8,9,10,11,12,14,16]); // colunas numéricas → direita
+
+  const ths = header.map((h, i) => `<th${numCols.has(i) ? ' class="r"' : ''}>${esc(h)}</th>`).join('');
+  const trs = rows.map(r =>
+    `<tr>${r.map((c, i) => `<td${numCols.has(i) ? ' class="r"' : ''}>${esc(String(c))}</td>`).join('')}</tr>`).join('');
+
+  document.getElementById('or-print-area').innerHTML = `
+    <div class="rel-doc">
+      <div class="rel-hd">
+        <img src="logo_pilar.png" alt="PILAR IMPORTS">
+        <div class="rel-co">PILAR IMPORTS LTDA</div>
+      </div>
+      <div class="rel-title">RELATÓRIO GERAL DE PROCESSOS (RESUMIDO) — ${dataGer}</div>
+      <table class="rel-res-tbl">
+        <thead><tr>${ths}</tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`;
+
+  relSetPageOrientation(true);
+  window.print();
+  toast('✓ Diálogo de impressão aberto');
+}
+
+// Copia a tabela resumida em TSV (colável no Excel / Google Sheets)
+function relCopiarTabela() {
+  const { header, rows } = relResumoData();
+  if (!rows.length) { toast('Nenhum processo no filtro selecionado.'); return; }
+  const tsv = [header, ...rows].map(r => r.join('\t')).join('\n');
+  const done = () => toast('✓ Tabela copiada (TSV) — cole no Excel / Sheets');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(tsv).then(done).catch(() => relCopiarFallback(tsv, done));
+  } else {
+    relCopiarFallback(tsv, done);
+  }
+}
+
+function relCopiarFallback(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); }
+  catch (e) { toast('Não foi possível copiar a tabela.'); }
+  ta.remove();
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
