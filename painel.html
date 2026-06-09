@@ -495,10 +495,10 @@ function dashEventos(ativos) {
 
   ativos.forEach(proc => {
     const g = proc.dados_gerais || {};
-    const add = (dataStr, icone, desc) => {
+    const add = (dataStr, icone, desc, valor, sinal) => {
       if (!dataStr) return;
       const d = new Date(dataStr + 'T12:00');
-      if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero });
+      if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero, valor: valor || 0, sinal: sinal || null });
     };
     add(g.prev_embarque,        '🚢', 'Embarque');
     add(g.prev_chegada_porto,   '⚓', 'Chegada Porto');
@@ -508,14 +508,16 @@ function dashEventos(ativos) {
       .find(x => x.id === proc.id) || proc;
     (procFresh.pagamentos_fornecedor||[])
       .filter(p => p.status !== 'pago' && p.data_prevista)
-      .forEach(p => add(p.data_prevista, '💸', `Pgto ${p.descricao||'fornecedor'}`));
+      .forEach(p => add(p.data_prevista, '💸', `Pgto ${p.descricao||'fornecedor'}`, p.valor_reais, 'saida'));
     (procFresh.recebimentos_cliente||[])
       .filter(r => r.status !== 'recebido' && r.data_prevista)
-      .forEach(r => add(r.data_prevista, '💰', `Recebimento ${r.descricao||'cliente'}`));
+      .forEach(r => add(r.data_prevista, '💰', `Recebimento ${r.descricao||'cliente'}`, r.valor_reais, 'entrada'));
     // Numerário ao despachante (pagamento consolidado: 1 evento por processo)
     const num0 = (procFresh.numerario_despachante||[])[0];
-    if (num0 && num0.status !== 'pago' && num0.data_prevista)
-      add(num0.data_prevista, '🏦', 'Numerário Despachante');
+    if (num0 && num0.status !== 'pago' && num0.data_prevista) {
+      const numTotal = (procFresh.numerario_despachante||[]).reduce((s, n) => s + (n.valor_reais || 0), 0);
+      add(num0.data_prevista, '🏦', 'Numerário Despachante', numTotal, 'saida');
+    }
   });
 
   return ev.sort((a, b) => a.d - b.d);
@@ -524,11 +526,15 @@ function dashEventos(ativos) {
 function dashEventoHTML(e) {
   const rel    = dashDiasRel(e.d);
   const dataBR = e.d.toLocaleDateString('pt-BR');
+  const valHTML = e.sinal
+    ? `<span style="font-size:12px;font-weight:700;white-space:nowrap;min-width:100px;text-align:right;color:${e.sinal==='entrada'?'#2E7D32':'#C62828'}">R$ ${fmtN(e.valor)}</span>`
+    : `<span style="min-width:100px"></span>`;
   return `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light)">
       <span style="font-size:15px;width:22px;text-align:center;flex-shrink:0">${e.icone}</span>
       <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${e.numero}</span>
       <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.desc}</span>
+      ${valHTML}
       <span style="font-size:12px;color:var(--cinza-med);white-space:nowrap">${dataBR}</span>
       <span style="font-size:11px;font-weight:700;white-space:nowrap;min-width:52px;text-align:right;color:${rel.cor}">${rel.txt}</span>
     </div>`;
