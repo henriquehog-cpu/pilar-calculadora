@@ -203,11 +203,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   /* Pedido de Embarque — larguras fixadas por colgroup p/ impressão = preview */
   @page{margin:10mm}
-  .pe-doc{max-width:100%}
-  #pe-doc table{width:100%;table-layout:auto;font-size:8pt}
+  .pe-doc{max-width:100%;font-size:9pt}
+  #pe-doc table{width:100%;table-layout:auto}
+  #pe-doc .pe-itens{font-size:8.5pt}
   #pe-doc table td,#pe-doc table th{padding:3px 4px}
   #pe-doc .pe-item-codigo{white-space:nowrap;font-size:7pt}
-  #pe-doc thead th{white-space:normal;word-wrap:break-word;text-align:center}
+  #pe-doc thead th{white-space:normal;word-wrap:break-word;text-align:center;font-size:8pt}
   #pe-doc col.col-desc{width:32%}
   #pe-doc col.col-num{width:10%;white-space:nowrap}
 }
@@ -242,7 +243,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pe-fin .lbl{font-weight:700;background:#F5F7F8;width:40%}
 .pe-fin .r{text-align:right;white-space:nowrap}
 .pe-fin tr.saldo-pagar td{background:#00BCD4;color:#fff;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.pe-itens{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9.5pt}
+.pe-itens{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}
 .pe-itens thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:center;font-size:8.5pt;font-weight:700;text-transform:uppercase;white-space:normal;word-wrap:break-word;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .pe-itens tbody td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:middle}
 .pe-itens tbody tr:nth-child(even) td{background:#F7F9FA}
