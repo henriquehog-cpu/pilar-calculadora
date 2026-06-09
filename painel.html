@@ -898,7 +898,7 @@ function gerarNumero() {
 
 function newItemRow() {
   return { codigo:'', descricao:'', cor:'', cliente:'', quantidade:0, unidade:'PC',
-           fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'',
+           fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'', tamanho:'',
            peso_liq_unit:0, peso_bruto_unit:0,
            margem_pct: 0.20, pv_fixo_usd: 0, is_novo: false };
 }
@@ -1055,7 +1055,7 @@ function renderNovoProcesso(proc) {
             <thead><tr>
               <th style="text-align:center">#</th><th>Código</th><th>Descrição</th>
               <th>Cor/Estampa</th><th>Cliente</th><th>Qtd</th><th>Un</th>
-              <th>FOB Unit USD</th><th>NCM</th><th>GSM</th><th>Larg.</th>
+              <th>FOB Unit USD</th><th>NCM</th><th>GSM</th><th>Larg.</th><th>Tam.</th>
               <th style="text-align:right">Total USD</th><th></th>
             </tr></thead>
             <tbody id="itens-tbody"></tbody>
@@ -1401,7 +1401,7 @@ function npAtualizarRodape() {
   if (!tfoot) return;
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light)">
-      <td colspan="11" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
+      <td colspan="12" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
       <td style="text-align:right;padding:8px 10px;font-size:15px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(fobTotal)}</td>
       <td></td>
     </tr>`;
@@ -1415,6 +1415,10 @@ function npRenderItens() {
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
     const temConteudo = !!(it.codigo || it.descricao);
     const semAliq = temConteudo && ((it.aliquotas?.ii || 0) === 0 || !it.ncm);
+    const familia = (it.codigo || '').slice(0, 4).toUpperCase();
+    const ehCama  = ['COLC', 'CBLT', 'COBT'].includes(familia);
+    const tamOpts = ['', 'SOLTEIRO', 'CASAL', 'QUEEN', 'KING']
+      .map(o => `<option value="${o}"${(it.tamanho||'')===o?' selected':''}>${o || '—'}</option>`).join('');
     return `<tr>
       <td id="np-num-${i}" style="text-align:center">${it.is_novo ? `<span title="Produto novo — será exportado para o Omie" style="color:#F9A825;font-weight:700;cursor:default">★${i+1}</span>` : i+1}</td>
       <td><div class="ac-wrap">
@@ -1439,6 +1443,7 @@ function npRenderItens() {
       <td><input value="${esc(it.ncm)}" placeholder="NCM" oninput="npItemChange(${i},'ncm',this.value)"></td>
       <td><input type="number" value="${it.gsm||''}" min="0" oninput="npItemChange(${i},'gsm',this.value)"></td>
       <td><input type="number" value="${it.largura_cm||''}" min="0" oninput="npItemChange(${i},'largura_cm',this.value)"></td>
+      <td>${ehCama ? `<select oninput="npItemChange(${i},'tamanho',this.value)">${tamOpts}</select>` : ''}</td>
       <td id="np-total-${i}" style="text-align:right;padding:4px 10px;font-weight:600;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(total)}</td>
       <td style="padding:2px 6px">
         <button onclick="npRemoveItem(${i})" title="Remover" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:16px;line-height:1;padding:2px 4px">✕</button>
@@ -2980,6 +2985,14 @@ function rdSubstituirDescDI(desc, it) {
   // substitui a cor no final (após "COR:" ou "DESIGN:")
   if (it && it.cor) {
     out = out.replace(/((?:COR|DESIGN)\s*:\s*)[^\n]*/i, `$1${it.cor.toUpperCase()}`);
+  }
+  // tamanho (famílias de cama): troca o tamanho nominal e a medida MEDINDO NxNCM
+  if (it && it.tamanho) {
+    const tam = it.tamanho.toUpperCase();
+    const medidas = { SOLTEIRO: '150X200', CASAL: '220X240', QUEEN: '240X260', KING: '260X280' };
+    out = out.replace(/TAMANHO\s+(?:CASAL|QUEEN|KING|SOLTEIRO)/gi, `TAMANHO ${tam}`);
+    if (medidas[tam])
+      out = out.replace(/MEDINDO\s+\d+X\d+CM/gi, `MEDINDO ${medidas[tam]}CM`);
   }
   return out;
 }
