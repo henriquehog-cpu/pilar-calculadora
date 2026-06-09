@@ -3241,7 +3241,9 @@ function peDocHTML(forPrint) {
 
       <div class="pe-saldo-txt">
         Prezado cliente, segue confirmação de pedido com as quantidades embarcadas,
-        solicitamos pagamento SALDO de <b id="pe-saldo-valor">R$ ${fmtN(d.saldoPagarBrl, 2)}</b>
+        ${peDuasParcelas()
+          ? `solicitamos pagamento SALDO de <b id="pe-saldo-valor">R$ ${fmtN(d.saldoPagarBrl, 2)}</b>`
+          : `solicitamos pagamento no valor de <b id="pe-saldo-valor">R$ ${fmtN(d.totBrl, 2)}</b>`}
         na conta da Pilar Imports Ltda:
         (BANCO SANTANDER / AGENCIA: 0108 / CONTA: 13.008612-0 / CNPJ: 43.954.200/0001-96 — BANCO ITAU-341 / AGENCIA: 0196 / CONTA 99701-9 / CNPJ: 43.954.200/0001-96),
         no dia: ${dataPag}.
@@ -3304,7 +3306,7 @@ function peRefreshNumbers() {
     set('pe-info-tptusd', `USD ${fmtN(d.totUsd, 2)}`);
     set('pe-info-tptbrl', `R$ ${fmtN(d.totBrl, 2)}`);
   }
-  set('pe-saldo-valor', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  set('pe-saldo-valor', `R$ ${fmtN(peDuasParcelas() ? d.saldoPagarBrl : d.totBrl, 2)}`);
 }
 
 function pePrint() {
