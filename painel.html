@@ -207,6 +207,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   #pe-doc table{width:100%;table-layout:auto;font-size:8pt}
   #pe-doc table td,#pe-doc table th{padding:3px 4px}
   #pe-doc .pe-item-codigo{white-space:nowrap;font-size:7pt}
+  #pe-doc thead th{white-space:normal;word-wrap:break-word;text-align:center}
   #pe-doc col.col-desc{width:32%}
   #pe-doc col.col-num{width:10%;white-space:nowrap}
 }
@@ -242,8 +243,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pe-fin .r{text-align:right;white-space:nowrap}
 .pe-fin tr.saldo-pagar td{background:#00BCD4;color:#fff;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .pe-itens{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9.5pt}
-.pe-itens thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:left;font-size:8.5pt;font-weight:700;text-transform:uppercase;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.pe-itens thead th.r{text-align:right}
+.pe-itens thead th{background:#37474F;color:#fff;padding:5px 6px;text-align:center;font-size:8.5pt;font-weight:700;text-transform:uppercase;white-space:normal;word-wrap:break-word;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .pe-itens tbody td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:middle}
 .pe-itens tbody tr:nth-child(even) td{background:#F7F9FA}
 .pe-itens tbody td.r{text-align:right;white-space:nowrap}
@@ -3168,7 +3168,6 @@ function peDocHTML(forPrint) {
       ? fmtN(r.qtd, 0)
       : `<input class="pe-qtd" type="number" min="0" step="any" value="${r.qtd}" oninput="peSetQtd(${i}, this.value)">`;
     return `<tr>
-      <td>${i + 1}</td>
       <td>
         ${r.it.codigo ? `<div class="pe-item-codigo">${esc(r.it.codigo)}</div>` : ''}
         <div>${esc(r.it.descricao || r.it.codigo || '—')}</div>
@@ -3177,10 +3176,9 @@ function peDocHTML(forPrint) {
       <td>${esc(r.it.unidade || 'PC')}</td>
       <td class="r">${fmtN(r.pvUsd, 4)}</td>
       <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
-      <td class="r">${fmtN(r.precoBrl, 4)}</td>
       <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   return `
     <div class="pe-doc" id="pe-doc">
@@ -3232,28 +3230,25 @@ function peDocHTML(forPrint) {
 
       <table class="pe-itens">
         <colgroup>
-          <col class="col-num"><!-- # -->
           <col class="col-desc"><!-- Descrição -->
           <col class="col-num"><!-- Qtd Embarcada -->
           <col class="col-num"><!-- Un -->
           <col class="col-num"><!-- Preço Unit USD -->
           <col class="col-num"><!-- Total USD -->
-          <col class="col-num"><!-- Preço Unit R$ -->
           <col class="col-num"><!-- Total R$ -->
         </colgroup>
         <thead><tr>
-          <th>#</th><th>Descrição</th>
+          <th>Descrição</th>
           <th class="r">Qtd Embarcada</th><th>Un</th>
           <th class="r">Preço Unit USD</th><th class="r">Total USD</th>
-          <th class="r">Preço Unit R$</th><th class="r">Total R$</th>
+          <th class="r">Total R$</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
         <tfoot><tr>
-          <td colspan="2" style="text-align:right">TOTAL</td>
+          <td style="text-align:right">TOTAL</td>
           <td class="r" id="pe-tot-qtd">${fmtN(d.totQtd, 0)}</td>
           <td></td><td></td>
           <td class="r" id="pe-tot-usd">USD ${fmtN(d.totUsd, 2)}</td>
-          <td></td>
           <td class="r" id="pe-tot-brl">R$ ${fmtN(d.totBrl, 2)}</td>
         </tr></tfoot>
       </table>
