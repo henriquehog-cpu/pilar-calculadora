@@ -2023,9 +2023,11 @@ let _fcProcesso     = null;
 let _fcPagamentos   = [];
 let _fcRecebimentos = [];
 let _fcNumerario    = [];
+let _fcNumPag       = { data_prevista:'', status:'previsto', data_realizada:null };
 
 function renderFluxoCaixa() {
   _fcProcesso = null; _fcPagamentos = []; _fcRecebimentos = []; _fcNumerario = [];
+  _fcNumPag = { data_prevista:'', status:'previsto', data_realizada:null };
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
   const opts  = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
@@ -2108,11 +2110,6 @@ function renderFluxoCaixa() {
         </div>
 
         <div class="card">
-          <div class="card-hd">4 — Resumo Financeiro</div>
-          <div class="card-bd" id="fc-resumo"></div>
-        </div>
-
-        <div class="card">
           <div class="card-hd tq">5 — Numerário ao Despachante</div>
           <div style="overflow-x:auto">
             <table class="items-tbl" style="font-size:13px">
@@ -2120,12 +2117,17 @@ function renderFluxoCaixa() {
                 <th>Descrição</th>
                 <th style="text-align:right">Valor R$</th>
                 <th>Data Prevista</th>
-                <th>Status</th><th>Ações</th>
+                <th>Status</th>
               </tr></thead>
               <tbody id="fc-num-tbody"></tbody>
               <tfoot id="fc-num-tfoot"></tfoot>
             </table>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">4 — Resumo Financeiro</div>
+          <div class="card-bd" id="fc-resumo"></div>
         </div>
 
         <div style="text-align:right;margin-top:4px;padding-bottom:40px">
@@ -2517,10 +2519,11 @@ function fcEditarProcesso() {
 }
 
 // ── Bloco 5 — Numerário ao Despachante ──────────────────────────────────────
-// Calcula os itens do numerário a partir do processo (mesma base da Simulação
-// de Numerário do Resumo Despachante); preserva datas/status já salvos.
+// Itens calculados do processo (mesma base da Simulação de Numerário do Resumo
+// Despachante). Pagamento consolidado: uma única data/status no rodapé.
 function fcBuildNumerario() {
   const proc = _fcProcesso;
+  _fcNumPag = { data_prevista:'', status:'previsto', data_realizada:null };
   if (!proc || typeof Calc === 'undefined') return [];
   const calcProc = rdBuildProcParaCalc(proc);
   const res = npCalcResultado(calcProc);
@@ -2532,7 +2535,15 @@ function fcBuildNumerario() {
   const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
   const freteBRL = (calcProc.frete.valor_usd || 0) * cambioDI;
 
-  const base = [
+  // Data/status consolidados, preservados do que foi salvo
+  const saved0 = (proc.numerario_despachante || [])[0] || {};
+  _fcNumPag = {
+    data_prevista:  saved0.data_prevista  || '',
+    status:         saved0.status         || 'previsto',
+    data_realizada: saved0.data_realizada || null
+  };
+
+  return [
     { descricao: 'Frete Internacional', valor_reais: freteBRL },
     { descricao: 'II',                  valor_reais: fi.ii      || 0 },
     { descricao: 'IPI Importação',      valor_reais: fi.ipi     || 0 },
@@ -2547,85 +2558,63 @@ function fcBuildNumerario() {
     { descricao: 'Capatazia',           valor_reais: cd.capatazia          * cont },
     { descricao: 'Operador Logístico',  valor_reais: cd.operador_logistico * cont }
   ];
-
-  // Recupera datas/status já salvos no processo, casando pela descrição
-  const salvos = {};
-  (proc.numerario_despachante || []).forEach(s => { if (s && s.descricao) salvos[s.descricao] = s; });
-
-  return base.map(it => {
-    const s = salvos[it.descricao] || {};
-    return {
-      descricao:      it.descricao,
-      valor_reais:    it.valor_reais,
-      data_prevista:  s.data_prevista  || '',
-      data_realizada: s.data_realizada || null,
-      status:         s.status         || 'previsto'
-    };
-  });
 }
 
 function fcRenderNumerario() {
   const tbody = document.getElementById('fc-num-tbody');
   if (!tbody) return;
-  tbody.innerHTML = _fcNumerario.map((n, i) => {
-    const statusSel = ['previsto','pago','atrasado'].map(s =>
-      `<option${n.status===s?' selected':''}>${s}</option>`).join('');
-    const pagoStyle  = n.status === 'pago'     ? 'color:#2E7D32;font-weight:600' : '';
-    const atrasStyle = n.status === 'atrasado' ? 'color:#C62828;font-weight:600' : '';
-    return `<tr style="${n.status==='pago'?'opacity:.75':''}">
+  tbody.innerHTML = _fcNumerario.map(n => `<tr>
       <td>${esc(n.descricao)}</td>
       <td style="text-align:right;padding:5px 8px;white-space:nowrap;font-weight:600;color:var(--turquesa-dark)">
         R$ ${fmtN(n.valor_reais)}
       </td>
-      <td><input type="date" value="${n.data_prevista||''}" style="width:132px"
-        oninput="fcChangeNumerario(${i},'data_prevista',this.value)"></td>
-      <td>
-        <select style="width:88px;padding:4px 6px;${pagoStyle||atrasStyle}"
-          oninput="fcChangeNumerario(${i},'status',this.value)">${statusSel}</select>
-      </td>
-      <td style="white-space:nowrap">
-        ${n.status !== 'pago'
-          ? `<button class="btn btn-s btn-sm" onclick="fcNumerarioPago(${i})" style="margin-right:4px">✓ Pago</button>`
-          : ''}
-        <button class="btn btn-s btn-sm" style="color:#c62828" title="Resetar status para previsto"
-          onclick="fcNumerarioReset(${i})">✕</button>
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--cinza-med)">Selecione um processo</td></tr>';
+      <td></td><td></td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--cinza-med)">Selecione um processo</td></tr>';
   fcAtualizarFootNum();
 }
 
+// Rodapé consolidado: Total Numerário + Data Prevista + Status + ✓ Pago
 function fcAtualizarFootNum() {
   const tfoot = document.getElementById('fc-num-tfoot');
   if (!tfoot) return;
   const tot = _fcNumerario.reduce((s, n) => s + (n.valor_reais || 0), 0);
+  const pag = _fcNumPag || { data_prevista:'', status:'previsto' };
+  const statusSel = ['previsto','pago','atrasado'].map(s =>
+    `<option${pag.status===s?' selected':''}>${s}</option>`).join('');
+  const pagoStyle  = pag.status === 'pago'     ? 'color:#2E7D32;font-weight:600' : '';
+  const atrasStyle = pag.status === 'atrasado' ? 'color:#C62828;font-weight:600' : '';
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
       <td style="padding:7px 8px">Total Numerário</td>
       <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(tot)}</td>
-      <td colspan="3"></td>
+      <td style="padding:7px 8px">
+        <input type="date" value="${pag.data_prevista||''}" style="width:132px"
+          oninput="fcNumSetData(this.value)">
+      </td>
+      <td style="padding:7px 8px;white-space:nowrap">
+        <select style="width:88px;padding:4px 6px;${pagoStyle||atrasStyle}"
+          oninput="fcNumSetStatus(this.value)">${statusSel}</select>
+        ${pag.status !== 'pago'
+          ? `<button class="btn btn-s btn-sm" style="margin-left:4px" onclick="fcNumPago()">✓ Pago</button>`
+          : ''}
+      </td>
     </tr>`;
 }
 
-function fcChangeNumerario(i, campo, valor) {
-  const n = _fcNumerario[i];
-  if (!n) return;
-  n[campo] = valor;
+function fcNumSetData(v) {
+  _fcNumPag.data_prevista = v;
 }
 
-function fcNumerarioPago(i) {
-  if (!_fcNumerario[i]) return;
-  _fcNumerario[i].status = 'pago';
-  _fcNumerario[i].data_realizada = today();
-  fcRenderNumerario();
+function fcNumSetStatus(v) {
+  _fcNumPag.status = v;
+  if (v !== 'pago') _fcNumPag.data_realizada = null;
+  fcAtualizarFootNum();
 }
 
-// ✕ não remove o item (é fixo) — apenas reseta o status para "previsto"
-function fcNumerarioReset(i) {
-  if (!_fcNumerario[i]) return;
-  _fcNumerario[i].status = 'previsto';
-  _fcNumerario[i].data_realizada = null;
-  fcRenderNumerario();
+function fcNumPago() {
+  _fcNumPag.status = 'pago';
+  _fcNumPag.data_realizada = today();
+  fcAtualizarFootNum();
 }
 
 function fcSalvar() {
@@ -2635,7 +2624,13 @@ function fcSalvar() {
   if (idx >= 0) {
     todos[idx].pagamentos_fornecedor = _fcPagamentos;
     todos[idx].recebimentos_cliente  = _fcRecebimentos;
-    todos[idx].numerario_despachante = _fcNumerario;
+    // Numerário: data/status consolidados (replicados em cada item)
+    todos[idx].numerario_despachante = _fcNumerario.map(n => ({
+      ...n,
+      data_prevista:  _fcNumPag.data_prevista  || '',
+      status:         _fcNumPag.status         || 'previsto',
+      data_realizada: _fcNumPag.data_realizada || null
+    }));
     todos[idx].atualizado_em = new Date().toISOString();
     localStorage.setItem('pilar_processos', JSON.stringify(todos));
     _apiSalvarProcessos(todos);
