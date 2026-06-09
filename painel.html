@@ -3053,14 +3053,14 @@ function renderPedidoEmbarque() {
     </div>`;
 }
 
-function peFindPag(proc, tipo) {
-  return (proc.pagamentos_fornecedor || []).find(p => (p.descricao || '').toLowerCase().includes(tipo)) || null;
-}
-
 function peCondPgto(proc) {
+  const g = proc.dados_gerais || {};
+  if (g.cond_pagamento && String(g.cond_pagamento).trim()) return String(g.cond_pagamento).trim();
   const pgs = proc.pagamentos_fornecedor || [];
   if (!pgs.length) return '';
-  return pgs.map(p => `${fmtN((p.percentual || 0) * 100, 0)}% ${(p.descricao || '').trim()}`.trim()).join(' / ');
+  const pctSinal = (pgs[0] && pgs[0].percentual != null) ? pgs[0].percentual : 0;
+  const pctSaldo = (pgs[1] && pgs[1].percentual != null) ? pgs[1].percentual : (1 - pctSinal);
+  return `${fmtN(pctSinal * 100, 0)}% ANTECIPADO / ${fmtN(pctSaldo * 100, 0)}% SALDO`;
 }
 
 function peFmtData(v) {
@@ -3079,14 +3079,17 @@ function peSelecionar(id) {
 
   const proc = _peProcesso;
   const g = proc.dados_gerais || {};
-  const sinalPg = peFindPag(proc, 'sinal');
-  const saldoPg = peFindPag(proc, 'saldo');
+  const pgs = proc.pagamentos_fornecedor || [];
+  const sinalPg = pgs[0] || null;   // 1ª parcela do fornecedor
+  const saldoPg = pgs[1] || null;   // 2ª parcela do fornecedor (se houver)
   const camFiscal = proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || 0;
   const isoData = v => /^\d{4}-\d{2}-\d{2}/.test(v || '') ? String(v).slice(0, 10) : '';
 
-  document.getElementById('pe-cambio-sinal').value   = (sinalPg?.cambio || camFiscal) || '';
-  document.getElementById('pe-data-sinal').value     = isoData(sinalPg?.data_realizada || sinalPg?.data_prevista || g.data_pedido);
-  document.getElementById('pe-cambio-saldo').value   = (saldoPg?.cambio || camFiscal) || '';
+  const cambioSinal = sinalPg?.cambio || camFiscal;
+  document.getElementById('pe-cambio-sinal').value   = cambioSinal || '';
+  document.getElementById('pe-data-sinal').value     = isoData(sinalPg?.data_prevista || sinalPg?.data_realizada || g.data_pedido);
+  // Câmbio saldo: 2ª parcela; com uma só parcela, repete o câmbio do sinal
+  document.getElementById('pe-cambio-saldo').value   = (saldoPg?.cambio || cambioSinal) || '';
   document.getElementById('pe-data-pagamento').value = isoData(saldoPg?.data_prevista || g.prev_embarque);
   document.getElementById('pe-cond-pgto').value      = peCondPgto(proc);
 
@@ -3103,10 +3106,11 @@ function peCompute() {
   const cambioSinal = parseFloat(val('pe-cambio-sinal')) || 0;
   const cambioSaldo = parseFloat(val('pe-cambio-saldo')) || 0;
 
-  // Percentuais das parcelas do fornecedor (fração 0–1)
-  const sinalPg = peFindPag(proc, 'sinal');
-  const saldoPg = peFindPag(proc, 'saldo');
-  const temParcelas = !!(proc.pagamentos_fornecedor && proc.pagamentos_fornecedor.length);
+  // Percentuais das parcelas do fornecedor (fração 0–1) — 1ª e 2ª parcela
+  const pgs = proc.pagamentos_fornecedor || [];
+  const sinalPg = pgs[0] || null;
+  const saldoPg = pgs[1] || null;
+  const temParcelas = pgs.length > 0;
   const pctSinal = (sinalPg && sinalPg.percentual != null) ? sinalPg.percentual : 0.20;
   const pctSaldo = (saldoPg && saldoPg.percentual != null) ? saldoPg.percentual : (1 - pctSinal);
 
