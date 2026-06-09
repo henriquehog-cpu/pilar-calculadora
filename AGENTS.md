@@ -632,7 +632,7 @@ pm2 startup
 
 ---
 
-## 15. ESTADO ATUAL DO SISTEMA (2026-06-05)
+## 15. ESTADO ATUAL DO SISTEMA (2026-06-09)
 
 ### Acesso
 - **Frontend:** https://painel.pilarimports.com.br/painel.html
@@ -662,6 +662,14 @@ pm2 startup
 | Banco DI automático | ✅ | banco_di.json servido por GET /api/banco-di; carrega automático ao abrir Resumo Despachante; lookup por prefixo (4 letras) com substituição de GSM e largura |
 | Alíquotas II corrigidas | ✅ | 28 itens nos processos PIL-005/006/048 corrigidos via script por NCM (produtos_com_aliquotas.json); II agora calculado corretamente (ex: 26% para NCMs 5407.x) |
 | Proposta Comercial | ✅ | Módulo entre Order Request e Resumo Despachante; gera .docx a partir de `proposta_modelo.docx` (modelo Word real com placeholders `{{...}}`) via `POST /api/proposta` → `gerar_proposta.py`; campos editáveis pré-preenchidos do processo (descrição, qtd, FOB unit, % sinal, câmbio, datas, dias antes desembarque, frete, prazo, observações); valores e extenso em PT-BR calculados em Python sem dependências; modelo preparado por `_preparar_modelo.py` |
+| Resumo Fiscal (Seção 5) | ✅ | Seção 5 no formulário do processo: lista linear com todos os impostos (importação e venda) e custos do processo |
+| Alerta NCM sem alíquotas | ✅ | Item com NCM sem alíquotas cadastradas recebe badge vermelho; modal de cadastro grava as alíquotas e propaga para `pilar_produtos` |
+| Numerário ao Despachante (FC Bloco 5) | ✅ | Bloco 5 do Fluxo de Caixa: itens fixos (custos operacionais), data e status editáveis, salvo no processo |
+| Numerário no Resumo Despachante | ✅ | Simulação de numerário: frete internacional + todos os custos operacionais |
+| Frete Rodoviário | ✅ | Campo novo em `custos_defaults`; incluído no calc.js, Resumo Fiscal, Numerário e Fluxo de Caixa |
+| Relatório Geral | ✅ | Módulo novo com visão Detalhada e Resumida; tabela copiável em TSV para colar no Excel |
+| Pedido de Embarque | ✅ | Dados puxados de `recebimentos_cliente` (não do fornecedor); layout A4 retrato corrigido; PV USD por item; câmbio médio ponderado |
+| FC Valor USD editável (Blocos 2 e 3) | ✅ | Valor USD editável manualmente nas parcelas de fornecedor e cliente; sobrescreve o auto `% × total`, recalcula R$ pelo câmbio, borda turquesa, `usd_manual` |
 
 ### Pendente
 
@@ -681,6 +689,8 @@ pm2 startup
 - **Dados persistidos:** `dados.json` e `produtos.json` no servidor
 - **Credenciais Omie:** `pilar-config.json` (não versionado)
 - **GitHub:** github.com/henriquehog-cpu/pilar-calculadora
+- **Backup manual:** `bash /opt/pilar-calculadora/backup_dados.sh`
+- **Após restaurar backup:** rodar `migrar_aliquotas_ncm.py` para corrigir `ii=0` nos processos (alíquotas de II por NCM)
 
 ### Regras de negócio confirmadas em produção
 - Ao gerar Order Request: atualiza automaticamente `valor_fob` e `menor_fob` em `pilar_produtos`
