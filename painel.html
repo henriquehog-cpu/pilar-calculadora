@@ -148,6 +148,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .npm-field input:focus,.npm-field select:focus{outline:none;border-color:var(--turquesa)}
 .npm-ft{padding:14px 20px;border-top:1px solid var(--cinza-light);display:flex;justify-content:flex-end;gap:10px;flex-shrink:0}
 
+/* ── Alíquotas — botão e badge de alerta no item ── */
+.aliq-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--cinza-med);font-size:10px;font-weight:600;padding:2px 6px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.aliq-btn:hover{border-color:var(--turquesa);color:var(--turquesa-dark)}
+.aliq-badge{display:inline-block;background:#FDECEA;border:1px solid #E74C3C;color:#C0392B;border-radius:4px;font-size:10px;font-weight:700;padding:2px 6px;cursor:pointer;white-space:nowrap}
+.aliq-badge:hover{background:#fadbd8}
+
 /* ── Autocomplete ── */
 .ac-wrap{position:relative}
 .ac-list{position:fixed;background:#fff;border:1px solid var(--turquesa);border-top:none;border-radius:0 0 4px 4px;max-height:260px;overflow-y:auto;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;min-width:320px}
@@ -972,6 +978,7 @@ function renderNovoProcesso(proc) {
             <button onclick="npAddItem()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">+ Adicionar Item</button>
           </div>
         </div>
+        <div id="np-aliq-alert"></div>
         <div style="overflow-x:auto">
           <table class="items-tbl" style="min-width:1080px">
             <colgroup>
@@ -1350,12 +1357,18 @@ function npRenderItens() {
   tbody.innerHTML = _itens.map((it, i) => {
     const total = (it.quantidade||0) * (it.fob_unit_usd||0);
     const sel = (v, opt) => opt.map(o => `<option${it[v]===o?' selected':''}>${o}</option>`).join('');
+    const temConteudo = !!(it.codigo || it.descricao);
+    const semAliq = temConteudo && ((it.aliquotas?.ii || 0) === 0 || !it.ncm);
     return `<tr>
       <td id="np-num-${i}" style="text-align:center">${it.is_novo ? `<span title="Produto novo — será exportado para o Omie" style="color:#F9A825;font-weight:700;cursor:default">★${i+1}</span>` : i+1}</td>
       <td><div class="ac-wrap">
         <input value="${esc(it.codigo)}" placeholder="Código"
           oninput="npItemChange(${i},'codigo',this.value);npAcFilter(${i},'cod',this.value)">
         <div class="ac-list" id="np-ac-${i}-cod"></div>
+        ${temConteudo ? `<div style="display:flex;gap:4px;align-items:center;margin-top:4px;flex-wrap:wrap">
+          <button type="button" class="aliq-btn" onclick="npAbrirAliquotas(${i})" title="Cadastrar alíquotas">⚙ Alíquotas</button>
+          ${semAliq ? `<span class="aliq-badge" onclick="npAbrirAliquotas(${i})" title="Cadastrar alíquotas para este NCM">⚠ NCM sem alíquotas</span>` : ''}
+        </div>` : ''}
       </div></td>
       <td><div class="ac-wrap">
         <input value="${esc(it.descricao)}" placeholder="Descrição do produto"
@@ -1378,6 +1391,24 @@ function npRenderItens() {
   }).join('');
   npAtualizarRodape();
   npUpdateExportBtn();
+  npAtualizarAlertaAliquotas();
+}
+
+// Conta itens (com conteúdo) cujo II não foi cadastrado
+function npContarSemAliquotas() {
+  return _itens.filter(it => (it.codigo || it.descricao) && (it.aliquotas?.ii || 0) === 0).length;
+}
+
+// Banner amarelo no topo da Seção de Itens
+function npAtualizarAlertaAliquotas() {
+  const el = document.getElementById('np-aliq-alert');
+  if (!el) return;
+  const n = npContarSemAliquotas();
+  el.innerHTML = n > 0
+    ? `<div style="background:#FFF8E1;border:1px solid #F9A825;border-radius:6px;padding:10px 14px;margin:14px 14px 0;font-size:13px;color:#5D4037">
+         ⚠ ${n} item(s) com NCM sem alíquotas cadastradas. O cálculo de II pode estar incorreto.
+       </div>`
+    : '';
 }
 
 function npSalvar() {
@@ -1439,10 +1470,134 @@ function npSalvar() {
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
   _apiSalvarProcessos(todos);
 
+  // Alerta automático ao salvar — não bloqueia
+  const semAliq = npContarSemAliquotas();
+  if (semAliq > 0) {
+    toast(`⚠ ${semAliq} item(s) com NCM sem alíquotas cadastradas. O cálculo de II pode estar incorreto.`);
+  }
+
   const link = Array.from(document.querySelectorAll('.nav-link'))
     .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
   if (link) navTo(link, renderProcessos);
   else renderProcessos();
+}
+
+// ── Modal de cadastro de alíquotas ─────────────────────────────────────────
+function npAbrirAliquotas(i) {
+  if (document.getElementById('aliq-overlay')) return;
+  const it = _itens[i];
+  if (!it) return;
+  const a   = it.aliquotas || {};
+  const ncm = (it.ncm || '').trim();
+
+  // valor em % a partir da fração; usa default quando não houver valor
+  const P = (v, def) => {
+    const f = (v == null || v === '') ? def : v;
+    if (f == null) return '';
+    return String(+(f * 100).toFixed(4));
+  };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'aliq-overlay';
+  overlay.className = 'npm-overlay';
+  overlay.innerHTML = `
+    <div class="npm-box" onclick="event.stopPropagation()">
+      <div class="npm-hd">⚙ Cadastrar Alíquotas — NCM ${esc(ncm || '(sem NCM)')}</div>
+      <div class="npm-bd">
+        <div class="npm-g2">
+          <div class="npm-field"><label>II (%) — Imposto de Importação</label>
+            <input id="aliq-ii" type="number" step="0.0001" min="0" placeholder="0" value="${P(a.ii, null)}"></div>
+          <div class="npm-field"><label>IPI (%) — IPI importação</label>
+            <input id="aliq-ipi" type="number" step="0.0001" min="0" placeholder="0" value="${P(a.ipi, null)}"></div>
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field"><label>PIS Importação (%)</label>
+            <input id="aliq-pis" type="number" step="0.0001" min="0" value="${P(a.pis_importacao, 0.021)}"></div>
+          <div class="npm-field"><label>COFINS Importação (%)</label>
+            <input id="aliq-cofins" type="number" step="0.0001" min="0" value="${P(a.cofins_importacao, 0.1065)}"></div>
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field"><label>ICMS Intra (%)</label>
+            <input id="aliq-icms-intra" type="number" step="0.0001" min="0" value="${P(a.icms_intra, 0.14)}"></div>
+          <div class="npm-field"><label>ICMS Inter (%)</label>
+            <input id="aliq-icms-inter" type="number" step="0.0001" min="0" value="${P(a.icms_inter, 0.04)}"></div>
+        </div>
+        <div class="npm-g2">
+          <div class="npm-field"><label>Reg. Especial Intra (%)</label>
+            <input id="aliq-reg-intra" type="number" step="0.0001" min="0" value="${P(a.reg_espec_intra, 0.14)}"></div>
+          <div class="npm-field"><label>Reg. Especial Inter (%)</label>
+            <input id="aliq-reg-inter" type="number" step="0.0001" min="0" value="${P(a.reg_espec_inter, 0.015)}"></div>
+        </div>
+      </div>
+      <div class="npm-ft">
+        <button class="btn btn-s" onclick="npFecharAliquotas()">Cancelar</button>
+        <button class="btn btn-p" onclick="npSalvarAliquotas(${i})">Salvar</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', npFecharAliquotas);
+  document.body.appendChild(overlay);
+  document.getElementById('aliq-ii')?.focus();
+}
+
+function npFecharAliquotas() {
+  document.getElementById('aliq-overlay')?.remove();
+}
+
+function npSalvarAliquotas(i) {
+  const it = _itens[i];
+  if (!it) return;
+
+  // lê o input em % e converte para fração
+  const frac = id => {
+    const v = parseFloat(String(document.getElementById(id)?.value || '').replace(',', '.'));
+    return isFinite(v) ? v / 100 : 0;
+  };
+  const novas = {
+    ii:                frac('aliq-ii'),
+    ipi:               frac('aliq-ipi'),
+    pis_importacao:    frac('aliq-pis'),
+    cofins_importacao: frac('aliq-cofins'),
+    icms_intra:        frac('aliq-icms-intra'),
+    icms_inter:        frac('aliq-icms-inter'),
+    reg_espec_intra:   frac('aliq-reg-intra'),
+    reg_espec_inter:   frac('aliq-reg-inter')
+  };
+
+  // 1. Atualiza o item no processo atual (preserva alíquotas de venda)
+  const prev = it.aliquotas || {};
+  it.aliquotas = {
+    ...prev,
+    ...novas,
+    pis_venda:    prev.pis_venda    != null ? prev.pis_venda    : 0.0165,
+    cofins_venda: prev.cofins_venda != null ? prev.cofins_venda : 0.076
+  };
+
+  // 2. Propaga ao banco de produtos (todos com o mesmo NCM) + 4. POST /api/produtos
+  const ncm = (it.ncm || '').trim();
+  let count = 0;
+  if (ncm) {
+    const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+    produtos.forEach(p => {
+      if ((p.ncm || '').trim() === ncm) {
+        Object.assign(p, novas);
+        count++;
+      }
+    });
+    localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+    fetch('/api/produtos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(produtos)
+    }).catch(() => {});
+  }
+
+  npFecharAliquotas();
+  // 3. Recalcula a precificação e atualiza a tabela/badges
+  npRenderItens();
+  npRecalcular();
+  toast(ncm
+    ? `Alíquotas salvas — ${count} produto(s) com NCM ${ncm} atualizado(s).`
+    : 'Alíquotas do item atualizadas (item sem NCM — não propagado ao banco).');
 }
 
 // ── Processos (lista) ──────────────────────────────────────────────────────
