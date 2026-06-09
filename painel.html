@@ -255,6 +255,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .et-v{font-weight:400}
 .et-page{margin-bottom:14px}
 
+/* ── Relatório Geral — documento de impressão ── */
+.rel-doc{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:8.5pt;background:#fff;box-sizing:border-box}
+.rel-hd{display:flex;align-items:center;gap:16px;padding-bottom:8px;border-bottom:2.5px solid #00BCD4;margin-bottom:10px}
+.rel-hd img{height:46px;width:auto}
+.rel-hd .rel-co{font-size:14pt;font-weight:700;color:#37474F;margin-left:auto}
+.rel-title{font-size:11pt;font-weight:700;color:#37474F;margin-bottom:14px}
+.rel-proc{margin-bottom:14px;page-break-inside:avoid}
+.rel-proc-hd{font-weight:700;font-size:9.5pt;border-top:1px solid #999;border-bottom:1px solid #999;padding:5px 0;margin-bottom:6px;color:#37474F}
+.rel-proc-hd .sep{color:#B0BEC5;font-weight:400;margin:0 8px}
+.rel-sec-title{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#607D8B;margin:8px 0 3px}
+.rel-datas{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:4px}
+.rel-datas span{font-weight:700;color:#37474F;margin-right:5px}
+.rel-row{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #EEE;padding:2px 1px;max-width:420px}
+.rel-row .rel-val{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.rel-tbl{width:100%;border-collapse:collapse;margin:2px 0 4px}
+.rel-tbl th{background:#37474F;color:#fff;padding:3px 5px;text-align:left;font-size:7.5pt;font-weight:700;text-transform:uppercase;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.rel-tbl th.r{text-align:right}
+.rel-tbl td{padding:3px 5px;border-bottom:1px solid #ECEFF1}
+.rel-tbl td.r{text-align:right;white-space:nowrap}
+.rel-sep{border-top:3px double #37474F;margin:12px 0}
+
 /* ── Pedido de Embarque — documento (layout Order Request) ── */
 .pe-doc{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:10pt;background:#fff;padding:16mm 14mm;box-sizing:border-box}
 .pe-hd{display:flex;align-items:center;gap:16px;padding-bottom:10px;border-bottom:2.5px solid #00BCD4;margin-bottom:16px}
@@ -329,6 +350,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-sep">Visão Geral</div>
     <a class="nav-link active" href="#" onclick="return navTo(this, renderDashboard)">
       <span class="nav-icon">◈</span> Dashboard
+    </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderRelatorioGeral)">
+      <span class="nav-icon">📋</span> Relatório Geral
     </a>
 
     <div class="nav-sep">Importação</div>
@@ -3301,6 +3325,162 @@ function buildDespachante(proc, numeroDI, obs) {
   if (obs) { rows.push([]); rows.push(['Obs:', obs]); }
 
   return { rows, titleRow, infoRows, headerRow, dataStart, dataEnd, totalRow };
+}
+
+// ── Relatório Geral ─────────────────────────────────────────────────────────
+function renderRelatorioGeral() {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1000px">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:20px">Relatório Geral</h2>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-hd tq">Filtros</div>
+        <div class="card-bd">
+          <div class="g3" style="margin-bottom:16px">
+            <div class="field" style="margin-bottom:0">
+              <label>Data início (pedido)</label>
+              <input type="date" id="rel-data-ini">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Data fim (pedido)</label>
+              <input type="date" id="rel-data-fim">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Status</label>
+              <select id="rel-status">
+                <option value="todos">Todos</option>
+                <option value="ativo">Ativo</option>
+                <option value="concluido">Concluído</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-p" onclick="relGerarPDF()">🖨️ Imprimir / Salvar PDF</button>
+            <span style="font-size:12px;color:var(--cinza-med)">${todos.length} processo(s) cadastrado(s).</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function relFiltrarProcessos() {
+  const ini = val('rel-data-ini');
+  const fim = val('rel-data-fim');
+  const st  = document.getElementById('rel-status')?.value || 'todos';
+  let lista = JSON.parse(localStorage.getItem('pilar_processos') || '[]').filter(p => {
+    const status = p.status || 'ativo';
+    if (st !== 'todos' && status !== st) return false;
+    const dp = (p.dados_gerais?.data_pedido || '').slice(0, 10);
+    if (ini && (!dp || dp < ini)) return false;
+    if (fim && (!dp || dp > fim)) return false;
+    return true;
+  });
+  lista.sort((a, b) => String(a.numero || '').localeCompare(String(b.numero || ''), 'pt', { numeric: true }));
+  return lista;
+}
+
+// Resultado financeiro: usa o salvo; se faltar, recalcula via calc.js
+function relResultado(proc) {
+  const r = proc.resultado || {};
+  if (r.fob_total_usd != null || r.nf_total_brl != null) return r;
+  if (typeof Calc !== 'undefined') {
+    const res = npCalcResultado(rdBuildProcParaCalc(proc));
+    if (res) return res;
+  }
+  return r;
+}
+
+function relGerarPDF() {
+  const lista = relFiltrarProcessos();
+  if (!lista.length) { toast('Nenhum processo no filtro selecionado.'); return; }
+
+  const R = v => 'R$ '  + fmtN(v || 0, 2);
+  const U = v => 'USD ' + fmtN(v || 0, 2);
+  const P = v => fmtN((v || 0) * 100, 2) + '%';
+  const D = v => peFmtData(v);
+  const dataGer = new Date().toLocaleDateString('pt-BR');
+
+  const finRow = (lbl, val) =>
+    `<div class="rel-row"><span>${lbl}</span><span class="rel-val">${val}</span></div>`;
+
+  const parcRows = (arr) => (arr || []).map(p => `<tr>
+      <td>${esc(p.descricao || '—')}</td>
+      <td class="r">${fmtN((p.percentual || 0) * 100, 1)}%</td>
+      <td class="r">USD ${fmtN(p.valor_usd || 0, 2)}</td>
+      <td class="r">${fmtN(p.cambio || 0, 4)}</td>
+      <td class="r">R$ ${fmtN(p.valor_reais || 0, 2)}</td>
+      <td>${D(p.data_prevista)}</td>
+      <td>${esc(p.status || 'previsto')}</td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#999">Sem parcelas</td></tr>';
+
+  const tblHead = `<thead><tr>
+      <th>Descrição</th><th class="r">%</th><th class="r">USD</th>
+      <th class="r">Câmbio</th><th class="r">R$</th><th>Data</th><th>Status</th>
+    </tr></thead>`;
+
+  const procsHTML = lista.map((proc, idx) => {
+    const g    = proc.dados_gerais || {};
+    const res  = relResultado(proc);
+    const num  = proc.numerario_despachante || [];
+    const num0 = num[0] || {};
+    const numTotal = num.reduce((s, n) => s + (n.valor_reais || 0), 0);
+
+    const numHTML = num.length
+      ? `<div class="rel-datas">
+          <div><span>Total Numerário:</span> ${R(numTotal)}</div>
+          <div><span>Data Prevista:</span> ${D(num0.data_prevista)}</div>
+          <div><span>Status:</span> ${esc(num0.status || 'previsto')}</div>
+        </div>`
+      : '<div style="color:#999">Sem numerário lançado</div>';
+
+    const sep = idx < lista.length - 1 ? '<div class="rel-sep"></div>' : '';
+
+    return `
+      <div class="rel-proc">
+        <div class="rel-proc-hd">
+          ${esc(proc.numero || '—')}<span class="sep">|</span>${esc(g.cliente || '—')}<span class="sep">|</span>${esc(g.fornecedor || '—')}<span class="sep">|</span>${D(g.data_pedido)}
+        </div>
+
+        <div class="rel-sec-title">1 — Datas</div>
+        <div class="rel-datas">
+          <div><span>Pedido:</span> ${D(g.data_pedido)}</div>
+          <div><span>Embarque:</span> ${D(g.prev_embarque)}</div>
+          <div><span>Chegada Porto:</span> ${D(g.prev_chegada_porto)}</div>
+          <div><span>Chegada Cliente:</span> ${D(g.prev_chegada_cliente)}</div>
+        </div>
+
+        <div class="rel-sec-title">2 — Financeiro</div>
+        ${finRow('FOB Total USD',     U(res.fob_total_usd))}
+        ${finRow('CIF Total R$',      R(res.cif_total_brl))}
+        ${finRow('Custo Final Total', R(res.custo_final_total))}
+        ${finRow('NF Total R$',       R(res.nf_total_brl))}
+        ${finRow('Lucro R$',          R(res.lucro_brl))}
+        ${finRow('Margem %',          P(res.margem_pct))}
+
+        <div class="rel-sec-title">3 — Pagamentos ao Fornecedor</div>
+        <table class="rel-tbl">${tblHead}<tbody>${parcRows(proc.pagamentos_fornecedor)}</tbody></table>
+
+        <div class="rel-sec-title">4 — Numerário ao Despachante</div>
+        ${numHTML}
+
+        <div class="rel-sec-title">5 — Recebimentos do Cliente</div>
+        <table class="rel-tbl">${tblHead}<tbody>${parcRows(proc.recebimentos_cliente)}</tbody></table>
+      </div>
+      ${sep}`;
+  }).join('');
+
+  document.getElementById('or-print-area').innerHTML = `
+    <div class="rel-doc">
+      <div class="rel-hd">
+        <img src="logo_pilar.png" alt="PILAR IMPORTS">
+        <div class="rel-co">PILAR IMPORTS LTDA</div>
+      </div>
+      <div class="rel-title">RELATÓRIO GERAL DE PROCESSOS — ${dataGer}</div>
+      ${procsHTML}
+    </div>`;
+
+  window.print();
+  toast('✓ Diálogo de impressão aberto');
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
