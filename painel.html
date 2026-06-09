@@ -973,13 +973,16 @@ function renderNovoProcesso(proc) {
               <input type="number" id="np-cambio-cliente" step="0.0001" min="0" placeholder="0,0000"
                 value="${c.cliente?.taxa || ''}" oninput="npRecalcular()"></div>
           </div>
-          <div class="g2" style="max-width:480px">
+          <div class="g3" style="max-width:720px">
             <div class="field"><label>Frete Internacional (USD)</label>
               <input type="number" id="np-frete" step="100" min="0" placeholder="0,00"
                 value="${fr.valor_usd || ''}" oninput="npRecalcular()"></div>
             <div class="field"><label>Número de Containers</label>
               <input type="number" id="np-containers" min="1" step="1"
                 value="${fr.containers || 1}" oninput="npRecalcular()"></div>
+            <div class="field"><label>Frete Rodoviário (R$/container)</label>
+              <input type="number" id="np-frete-rodoviario" step="100" min="0" placeholder="R$/container"
+                value="${proc?.custos_defaults?.frete_rodoviario || ''}" oninput="npRecalcular()"></div>
           </div>
         </div>
       </div>
@@ -1451,6 +1454,9 @@ function npSalvar() {
       valor_usd:  parseFloat(val('np-frete'))    || 0,
       containers: parseInt(val('np-containers')) || 1
     },
+    custos_defaults: {
+      frete_rodoviario: parseFloat(val('np-frete-rodoviario')) || 0
+    },
     itens: itensValidos
   };
 
@@ -1709,7 +1715,7 @@ function npBuildProcessoAtual() {
       capatazia:          d.capatazia            || 1010,
       operador_logistico: d.operador_logistico   || 1000,
       comissao_pct:       d.comissao_pct         || 0.015,
-      frete_rodoviario:   0
+      frete_rodoviario:   parseFloat(val('np-frete-rodoviario')) || 0
     },
     itens: _itens.filter(it => (it.quantidade||0) > 0 && (it.fob_unit_usd||0) > 0)
   };
@@ -1958,6 +1964,7 @@ function npRenderResumoFiscal(proc, res) {
   const armaz       = (cd.armazenagem        || 0) * cont;
   const capat       = (cd.capatazia          || 0) * cont;
   const oplog       = (cd.operador_logistico || 0) * cont;
+  const fretRod     = (cd.frete_rodoviario   || 0) * cont;
 
   // Créditos recuperáveis (Lucro Real): IPI/PIS/COFINS de importação
   const credPIS = fi.pis || 0, credCOF = fi.cofins || 0, credIPI = fi.ipi || 0;
@@ -1999,6 +2006,7 @@ function npRenderResumoFiscal(proc, res) {
         ${row('Armazenagem Porto', R(armaz))}
         ${row('Capatazia',         R(capat))}
         ${row('Operador Logístico',R(oplog))}
+        ${row('Frete Rodoviário',  R(fretRod))}
         ${sep}
         ${row('Custo Bruto Total', R(custoBruto), 'rf-bold')}
         ${row('Crédito PIS',       '− ' + R(credPIS), 'rf-credit')}
@@ -2566,7 +2574,8 @@ function fcBuildNumerario() {
     { descricao: 'Agente de Cargas',    valor_reais: cd.agente_cargas      * cont },
     { descricao: 'Armazenagem Porto',   valor_reais: cd.armazenagem        * cont },
     { descricao: 'Capatazia',           valor_reais: cd.capatazia          * cont },
-    { descricao: 'Operador Logístico',  valor_reais: cd.operador_logistico * cont }
+    { descricao: 'Operador Logístico',  valor_reais: cd.operador_logistico * cont },
+    { descricao: 'Frete Rodoviário',    valor_reais: (cd.frete_rodoviario || 0) * cont }
   ];
 }
 
@@ -3037,12 +3046,13 @@ function rdNumerarioHTML(proc) {
   const armaz       = cd.armazenagem        * cont;
   const capat       = cd.capatazia          * cont;
   const oplog       = cd.operador_logistico * cont;
+  const fretRod     = (cd.frete_rodoviario || 0) * cont;
 
   const totalNumerario =
     freteBRL +
     (fi.ii || 0) + (fi.ipi || 0) + (fi.pis || 0) + (fi.cofins || 0) +
     (fi.afrmm || 0) + (fi.siscomex || 0) + (fi.dif_frete || 0) +
-    despachante + agente + armaz + capat + oplog;
+    despachante + agente + armaz + capat + oplog + fretRod;
 
   const row  = (lbl, val, cls = '') =>
     `<div class="rf-row ${cls}"><span class="rf-lbl">${lbl}</span><span class="rf-val">${val}</span></div>`;
@@ -3070,6 +3080,7 @@ function rdNumerarioHTML(proc) {
         ${row('Armazenagem Porto', R(armaz))}
         ${row('Capatazia',         R(capat))}
         ${row('Operador Logístico',R(oplog))}
+        ${row('Frete Rodoviário',  R(fretRod))}
         ${sep}
         ${row('Total Numerário',   R(totalNumerario), 'rf-final')}
       </div>
