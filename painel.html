@@ -202,20 +202,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .et-page:last-child{page-break-after:auto}
 
   /* Pedido de Embarque — caber na largura A4 (210mm) sem extrapolar */
-  .pe-doc{max-width:100%;overflow:hidden;font-size:8.5pt}
-  .pe-itens{width:100%;table-layout:fixed}
-  .pe-itens thead th,.pe-itens tbody td,.pe-itens tfoot td{padding:3px 4px;word-wrap:break-word;overflow-wrap:break-word}
-  /* Descrição 30%; demais colunas dividem os 70% restantes */
-  .pe-itens thead th:nth-child(1){width:4%}    /* # */
-  .pe-itens thead th:nth-child(2){width:30%}   /* Descrição */
-  .pe-itens thead th:nth-child(3){width:10%}   /* Qtd Embarcada */
-  .pe-itens thead th:nth-child(4){width:6%}    /* Un */
-  .pe-itens thead th:nth-child(5){width:12.5%} /* Preço Unit USD */
-  .pe-itens thead th:nth-child(6){width:12.5%} /* Total USD */
-  .pe-itens thead th:nth-child(7){width:12.5%} /* Preço Unit R$ */
-  .pe-itens thead th:nth-child(8){width:12.5%} /* Total R$ */
-  /* com largura fixa, células de valor podem quebrar em vez de estourar */
-  .pe-itens thead th,.pe-itens tbody td.r,.pe-itens tfoot td.r{white-space:normal}
+  @page{margin:10mm}
+  .pe-doc{max-width:100%;font-size:8.5pt}
+  .pe-itens{width:100%;table-layout:auto;font-size:8pt}
+  .pe-itens thead th,.pe-itens tbody td,.pe-itens tfoot td{padding:3px 4px}
+  /* Descrição: ocupa o espaço e quebra palavras longas */
+  .pe-itens thead th:nth-child(2),.pe-itens tbody td:nth-child(2){min-width:120px;word-break:break-word;white-space:normal}
+  /* Colunas numéricas não quebram */
+  .pe-itens tbody td.r,.pe-itens tfoot td.r,.pe-itens thead th.r{white-space:nowrap}
 }
 
 /* ── Order Request — abas ── */
