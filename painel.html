@@ -2974,6 +2974,12 @@ function rdSubstituirDescDI(desc, it) {
   if (it && it.largura_cm) {
     const m = (parseFloat(it.largura_cm) / 100).toFixed(2).replace('.', ',');
     out = out.replace(/(\d+(?:[.,]\d+)?)\s*M(?=[.,\s]|$)/gi, `${m}M`);
+    // substitui também largura em CM diretamente (ex: LARGURA DE 300CM)
+    out = out.replace(/LARGURA DE \d+CM/gi, `LARGURA DE ${it.largura_cm}CM`);
+  }
+  // substitui a cor no final (após "COR:" ou "DESIGN:")
+  if (it && it.cor) {
+    out = out.replace(/((?:COR|DESIGN)\s*:\s*)[^\n]*/i, `$1${it.cor.toUpperCase()}`);
   }
   return out;
 }
