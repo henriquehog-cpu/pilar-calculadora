@@ -3193,6 +3193,7 @@ function peDocHTML(forPrint) {
       </div>
 
       <table class="pe-fin">
+        ${peDuasParcelas() ? `
         <tr>
           <td class="lbl">SINAL (${fmtN(pctSinal, 0)}%)</td>
           <td class="r" id="pe-info-sinalusd">USD ${fmtN(d.sinalUsd, 2)}</td>
@@ -3207,7 +3208,17 @@ function peDocHTML(forPrint) {
           <td class="lbl">SALDO A PAGAR</td>
           <td class="r" id="pe-info-sptusd">USD ${fmtN(d.saldoPagarUsd, 2)}</td>
           <td class="r" id="pe-info-saldopbrl">R$ ${fmtN(d.saldoPagarBrl, 2)}</td>
+        </tr>` : `
+        <tr>
+          <td class="lbl">PAGAMENTO TOTAL</td>
+          <td class="r" id="pe-info-totusd">USD ${fmtN(d.totUsd, 2)}</td>
+          <td class="r" id="pe-info-totbrl">R$ ${fmtN(d.totBrl, 2)}</td>
         </tr>
+        <tr class="saldo-pagar">
+          <td class="lbl">TOTAL A PAGAR</td>
+          <td class="r" id="pe-info-tptusd">USD ${fmtN(d.totUsd, 2)}</td>
+          <td class="r" id="pe-info-tptbrl">R$ ${fmtN(d.totBrl, 2)}</td>
+        </tr>`}
       </table>
 
       <table class="pe-itens">
@@ -3259,6 +3270,11 @@ function peRenderPreview() {
     </div>`;
 }
 
+// true quando o processo tem sinal + saldo (2 parcelas); senão é 100% à vista
+function peDuasParcelas() {
+  return (_peProcesso?.recebimentos_cliente || []).length >= 2;
+}
+
 function peSetQtd(i, v) {
   _peQtd[i] = parseFloat(v) || 0;
   peRefreshNumbers();
@@ -3275,12 +3291,19 @@ function peRefreshNumbers() {
   set('pe-tot-qtd', fmtN(d.totQtd, 0));
   set('pe-tot-usd', `USD ${fmtN(d.totUsd, 2)}`);
   set('pe-tot-brl', `R$ ${fmtN(d.totBrl, 2)}`);
-  set('pe-info-sinalusd', `USD ${fmtN(d.sinalUsd, 2)}`);
-  set('pe-info-sinalbrl', `R$ ${fmtN(d.sinalBrl, 2)}`);
-  set('pe-info-saldousd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
-  set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
-  set('pe-info-sptusd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
-  set('pe-info-saldopbrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  if (peDuasParcelas()) {
+    set('pe-info-sinalusd', `USD ${fmtN(d.sinalUsd, 2)}`);
+    set('pe-info-sinalbrl', `R$ ${fmtN(d.sinalBrl, 2)}`);
+    set('pe-info-saldousd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
+    set('pe-info-saldobrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+    set('pe-info-sptusd', `USD ${fmtN(d.saldoPagarUsd, 2)}`);
+    set('pe-info-saldopbrl', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
+  } else {
+    set('pe-info-totusd', `USD ${fmtN(d.totUsd, 2)}`);
+    set('pe-info-totbrl', `R$ ${fmtN(d.totBrl, 2)}`);
+    set('pe-info-tptusd', `USD ${fmtN(d.totUsd, 2)}`);
+    set('pe-info-tptbrl', `R$ ${fmtN(d.totBrl, 2)}`);
+  }
   set('pe-saldo-valor', `R$ ${fmtN(d.saldoPagarBrl, 2)}`);
 }
 
