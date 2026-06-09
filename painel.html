@@ -163,6 +163,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sum-item.dk .val{color:var(--turquesa)}
 .sum-item.dk .lbl{color:rgba(255,255,255,.6)}
 
+/* ── Resumo Fiscal — lista linear estilo extrato ── */
+.rf-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--cinza-med);margin:18px 0 4px}
+.rf-group-title:first-child{margin-top:0}
+.rf-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:5px 2px;font-size:13px;border-bottom:1px solid #EEF1F2}
+.rf-row .rf-lbl{color:var(--cinza)}
+.rf-row .rf-val{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.rf-sep{border-top:1px solid var(--border);margin:4px 0}
+.rf-bold .rf-lbl,.rf-bold .rf-val{font-weight:700}
+.rf-credit .rf-val{color:#2e7d32}
+.rf-final .rf-lbl,.rf-final .rf-val{font-weight:700;color:var(--turquesa-dark)}
+.rf-pos .rf-lbl,.rf-pos .rf-val{color:#2e7d32}
+.rf-neg .rf-lbl,.rf-neg .rf-val{color:#c62828}
+
 /* ── Order Request — impressão ── */
 #or-print-area{display:none}
 .or-pg{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#000;padding:18mm 14mm;box-sizing:border-box}
@@ -1000,6 +1013,8 @@ function renderNovoProcesso(proc) {
 
       <div id="s4-resumo"></div>
 
+      <div id="s5-resumo-fiscal"></div>
+
       <div style="text-align:right;margin-top:20px;padding-bottom:40px">
         <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="npSalvar()">${btnLabel}</button>
       </div>
@@ -1646,6 +1661,8 @@ function npRecalcular() {
   if (!res) {
     s4t.innerHTML = '<div style="padding:20px;text-align:center;color:var(--cinza-med)">Preencha câmbio DI e itens para calcular.</div>';
     if (s4r) s4r.innerHTML = '';
+    const s5 = document.getElementById('s5-resumo-fiscal');
+    if (s5) s5.innerHTML = '';
     return;
   }
 
@@ -1740,6 +1757,102 @@ function npRecalcular() {
           <span>Siscomex: ${R(ri.siscomex)}</span>
           <span>Dif.Frete: ${R(ri.dif_frete)}</span>
         </div>
+      </div>
+    </div>`;
+
+  // ── Seção 5 — Resumo Fiscal (extrato) ────────────────────────────────────
+  npRenderResumoFiscal(proc, res);
+}
+
+// Resumo Fiscal estilo extrato — usa os valores já calculados pelo calc.js
+function npRenderResumoFiscal(proc, res) {
+  const s5 = document.getElementById('s5-resumo-fiscal');
+  if (!s5) return;
+  if (!res) { s5.innerHTML = ''; return; }
+
+  const R = v => 'R$ '  + fmtN(v || 0, 2);
+  const U = v => 'USD ' + fmtN(v || 0, 2);
+  const P = v => fmtN((v || 0) * 100, 2) + '%';
+
+  const fi   = res.imp_imp   || {};
+  const v    = res.imp_venda || {};
+  const cd   = proc.custos_defaults || {};
+  const cont = proc.frete?.containers || 1;
+  const taxa = proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || 0;
+
+  // Importação
+  const cifUSD      = taxa > 0 ? (res.cif_total_brl || 0) / taxa : 0;
+  const despachante = cd.despachante || 0;
+  const agente      = (cd.agente_cargas      || 0) * cont;
+  const armaz       = (cd.armazenagem        || 0) * cont;
+  const capat       = (cd.capatazia          || 0) * cont;
+  const oplog       = (cd.operador_logistico || 0) * cont;
+
+  // Créditos recuperáveis (Lucro Real): IPI/PIS/COFINS de importação
+  const credPIS = fi.pis || 0, credCOF = fi.cofins || 0, credIPI = fi.ipi || 0;
+  const credTotal  = credPIS + credCOF + credIPI;
+  const custoFinal = res.custo_final_total || 0;
+  const custoBruto = custoFinal + credTotal;   // bruto = final + créditos
+
+  // Venda
+  const irTotal     = (v.ir || 0) + (v.ir_adicional || 0);
+  const totImpVenda = (v.icms || 0) + (v.pis || 0) + (v.cofins || 0) +
+                      (v.csll || 0) + irTotal + (v.comissao || 0);
+
+  // Resultado
+  const lucro    = res.lucro_brl || 0;
+  const margem   = res.margem_pct || 0;
+  const sinalCls = lucro >= 0 ? 'rf-pos' : 'rf-neg';
+
+  const row  = (lbl, val, cls = '') =>
+    `<div class="rf-row ${cls}"><span class="rf-lbl">${lbl}</span><span class="rf-val">${val}</span></div>`;
+  const sep  = '<div class="rf-sep"></div>';
+  const titl = t => `<div class="rf-group-title">${t}</div>`;
+
+  s5.innerHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-hd tq">📊 5 — Resumo Fiscal</div>
+      <div class="card-bd">
+        ${titl('Importação')}
+        ${row('CIF Total USD',     U(cifUSD))}
+        ${row('CIF Total R$',      R(res.cif_total_brl))}
+        ${row('II',                R(fi.ii))}
+        ${row('IPI Importação',    R(fi.ipi))}
+        ${row('PIS Importação',    R(fi.pis))}
+        ${row('COFINS Importação', R(fi.cofins))}
+        ${row('AFRMM',             R(fi.afrmm))}
+        ${row('Siscomex',          R(fi.siscomex))}
+        ${row('Dif. Frete Intl',   R(fi.dif_frete))}
+        ${row('Despachante',       R(despachante))}
+        ${row('Agente de Cargas',  R(agente))}
+        ${row('Armazenagem Porto', R(armaz))}
+        ${row('Capatazia',         R(capat))}
+        ${row('Operador Logístico',R(oplog))}
+        ${sep}
+        ${row('Custo Bruto Total', R(custoBruto), 'rf-bold')}
+        ${row('Crédito PIS',       '− ' + R(credPIS), 'rf-credit')}
+        ${row('Crédito COFINS',    '− ' + R(credCOF), 'rf-credit')}
+        ${row('Crédito IPI',       '− ' + R(credIPI), 'rf-credit')}
+        ${sep}
+        ${row('Custo Final',       R(custoFinal), 'rf-final')}
+
+        ${titl('Venda')}
+        ${row('NF Total R$',          R(res.nf_total_brl))}
+        ${row('ICMS Efetivo (1,5%)',  R(v.icms))}
+        ${row('PIS Venda',            R(v.pis))}
+        ${row('COFINS Venda',         R(v.cofins))}
+        ${row('CSLL',                 R(v.csll))}
+        ${row('IR',                   R(irTotal))}
+        ${row('Comissão',             R(v.comissao))}
+        ${sep}
+        ${row('Total Impostos Venda', R(totImpVenda), 'rf-bold')}
+
+        ${titl('Resultado')}
+        ${row('Receita Total R$',  R(res.nf_total_brl))}
+        ${row('Custo Final Total', R(custoFinal))}
+        ${sep}
+        ${row('Lucro R$',  R(lucro),  'rf-bold ' + sinalCls)}
+        ${row('Margem %',  P(margem), 'rf-bold ' + sinalCls)}
       </div>
     </div>`;
 }
