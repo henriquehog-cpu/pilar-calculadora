@@ -2834,6 +2834,97 @@ function rdSelecionarProcesso(id) {
       <div style="padding:10px 16px;font-size:12px;color:var(--cinza-med);background:var(--cinza-light)">
         ✎ Edite a coluna "Descrição DI" antes de gerar o arquivo. As edições não afetam o banco de descrições.
       </div>
+    </div>
+    ${rdNumerarioHTML(_rdProcesso)}`;
+}
+
+// Monta um proc pronto para npCalcResultado a partir do processo salvo
+// (processos não guardam custos_defaults — caem nos defaults da config)
+function rdBuildProcParaCalc(proc) {
+  const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const d   = cfg.defaults || {};
+  const cd  = proc.custos_defaults || {};
+  const pick = (a, b, c) => (a != null ? a : (b != null ? b : c));
+  return {
+    cambios: proc.cambios || {},
+    frete: {
+      valor_usd:     proc.frete?.valor_usd  || 0,
+      containers:    proc.frete?.containers || 1,
+      dif_frete_pct: pick(cd.dif_frete_pct, d.dif_frete_pct, 0.025)
+    },
+    custos_defaults: {
+      siscomex:           pick(cd.siscomex,           d.siscomex,           192.79),
+      despachante:        pick(cd.despachante,        d.despachante,        2500),
+      agente_cargas:      pick(cd.agente_cargas,      d.agente_cargas,      1700),
+      armazenagem:        pick(cd.armazenagem,        d.armazenagem,        2500),
+      capatazia:          pick(cd.capatazia,          d.capatazia,          1010),
+      operador_logistico: pick(cd.operador_logistico, d.operador_logistico, 1000),
+      comissao_pct:       pick(cd.comissao_pct,       d.comissao_pct,       0.015),
+      frete_rodoviario:   pick(cd.frete_rodoviario,   null,                 0)
+    },
+    itens: (proc.itens || []).filter(it => (it.quantidade||0) > 0 && (it.fob_unit_usd||0) > 0)
+  };
+}
+
+// Seção "💰 Simulação de Numerário" — lista linear estilo extrato (= Seção 5)
+function rdNumerarioHTML(proc) {
+  if (!proc || typeof Calc === 'undefined') return '';
+  const calcProc = rdBuildProcParaCalc(proc);
+  const res = npCalcResultado(calcProc);
+  if (!res) return '';
+
+  const R = v => 'R$ '  + fmtN(v || 0, 2);
+  const U = v => 'USD ' + fmtN(v || 0, 2);
+
+  const fi   = res.imp_imp || {};
+  const cd   = calcProc.custos_defaults;
+  const cont = calcProc.frete.containers || 1;
+
+  // CIF R$ = CIF USD × câmbio DI do processo
+  const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
+  const freteUSD = calcProc.frete.valor_usd || 0;
+  const cifUSD   = (res.fob_total_usd || 0) + freteUSD;
+  const cifBRL   = cifUSD * cambioDI;
+
+  const despachante = cd.despachante;
+  const agente      = cd.agente_cargas      * cont;
+  const armaz       = cd.armazenagem        * cont;
+  const capat       = cd.capatazia          * cont;
+  const oplog       = cd.operador_logistico * cont;
+
+  const totalNumerario =
+    (fi.ii || 0) + (fi.ipi || 0) + (fi.pis || 0) + (fi.cofins || 0) +
+    (fi.afrmm || 0) + (fi.siscomex || 0) + (fi.dif_frete || 0) +
+    despachante + agente + armaz + capat + oplog;
+
+  const row  = (lbl, val, cls = '') =>
+    `<div class="rf-row ${cls}"><span class="rf-lbl">${lbl}</span><span class="rf-val">${val}</span></div>`;
+  const sep  = '<div class="rf-sep"></div>';
+  const titl = t => `<div class="rf-group-title">${t}</div>`;
+
+  return `
+    <div class="card" style="margin-top:18px">
+      <div class="card-hd tq">💰 Simulação de Numerário</div>
+      <div class="card-bd">
+        ${titl('Importação')}
+        ${row('CIF Total USD', U(cifUSD))}
+        ${row('CIF Total R$',  R(cifBRL))}
+        ${sep}
+        ${row('II',                R(fi.ii))}
+        ${row('IPI Importação',    R(fi.ipi))}
+        ${row('PIS Importação',    R(fi.pis))}
+        ${row('COFINS Importação', R(fi.cofins))}
+        ${row('AFRMM',             R(fi.afrmm))}
+        ${row('Siscomex',          R(fi.siscomex))}
+        ${row('Dif. Frete Intl',   R(fi.dif_frete))}
+        ${row('Despachante',       R(despachante))}
+        ${row('Agente de Cargas',  R(agente))}
+        ${row('Armazenagem Porto', R(armaz))}
+        ${row('Capatazia',         R(capat))}
+        ${row('Operador Logístico',R(oplog))}
+        ${sep}
+        ${row('Total Numerário',   R(totalNumerario), 'rf-final')}
+      </div>
     </div>`;
 }
 
