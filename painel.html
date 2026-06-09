@@ -212,6 +212,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .or-pg{page-break-after:always;padding:12mm 10mm}
   .or-pg:last-child{page-break-after:avoid}
   .or-pg-tbl thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* Simulação de Numerário dentro do Resumo Despachante impresso */
+  .or-pg .card{box-shadow:none;margin-top:12px;break-inside:avoid}
+  .or-pg .card-hd{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .or-pg .card-bd{padding:8px 14px}
+  .or-pg .rf-row{font-size:10px;padding:3px 2px}
+  .or-pg .rf-group-title{font-size:9px;margin:10px 0 3px}
   /* Etiquetas: ao imprimir a aba Etiquetas, mostra só a grade */
   body.printing-et .header,
   body.printing-et .painel-layout,
@@ -3088,6 +3094,7 @@ function gerarDespachantePDF() {
           <td class="r">${fmtN(totPB,3)}</td>
         </tr></tfoot>
       </table>
+      ${rdNumerarioHTML(proc)}
       ${obs ? `<div class="or-pg-obs"><strong>OBS:</strong> ${esc(obs)}</div>` : ''}
     </div>`;
 
