@@ -2291,8 +2291,9 @@ function fcRenderPagamentos() {
         <input type="number" value="${fmtN(p.percentual*100,1)}" min="0" max="100" step="1" style="width:52px"
           oninput="fcChangePagamento(${i},'percentual',this.value/100)">%
       </td>
-      <td id="fc-pag-usd-${i}" style="text-align:right;padding:5px 8px;white-space:nowrap">
-        USD ${fmtN(p.valor_usd)}
+      <td style="text-align:right;padding:5px 8px;white-space:nowrap">
+        USD <input type="number" id="fc-pag-usd-${i}" value="${(p.valor_usd||0).toFixed(2)}" step="0.01" style="width:92px;text-align:right;${p.usd_manual?'border:1.5px solid var(--turquesa)':''}"
+          oninput="fcChangePagamento(${i},'valor_usd',this.value)">
       </td>
       <td><input type="date" value="${p.data_prevista||''}" style="width:132px"
         oninput="fcChangePagamento(${i},'data_prevista',this.value)"></td>
@@ -2348,11 +2349,21 @@ function fcChangePagamento(i, campo, valor) {
   if (campo === 'percentual') {
     p.percentual  = parseFloat(valor) || 0;
     p.valor_usd   = fcFobTotal() * p.percentual;
+    p.usd_manual  = false;
     p.valor_reais = p.valor_usd * (p.cambio||0);
     const uEl = document.getElementById(`fc-pag-usd-${i}`);
     const bEl = document.getElementById(`fc-pag-brl-${i}`);
-    if (uEl) uEl.textContent = 'USD ' + fmtN(p.valor_usd);
+    if (uEl) { uEl.value = (p.valor_usd||0).toFixed(2); uEl.style.border = ''; }
     if (bEl) bEl.textContent = 'R$ '  + fmtN(p.valor_reais);
+    fcAtualizarFootPag(); fcRenderResumo();
+  } else if (campo === 'valor_usd') {
+    p.valor_usd   = parseFloat(valor) || 0;
+    p.usd_manual  = true;
+    p.valor_reais = p.valor_usd * (p.cambio||0);
+    const uEl = document.getElementById(`fc-pag-usd-${i}`);
+    const bEl = document.getElementById(`fc-pag-brl-${i}`);
+    if (uEl) uEl.style.border = '1.5px solid var(--turquesa)';
+    if (bEl) bEl.textContent = 'R$ ' + fmtN(p.valor_reais);
     fcAtualizarFootPag(); fcRenderResumo();
   } else if (campo === 'cambio') {
     p.cambio      = parseFloat(valor) || 0;
