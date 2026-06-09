@@ -395,6 +395,10 @@ function renderDashboard() {
   const ativos     = processos.filter(p => p.status === 'ativo');
   const fobTotal   = processos.reduce((s, p) => s + (p.resultado?.fob_total_usd || 0), 0);
   const itensTotal = processos.reduce((s, p) => s + (p.itens?.length || 0), 0);
+  // Receita prevista: soma dos recebimentos dos clientes (processos ativos), qualquer status
+  const receitaPrev = ativos.reduce((s, p) =>
+    s + (p.recebimentos_cliente || []).reduce((ss, r) =>
+      ss + ((r.valor_reais || (r.valor_usd || 0) * (p.cambios?.cliente?.taxa || 0)) || 0), 0), 0);
 
   const eventos  = dashEventos(ativos);
   const evHTML   = eventos.slice(0, 14).map(dashEventoHTML).join('') ||
@@ -411,6 +415,8 @@ function renderDashboard() {
       <div class="sum-item">
         <div class="val">USD ${fmtN(fobTotal)}</div>
         <div class="lbl">FOB Total USD</div>
+        <div class="val" style="font-size:17px;margin-top:10px">R$ ${fmtN(receitaPrev)}</div>
+        <div class="lbl">Receita Prevista R$</div>
       </div>
       <div class="sum-item">
         <div class="val">${itensTotal}</div>
@@ -506,6 +512,10 @@ function dashEventos(ativos) {
     (procFresh.recebimentos_cliente||[])
       .filter(r => r.status !== 'recebido' && r.data_prevista)
       .forEach(r => add(r.data_prevista, '💰', `Recebimento ${r.descricao||'cliente'}`));
+    // Numerário ao despachante (pagamento consolidado: 1 evento por processo)
+    const num0 = (procFresh.numerario_despachante||[])[0];
+    if (num0 && num0.status !== 'pago' && num0.data_prevista)
+      add(num0.data_prevista, '🏦', 'Numerário Despachante');
   });
 
   return ev.sort((a, b) => a.d - b.d);
