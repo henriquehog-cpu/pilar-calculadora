@@ -3054,13 +3054,12 @@ function renderPedidoEmbarque() {
 }
 
 function peCondPgto(proc) {
-  const g = proc.dados_gerais || {};
-  if (g.cond_pagamento && String(g.cond_pagamento).trim()) return String(g.cond_pagamento).trim();
-  const pgs = proc.pagamentos_fornecedor || [];
-  if (!pgs.length) return '';
-  const pctSinal = (pgs[0] && pgs[0].percentual != null) ? pgs[0].percentual : 0;
-  const pctSaldo = (pgs[1] && pgs[1].percentual != null) ? pgs[1].percentual : (1 - pctSinal);
-  return `${fmtN(pctSinal * 100, 0)}% ANTECIPADO / ${fmtN(pctSaldo * 100, 0)}% SALDO`;
+  const recs = proc.recebimentos_cliente || [];
+  if (!recs.length) return '';
+  if (recs.length === 1) return '100% À VISTA';
+  const pct0 = (recs[0] && recs[0].percentual != null) ? recs[0].percentual : 0;
+  const pct1 = (recs[1] && recs[1].percentual != null) ? recs[1].percentual : (1 - pct0);
+  return `${fmtN(pct0 * 100, 0)}% ANTECIPADO / ${fmtN(pct1 * 100, 0)}% SALDO`;
 }
 
 function peFmtData(v) {
@@ -3079,18 +3078,19 @@ function peSelecionar(id) {
 
   const proc = _peProcesso;
   const g = proc.dados_gerais || {};
-  const pgs = proc.pagamentos_fornecedor || [];
-  const sinalPg = pgs[0] || null;   // 1ª parcela do fornecedor
-  const saldoPg = pgs[1] || null;   // 2ª parcela do fornecedor (se houver)
+  const recs = proc.recebimentos_cliente || [];
+  const sinalRec = recs[0] || null;   // 1ª parcela do cliente
+  const saldoRec = recs[1] || null;   // 2ª parcela do cliente (se houver)
   const camFiscal = proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || 0;
   const isoData = v => /^\d{4}-\d{2}-\d{2}/.test(v || '') ? String(v).slice(0, 10) : '';
 
-  const cambioSinal = sinalPg?.cambio || camFiscal;
+  const cambioSinal = sinalRec?.cambio || camFiscal;
   document.getElementById('pe-cambio-sinal').value   = cambioSinal || '';
-  document.getElementById('pe-data-sinal').value     = isoData(sinalPg?.data_prevista || sinalPg?.data_realizada || g.data_pedido);
-  // Câmbio saldo: 2ª parcela; com uma só parcela, repete o câmbio do sinal
-  document.getElementById('pe-cambio-saldo').value   = (saldoPg?.cambio || cambioSinal) || '';
-  document.getElementById('pe-data-pagamento').value = isoData(saldoPg?.data_prevista || g.prev_embarque);
+  document.getElementById('pe-data-sinal').value     = isoData(sinalRec?.data_prevista || g.data_pedido);
+  // Câmbio saldo: 2ª parcela; com uma só parcela (100% à vista), repete o câmbio do sinal
+  document.getElementById('pe-cambio-saldo').value   = (saldoRec?.cambio || cambioSinal) || '';
+  // Data do saldo: 2ª parcela; com uma só parcela, usa a data da primeira
+  document.getElementById('pe-data-pagamento').value = isoData(saldoRec?.data_prevista || sinalRec?.data_prevista || g.prev_embarque);
   document.getElementById('pe-cond-pgto').value      = peCondPgto(proc);
 
   // Qtd Embarcada pré-preenchida com a qtd original do processo
@@ -3106,13 +3106,14 @@ function peCompute() {
   const cambioSinal = parseFloat(val('pe-cambio-sinal')) || 0;
   const cambioSaldo = parseFloat(val('pe-cambio-saldo')) || 0;
 
-  // Percentuais das parcelas do fornecedor (fração 0–1) — 1ª e 2ª parcela
-  const pgs = proc.pagamentos_fornecedor || [];
-  const sinalPg = pgs[0] || null;
-  const saldoPg = pgs[1] || null;
-  const temParcelas = pgs.length > 0;
-  const pctSinal = (sinalPg && sinalPg.percentual != null) ? sinalPg.percentual : 0.20;
-  const pctSaldo = (saldoPg && saldoPg.percentual != null) ? saldoPg.percentual : (1 - pctSinal);
+  // Percentuais das parcelas do cliente (fração 0–1) — 1ª e 2ª parcela
+  const recs = proc.recebimentos_cliente || [];
+  const sinalRec = recs[0] || null;
+  const saldoRec = recs[1] || null;
+  const temParcelas = recs.length > 0;
+  const pctSinal = (sinalRec && sinalRec.percentual != null) ? sinalRec.percentual : 1;
+  // Uma só parcela (100% à vista) → saldo = 0
+  const pctSaldo = (saldoRec && saldoRec.percentual != null) ? saldoRec.percentual : (recs.length > 1 ? (1 - pctSinal) : 0);
 
   // Câmbio médio ponderado pelos percentuais; sem parcelas → câmbio saldo
   const cambioMedio = temParcelas
