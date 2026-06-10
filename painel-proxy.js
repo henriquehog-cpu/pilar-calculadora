@@ -14,6 +14,18 @@ const BANCODI_FILE = path.join(ROOT, 'banco_di.json');
 const OMIE_HOST   = 'app.omie.com.br';
 const OMIE_PATH   = '/api/v1/geral/produtos/';
 
+// ── IA (Fase 3) ──────────────────────────────────────────────────────────────
+const PROMPTS_DIR     = path.join(ROOT, 'prompts');
+const FORNEC_BLOQ_FILE = path.join(ROOT, 'config', 'fornecedores-bloqueados.json');
+const LOG_DIR         = path.join(ROOT, 'logs');
+const IA_LOG_FILE     = path.join(LOG_DIR, 'ia-chat.log');
+const ANTHROPIC_HOST  = 'api.anthropic.com';
+const ANTHROPIC_PATH  = '/v1/messages';
+const IA_MODELO       = 'claude-sonnet-4-6';
+const IA_MAX_TOKENS   = 2048;
+const IA_RATE_LIMIT   = 20;     // máx. de requisições
+const IA_RATE_WINDOW  = 60000;  // por janela (ms) = 1 minuto
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'application/javascript',
@@ -74,6 +86,97 @@ function readBody(req) {
       catch (e) { reject(e); }
     });
     req.on('error', reject);
+  });
+}
+
+// ── IA: helpers ──────────────────────────────────────────────────────────────
+// Lê o system prompt do fluxo a partir de prompts/*.md (versionados, sem segredos).
+function lerPromptFluxo(fluxo) {
+  const arquivo = fluxo === 'qualificacao' ? 'qualificacao.md' : 'proposta.md';
+  try { return fs.readFileSync(path.join(PROMPTS_DIR, arquivo), 'utf8'); }
+  catch { return null; }
+}
+
+// Rate limit simples em memória (por processo): IA_RATE_LIMIT por IA_RATE_WINDOW.
+const _iaReqTimes = [];
+function iaRateLimited() {
+  const agora = Date.now();
+  while (_iaReqTimes.length && agora - _iaReqTimes[0] > IA_RATE_WINDOW) _iaReqTimes.shift();
+  if (_iaReqTimes.length >= IA_RATE_LIMIT) return true;
+  _iaReqTimes.push(agora);
+  return false;
+}
+
+// Guardrail determinístico (fluxo proposta): bloqueia se achar dado interno.
+// Retorna o termo detectado (string) ou null se o texto estiver limpo.
+function verificarGuardrail(texto) {
+  const t = texto || '';
+  const reTermos = /\b(fob|custo|margem|markup)/i; // erra para o lado de bloquear
+  const m = t.match(reTermos);
+  if (m) return m[1].toUpperCase();
+  const lista = lerJson(FORNEC_BLOQ_FILE, []);
+  if (Array.isArray(lista)) {
+    const lower = t.toLowerCase();
+    for (const nome of lista) {
+      if (typeof nome === 'string' && nome.trim() && lower.includes(nome.toLowerCase().trim()))
+        return nome.trim();
+    }
+  }
+  return null;
+}
+
+// Registra custo por chamada em logs/ia-chat.log (gitignorado).
+function logIA(fluxo, usage) {
+  try {
+    if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+    const linha = JSON.stringify({
+      ts: new Date().toISOString(),
+      fluxo,
+      input_tokens:  (usage && usage.input_tokens)  || 0,
+      output_tokens: (usage && usage.output_tokens) || 0,
+    }) + '\n';
+    fs.appendFileSync(IA_LOG_FILE, linha);
+  } catch {}
+}
+
+// Chama POST https://api.anthropic.com/v1/messages (raw HTTPS, sem dependências).
+// A chave vem SOMENTE de process.env.ANTHROPIC_API_KEY — nunca de arquivo.
+function chamarAnthropic(systemPrompt, mensagens) {
+  return new Promise((resolve, reject) => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { const e = new Error('ANTHROPIC_API_KEY ausente'); e.code = 'NO_KEY'; return reject(e); }
+    const payload = JSON.stringify({
+      model: IA_MODELO,
+      max_tokens: IA_MAX_TOKENS,
+      system: systemPrompt,
+      messages: mensagens,
+    });
+    const opts = {
+      hostname: ANTHROPIC_HOST, path: ANTHROPIC_PATH, method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(payload),
+      },
+    };
+    const areq = https.request(opts, ares => {
+      let data = '';
+      ares.on('data', c => data += c);
+      ares.on('end', () => {
+        let parsed;
+        try { parsed = JSON.parse(data); } catch { return reject(new Error('Resposta inválida da API')); }
+        if (ares.statusCode >= 400) {
+          const e = new Error((parsed.error && parsed.error.message) || ('HTTP ' + ares.statusCode));
+          e.status = ares.statusCode;
+          return reject(e);
+        }
+        resolve(parsed);
+      });
+    });
+    areq.on('error', reject);
+    areq.write(payload);
+    areq.end();
   });
 }
 
@@ -370,6 +473,64 @@ const server = http.createServer((req, res) => {
         aPagar:   Math.round(aPagar   * 100) / 100,
       },
     });
+    return;
+  }
+
+  // ── POST /api/ia/chat ──────────────────────────────────────────────────────
+  // Body: { fluxo: "qualificacao"|"proposta", mensagens: [{role, content}, ...] }
+  // A API Anthropic é stateless: o frontend envia o histórico completo a cada turno.
+  if (req.method === 'POST' && url === '/api/ia/chat') {
+    readBody(req).then(async body => {
+      const fluxo     = body && body.fluxo;
+      const mensagens = body && body.mensagens;
+
+      if (fluxo !== 'qualificacao' && fluxo !== 'proposta')
+        return json(res, 400, { erro: 'fluxo inválido (use "qualificacao" ou "proposta")' });
+      if (!Array.isArray(mensagens) || mensagens.length === 0)
+        return json(res, 400, { erro: 'mensagens deve ser um array não vazio' });
+      for (const m of mensagens) {
+        if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string')
+          return json(res, 400, { erro: 'cada mensagem precisa de role (user|assistant) e content string' });
+      }
+      if (mensagens[0].role !== 'user')
+        return json(res, 400, { erro: 'a primeira mensagem deve ser do usuário' });
+
+      if (iaRateLimited())
+        return json(res, 429, { erro: 'Limite de requisições atingido (20/min). Aguarde um instante.' });
+
+      const systemPrompt = lerPromptFluxo(fluxo);
+      if (!systemPrompt)
+        return json(res, 500, { erro: 'System prompt não encontrado para o fluxo "' + fluxo + '"' });
+
+      let resposta;
+      try {
+        resposta = await chamarAnthropic(systemPrompt, mensagens);
+      } catch (e) {
+        if (e.code === 'NO_KEY')
+          return json(res, 503, { erro: 'IA indisponível: ANTHROPIC_API_KEY não configurada no servidor.' });
+        if (e.status === 429)
+          return json(res, 429, { erro: 'A API da Anthropic limitou as requisições. Tente em instantes.' });
+        return json(res, 502, { erro: 'Falha ao falar com a IA: ' + e.message });
+      }
+
+      logIA(fluxo, resposta.usage);
+
+      const texto = (resposta.content || [])
+        .filter(b => b && b.type === 'text')
+        .map(b => b.text).join('\n').trim();
+
+      // Guardrail determinístico — só no fluxo proposta (documento vai ao cliente final)
+      if (fluxo === 'proposta') {
+        const termo = verificarGuardrail(texto);
+        if (termo)
+          return json(res, 200, {
+            bloqueado: true,
+            aviso: `Rascunho bloqueado: possível dado interno detectado (termo: ${termo}). Revise a entrada.`,
+          });
+      }
+
+      json(res, 200, { texto });
+    }).catch(() => json(res, 400, { erro: 'Body JSON inválido' }));
     return;
   }
 
