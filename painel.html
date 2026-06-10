@@ -133,6 +133,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pipe-future{background:var(--cinza-light);color:var(--cinza-med);border:1px solid var(--border)}
 .pipe-line{display:inline-block;width:14px;height:2px;flex-shrink:0;vertical-align:middle}
 
+/* ── Command Palette (Cmd+K) ── */
+#cmdk-overlay{display:none;position:fixed;inset:0;background:rgba(38,50,56,.45);z-index:9999;align-items:flex-start;justify-content:center}
+#cmdk-overlay.aberto{display:flex}
+#cmdk-box{margin-top:12vh;width:min(560px,92vw);background:var(--white);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+#cmdk-input{width:100%;border:0;border-bottom:1px solid var(--border);padding:16px 18px;font-size:16px;color:var(--cinza);outline:none;box-sizing:border-box}
+#cmdk-list{max-height:50vh;overflow-y:auto}
+.cmdk-item{display:flex;align-items:center;gap:10px;padding:10px 18px;cursor:pointer}
+.cmdk-item.sel{background:#F0FAFB}
+.cmdk-tipo{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--cinza-med);min-width:62px;font-weight:700;flex-shrink:0}
+.cmdk-label{font-size:14px;font-weight:600;color:var(--cinza)}
+.cmdk-sub{font-size:12px;color:var(--cinza-med);margin-left:auto;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.cmdk-empty{padding:16px 18px;color:var(--cinza-med);font-size:13px}
+
+/* ── Tooltip do pipeline ── */
+#pipe-tip{position:absolute;z-index:9998;background:var(--white);color:var(--cinza);padding:8px 11px;border-radius:6px;font-size:12px;line-height:1.5;box-shadow:0 6px 22px rgba(0,0,0,.18);border:1px solid var(--border);pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s;white-space:nowrap}
+#pipe-tip.show{opacity:1;transform:translateY(0)}
+#pipe-tip .pt-etapa{font-weight:700;color:var(--cinza)}
+#pipe-tip .pt-data{color:var(--cinza-med);font-size:11px;margin-top:1px}
+#pipe-tip .pt-status{font-weight:700;font-size:11px;margin-top:2px}
+
 /* ── Modal Novo Produto ── */
 .npm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center}
 .npm-box{background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.25);width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column}
@@ -411,11 +431,75 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script>
 // ── Navegação ──────────────────────────────────────────────────────────────
-function navTo(link, renderFn) {
+// ── Roteador por hash (deep-links) ───────────────────────────────────────────
+// Rotas simples: hash -> { fn: render, nav: nome usado no onclick do menu }
+const ROTAS = {
+  'dashboard':          { fn: renderDashboard,           nav: 'renderDashboard' },
+  'relatorio':          { fn: renderRelatorioGeral,      nav: 'renderRelatorioGeral' },
+  'novo-processo':      { fn: () => renderNovoProcesso(), nav: 'renderNovoProcesso' },
+  'processos':          { fn: renderProcessos,           nav: 'renderProcessos' },
+  'order-request':      { fn: renderOrderRequest,        nav: 'renderOrderRequest' },
+  'proposta':           { fn: renderProposta,            nav: 'renderProposta' },
+  'pedido-embarque':    { fn: renderPedidoEmbarque,      nav: 'renderPedidoEmbarque' },
+  'resumo-despachante': { fn: renderResumoDespachante,   nav: 'renderResumoDespachante' },
+  'fluxo-caixa':        { fn: renderFluxoCaixa,          nav: 'renderFluxoCaixa' },
+  'catalogo':           { fn: renderCatalogo,            nav: 'renderCatalogo' },
+  'configuracoes':      { fn: renderConfig,              nav: 'renderConfig' },
+};
+// Mapa inverso: função de render -> hash (usado pelo menu lateral via navTo)
+const _fnParaHash = new Map([
+  [renderDashboard, '#/dashboard'], [renderRelatorioGeral, '#/relatorio'],
+  [renderNovoProcesso, '#/novo-processo'], [renderProcessos, '#/processos'],
+  [renderOrderRequest, '#/order-request'], [renderProposta, '#/proposta'],
+  [renderPedidoEmbarque, '#/pedido-embarque'], [renderResumoDespachante, '#/resumo-despachante'],
+  [renderFluxoCaixa, '#/fluxo-caixa'], [renderCatalogo, '#/catalogo'], [renderConfig, '#/configuracoes'],
+]);
+
+function _setActiveNav(fnNome) {
   document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
-  link.classList.add('active');
-  // Garante dados frescos do servidor antes de renderizar o módulo
-  _apiCarregarProcessos().then(renderFn);
+  if (fnNome) document.querySelector(`.nav-link[onclick*=${fnNome}]`)?.classList.add('active');
+}
+function _procPorNumero(numero) {
+  return JSON.parse(localStorage.getItem('pilar_processos') || '[]')
+    .find(p => String(p.numero) === String(numero));
+}
+
+// Lê o hash atual e renderiza o módulo correspondente (dados já carregados)
+function _despacharHash() {
+  const partes = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+
+  // #/processo/{numero}  e  #/processo/{numero}/financeiro
+  if (partes[0] === 'processo' && partes[1]) {
+    const proc = _procPorNumero(decodeURIComponent(partes[1]));
+    if (!proc) { _setActiveNav('renderDashboard'); renderDashboard(); return; }
+    if (partes[2] === 'financeiro') {
+      _setActiveNav('renderFluxoCaixa');
+      renderFluxoCaixa();
+      const sel = document.getElementById('fc-select');
+      if (sel) { sel.value = String(proc.id); fcSelecionarProcesso(String(proc.id)); }
+    } else {
+      _setActiveNav('renderNovoProcesso');
+      renderNovoProcesso(proc);
+    }
+    return;
+  }
+
+  // Rotas simples (default: dashboard)
+  const rota = ROTAS[partes[0]] || ROTAS['dashboard'];
+  _setActiveNav(rota.nav);
+  rota.fn();
+}
+
+// Recarrega dados frescos do servidor e então renderiza conforme o hash
+function aplicarHash() {
+  _apiCarregarProcessos().then(_despacharHash);
+}
+
+// O menu lateral agora apenas seta o hash; o roteador faz o resto.
+function navTo(link, renderFn) {
+  const destino = _fnParaHash.get(renderFn) || '#/dashboard';
+  if (location.hash === destino) aplicarHash(); // já na rota: re-renderiza
+  else location.hash = destino;                 // dispara hashchange -> aplicarHash
   return false; // cancela o href="#"
 }
 
@@ -439,21 +523,21 @@ function renderDashboard() {
 
   document.getElementById('vc').innerHTML = `
     <div class="sum-grid" style="margin-bottom:24px">
-      <div class="sum-item">
+      <div class="sum-item" style="cursor:pointer" onclick="location.hash='#/processos'" title="Ver Processos">
         <div class="val">${ativos.length}</div>
         <div class="lbl">Processos Ativos</div>
       </div>
-      <div class="sum-item">
+      <div class="sum-item" style="cursor:pointer" onclick="location.hash='#/fluxo-caixa'" title="Ver Fluxo de Caixa">
         <div class="val">USD ${fmtN(fobTotal)}</div>
         <div class="lbl">FOB Total USD</div>
         <div class="val" style="font-size:17px;margin-top:10px">R$ ${fmtN(receitaPrev)}</div>
         <div class="lbl">Receita Prevista R$</div>
       </div>
-      <div class="sum-item">
+      <div class="sum-item" style="cursor:pointer" onclick="location.hash='#/order-request'" title="Ver Order Request">
         <div class="val">${itensTotal}</div>
         <div class="lbl">Itens Pedidos</div>
       </div>
-      <div class="sum-item dk">
+      <div class="sum-item dk" style="cursor:pointer" onclick="location.hash='#/catalogo'" title="Ver Catálogo Omie">
         <div class="val">${produtos.length}</div>
         <div class="lbl">Produtos Omie</div>
       </div>
@@ -560,8 +644,13 @@ function dashEventoHTML(e) {
   const valHTML = e.sinal
     ? `<span style="font-size:12px;font-weight:700;white-space:nowrap;min-width:100px;text-align:right;color:${e.sinal==='entrada'?'#2E7D32':'#C62828'}">R$ ${fmtN(e.valor)}</span>`
     : `<span style="min-width:100px"></span>`;
+  const destino = e.sinal
+    ? `#/processo/${encodeURIComponent(e.numero)}/financeiro`
+    : `#/processo/${encodeURIComponent(e.numero)}`;
   return `
-    <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light)">
+    <div onclick="location.hash='${destino}'" title="Abrir ${e.numero}"
+         onmouseover="this.style.background='#F0FAFB'" onmouseout="this.style.background=''"
+         style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light);cursor:pointer">
       <span style="font-size:15px;width:22px;text-align:center;flex-shrink:0">${e.icone}</span>
       <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${e.numero}</span>
       <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.desc}</span>
@@ -621,20 +710,29 @@ function dashPipelineRow(proc) {
   const c2 = stg(prtDone, !!prt);
   const c3 = stg(cliDone, !!cli);
   const ln = done => `<span class="pipe-line" style="background:${done?'#2E7D32':'var(--border)'}"></span>`;
-  const dot = (cls, ic, tip) => `<span class="pipe-dot ${cls}" title="${tip}">${ic}</span>`;
+  // tooltip via data-* (lido pelo handler global): etapa, data prevista e status
+  const fmtBR = s => s ? new Date(s + 'T12:00').toLocaleDateString('pt-BR') : null;
+  const dot = (cls, ic, etapa, dataStr) => {
+    const dataBR = fmtBR(dataStr);
+    const st = !dataBR              ? { t: 'Sem data prevista', c: 'var(--cinza-med)' }
+             : cls === 'pipe-done'  ? { t: 'Concluído',         c: '#2E7D32' }
+             :                        { t: 'Previsto',          c: 'var(--turquesa-dark)' };
+    return `<span class="pipe-dot ${cls}" tabindex="0" data-etapa="${etapa}" `
+         + `data-data="${dataBR || '—'}" data-status="${st.t}" data-cor="${st.c}">${ic}</span>`;
+  };
 
   return `<tr onclick="procEditar(${proc.id})" style="cursor:pointer" onmouseover="this.style.background='#F0FAFB'" onmouseout="this.style.background=''">
     <td style="font-weight:700">${proc.numero||'—'}</td>
     <td>${g.cliente||'—'}</td>
     <td>
       <div style="display:flex;align-items:center;gap:2px">
-        ${dot('pipe-done','✓', `Pedido — ${g.data_pedido||proc.criado_em?.slice(0,10)||'—'}`)}
+        ${dot('pipe-done','✓','Pedido', g.data_pedido || (proc.criado_em ? proc.criado_em.slice(0,10) : ''))}
         ${ln(embDone)}
-        ${dot(c1,'🚢',`Embarque — ${g.prev_embarque||'sem data'}`)}
+        ${dot(c1,'🚢','Embarque', g.prev_embarque)}
         ${ln(prtDone)}
-        ${dot(c2,'⚓',`Chegada Porto — ${g.prev_chegada_porto||'sem data'}`)}
+        ${dot(c2,'⚓','Chegada Porto', g.prev_chegada_porto)}
         ${ln(cliDone)}
-        ${dot(c3,'📦',`Chegada Cliente — ${g.prev_chegada_cliente||'sem data'}`)}
+        ${dot(c3,'📦','Chegada Cliente', g.prev_chegada_cliente)}
       </div>
     </td>
     <td style="text-align:right;font-variant-numeric:tabular-nums">USD ${fmtN(fob)}</td>
@@ -1718,9 +1816,9 @@ function procEditar(id) {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   const proc  = todos.find(p => p.id === id);
   if (!proc) return;
-  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
-  document.querySelector('.nav-link[onclick*=renderNovoProcesso]')?.classList.add('active');
-  renderNovoProcesso(proc);
+  const destino = '#/processo/' + encodeURIComponent(proc.numero);
+  if (location.hash === destino) aplicarHash(); // já aberto: re-renderiza
+  else location.hash = destino;                 // dispara o roteador (e habilita "voltar")
 }
 
 function procDeletar(id) {
@@ -5071,8 +5169,167 @@ function _apiSalvarProcessos(arr) {
   }).catch(() => {});
 }
 
+// ── Command Palette (Cmd+K / Ctrl+K) ─────────────────────────────────────────
+// Busca em memória (sem chamada de API): processos (PIL + cliente) + atalhos de módulo.
+const _cmdNorm = s => (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const _cmdEsc  = s => (s || '').toString().replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const _CMD_ACOES = [
+  { label: 'Dashboard',          hash: '#/dashboard' },
+  { label: 'Novo Processo',      hash: '#/novo-processo' },
+  { label: 'Processos',          hash: '#/processos' },
+  { label: 'Fluxo de Caixa',     hash: '#/fluxo-caixa' },
+  { label: 'Order Request',      hash: '#/order-request' },
+  { label: 'Proposta Comercial', hash: '#/proposta' },
+  { label: 'Pedido de Embarque', hash: '#/pedido-embarque' },
+  { label: 'Resumo Despachante', hash: '#/resumo-despachante' },
+  { label: 'Catálogo Omie',      hash: '#/catalogo' },
+  { label: 'Relatório Geral',    hash: '#/relatorio' },
+  { label: 'Configurações',      hash: '#/configuracoes' },
+  { label: 'Calculadora',        url:  'index.html' },
+];
+
+let _cmdSel = 0, _cmdItens = [], _cmdAnterior = null;
+
+function _cmdIndice() {
+  const procs = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const dosProcessos = procs.map(p => {
+    const g = p.dados_gerais || {};
+    return { tipo: 'Processo', label: p.numero || 'sem número',
+             sub: g.cliente || g.fornecedor || '',
+             hash: '#/processo/' + encodeURIComponent(p.numero) };
+  });
+  const dasAcoes = _CMD_ACOES.map(a => ({ tipo: 'Ir para', label: a.label, sub: '', hash: a.hash, url: a.url }));
+  return [...dosProcessos, ...dasAcoes];
+}
+
+function _cmdFiltrar(q) {
+  const nq = _cmdNorm(q);
+  const todos = _cmdIndice();
+  if (!nq) return todos;
+  return todos.filter(it => _cmdNorm(it.label + ' ' + it.sub).includes(nq));
+}
+
+function _cmdMontar() {
+  if (document.getElementById('cmdk-overlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'cmdk-overlay';
+  ov.innerHTML =
+    '<div id="cmdk-box" role="dialog" aria-modal="true" aria-label="Busca rápida">' +
+      '<input id="cmdk-input" type="text" autocomplete="off" spellcheck="false" ' +
+        'placeholder="Buscar processo (PIL ou cliente) ou ir para…">' +
+      '<div id="cmdk-list"></div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('mousedown', e => { if (e.target === ov) _cmdFechar(); }); // clique fora
+  const inp = ov.querySelector('#cmdk-input');
+  inp.addEventListener('input', () => { _cmdSel = 0; _cmdRender(inp.value); });
+  inp.addEventListener('keydown', _cmdTeclas);
+}
+
+function _cmdRender(q) {
+  _cmdItens = _cmdFiltrar(q);
+  if (_cmdSel >= _cmdItens.length) _cmdSel = Math.max(0, _cmdItens.length - 1);
+  const lista = document.getElementById('cmdk-list');
+  if (!_cmdItens.length) { lista.innerHTML = '<div class="cmdk-empty">Nada encontrado</div>'; return; }
+  lista.innerHTML = _cmdItens.map((it, i) =>
+    `<div class="cmdk-item${i === _cmdSel ? ' sel' : ''}" data-i="${i}">
+       <span class="cmdk-tipo">${it.tipo}</span>
+       <span class="cmdk-label">${_cmdEsc(it.label)}</span>
+       ${it.sub ? `<span class="cmdk-sub">${_cmdEsc(it.sub)}</span>` : ''}
+     </div>`).join('');
+  lista.querySelectorAll('.cmdk-item').forEach(el => {
+    el.addEventListener('mousemove', () => { _cmdSel = +el.dataset.i; _cmdMarcar(); });
+    el.addEventListener('click', () => _cmdExecutar(_cmdItens[+el.dataset.i]));
+  });
+}
+
+function _cmdMarcar() {
+  document.querySelectorAll('#cmdk-list .cmdk-item').forEach((el, i) => el.classList.toggle('sel', i === _cmdSel));
+  document.querySelector('#cmdk-list .cmdk-item.sel')?.scrollIntoView({ block: 'nearest' });
+}
+
+function _cmdTeclas(e) {
+  const n = _cmdItens.length;
+  if (e.key === 'ArrowDown')      { e.preventDefault(); if (n) { _cmdSel = (_cmdSel + 1) % n; _cmdMarcar(); } }
+  else if (e.key === 'ArrowUp')   { e.preventDefault(); if (n) { _cmdSel = (_cmdSel - 1 + n) % n; _cmdMarcar(); } }
+  else if (e.key === 'Enter')     { e.preventDefault(); if (_cmdItens[_cmdSel]) _cmdExecutar(_cmdItens[_cmdSel]); }
+  else if (e.key === 'Escape')    { e.preventDefault(); _cmdFechar(); }
+  else if (e.key === 'Tab')       { e.preventDefault(); } // foco preso no input enquanto aberto
+}
+
+function _cmdAbrir() {
+  _cmdMontar();
+  _cmdAnterior = document.activeElement; // pra devolver o foco ao fechar
+  _cmdSel = 0;
+  document.getElementById('cmdk-overlay').classList.add('aberto');
+  const inp = document.getElementById('cmdk-input');
+  inp.value = '';
+  _cmdRender('');
+  inp.focus();
+}
+
+function _cmdFechar() {
+  document.getElementById('cmdk-overlay')?.classList.remove('aberto');
+  if (_cmdAnterior && typeof _cmdAnterior.focus === 'function') _cmdAnterior.focus();
+  _cmdAnterior = null;
+}
+
+function _cmdExecutar(it) {
+  if (!it) return;
+  _cmdFechar();
+  if (it.url) { window.location.href = it.url; return; }
+  if (location.hash === it.hash) aplicarHash(); else location.hash = it.hash;
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const ov = document.getElementById('cmdk-overlay');
+    if (ov && ov.classList.contains('aberto')) _cmdFechar(); else _cmdAbrir();
+  }
+});
+
+// ── Tooltips do pipeline (CSS + JS puro, sem biblioteca) ─────────────────────
+// Delegação no document: continua funcionando após cada re-render do dashboard.
+(function () {
+  let tip = null;
+  const make = () => { if (!tip) { tip = document.createElement('div'); tip.id = 'pipe-tip'; document.body.appendChild(tip); } return tip; };
+  const alvo = e => (e.target && e.target.closest) ? e.target.closest('.pipe-dot') : null;
+  function mostrar(dot) {
+    const el = make();
+    el.innerHTML =
+      `<div class="pt-etapa">${dot.dataset.etapa}</div>` +
+      `<div class="pt-data">${dot.dataset.data}</div>` +
+      `<div class="pt-status" style="color:${dot.dataset.cor}">${dot.dataset.status}</div>`;
+    el.classList.add('show');
+    const r = dot.getBoundingClientRect();
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, document.documentElement.clientWidth - tw - 8));
+    el.style.left = (left + window.scrollX) + 'px';
+    el.style.top  = (r.top + window.scrollY - th - 8) + 'px';
+  }
+  const esconder = () => { if (tip) tip.classList.remove('show'); };
+  document.addEventListener('mouseover', e => { const d = alvo(e); if (d) mostrar(d); });
+  document.addEventListener('mouseout',  e => { if (alvo(e)) esconder(); });
+  document.addEventListener('focusin',   e => { const d = alvo(e); if (d) mostrar(d); });
+  document.addEventListener('focusout',  e => { if (alvo(e)) esconder(); });
+  // tap no mobile (captura): mostra o tooltip da etapa sem disparar a navegação da linha
+  document.addEventListener('click', e => {
+    const d = alvo(e);
+    if (d) { e.stopPropagation(); mostrar(d); } else esconder();
+  }, true);
+  window.addEventListener('scroll', esconder, true);
+})();
+
 // ── Init ───────────────────────────────────────────────────────────────────
-(async () => { await _apiCarregar(); await _apiCarregarProcessos(); renderDashboard(); })();
+(async () => {
+  await _apiCarregar();
+  await _apiCarregarProcessos();
+  window.addEventListener('hashchange', aplicarHash); // voltar/avançar + links diretos
+  _despacharHash();                                   // renderiza conforme o hash inicial
+})();
 </script>
 
 <div id="or-print-area"></div>
