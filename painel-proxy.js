@@ -257,6 +257,122 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── GET /api/resumo-diario ───────────────────────────────────────────────
+  // Read-only. Monta o briefing diário consumido pela Astrid (Telegram).
+  // Proteção opcional: se PAINEL_INTERNAL_TOKEN existir, exige header X-Painel-Token.
+  if (req.method === 'GET' && url === '/api/resumo-diario') {
+    const tokenEsperado = process.env.PAINEL_INTERNAL_TOKEN;
+    if (tokenEsperado && req.headers['x-painel-token'] !== tokenEsperado) {
+      return json(res, 401, { erro: 'Token inválido ou ausente' });
+    }
+
+    const TZ = 'America/Sao_Paulo';
+    // "hoje" no fuso de São Paulo, como YYYY-MM-DD (independe do fuso do servidor)
+    const hojeStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+    const hoje = new Date(hojeStr + 'T00:00:00Z');
+    // diferença em dias corridos entre uma data (YYYY-MM-DD) e hoje (SP)
+    const diasEntre = (dataStr) => {
+      if (!dataStr) return null;
+      const d = new Date(String(dataStr).slice(0, 10) + 'T00:00:00Z');
+      return Math.round((d - hoje) / 86400000);
+    };
+    // carimbo ISO com offset de São Paulo (Brasil sem horário de verão desde 2019)
+    const relogioSP = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(new Date());
+    const geradoEm = relogioSP.replace(' ', 'T') + '-03:00';
+
+    const ativos = lerDados().pilar_processos.filter(p => p.status === 'ativo');
+
+    const eventosProximos  = [];
+    const eventosAtrasados = [];
+    let aReceber = 0, aPagar = 0;
+
+    // ── Eventos financeiros (têm campo `status` indicando conclusão) ──────────
+    // grupos: [chave no processo, status que significa "concluído", rótulo, sinal]
+    const gruposFin = [
+      ['recebimentos_cliente',  'recebido', 'Recebimento', 'entrada'],
+      ['pagamentos_fornecedor', 'pago',     'Pagamento',   'saida'],
+    ];
+
+    ativos.forEach(proc => {
+      const cliente = (proc.dados_gerais || {}).cliente || null;
+
+      gruposFin.forEach(([chave, statusOk, rotulo, sinal]) => {
+        (proc[chave] || []).forEach(item => {
+          if (!item.data_prevista || item.status === statusOk) return;
+          const dias  = diasEntre(item.data_prevista);
+          const valor = item.valor_reais || 0;
+          const base  = {
+            processo: proc.numero,
+            cliente,
+            tipo: item.descricao ? `${rotulo}: ${item.descricao}` : rotulo,
+            data: String(item.data_prevista).slice(0, 10),
+            valor,
+            moeda: 'BRL',
+          };
+          if (dias < 0)       eventosAtrasados.push({ ...base, diasAtraso: -dias });
+          else if (dias <= 7) eventosProximos.push({ ...base, diasRestantes: dias });
+          // pendências financeiras: tudo ainda em aberto com vencimento até 30 dias
+          if (dias <= 30) { if (sinal === 'entrada') aReceber += valor; else aPagar += valor; }
+        });
+      });
+
+      // Numerário ao despachante: consolidado (1 evento por processo = soma dos itens)
+      const numItens = proc.numerario_despachante || [];
+      const num0 = numItens[0];
+      if (num0 && num0.status !== 'pago' && num0.data_prevista) {
+        const total = numItens.reduce((s, n) => s + (n.valor_reais || 0), 0);
+        const dias  = diasEntre(num0.data_prevista);
+        const base  = {
+          processo: proc.numero, cliente, tipo: 'Numerário Despachante',
+          data: String(num0.data_prevista).slice(0, 10), valor: total, moeda: 'BRL',
+        };
+        if (dias < 0)       eventosAtrasados.push({ ...base, diasAtraso: -dias });
+        else if (dias <= 7) eventosProximos.push({ ...base, diasRestantes: dias });
+        if (dias <= 30) aPagar += total;
+      }
+
+      // ── Milestones de navio (NÃO têm campo de conclusão no dados.json) ──────
+      const g = proc.dados_gerais || {};
+      const navio = [
+        { tipo: 'Embarque',        data: g.prev_embarque },
+        { tipo: 'Chegada Porto',   data: g.prev_chegada_porto },
+        { tipo: 'Chegada Cliente', data: g.prev_chegada_cliente },
+      ];
+      navio.forEach((m, i) => {
+        if (!m.data) return;
+        const dias = diasEntre(m.data);
+        const base = { processo: proc.numero, cliente, tipo: m.tipo, data: String(m.data).slice(0, 10) };
+        if (dias >= 0 && dias <= 7) {
+          eventosProximos.push({ ...base, diasRestantes: dias });
+        } else if (dias < 0) {
+          // atrasado só se a etapa seguinte ainda não tem data (processo parado nesta etapa)
+          const proxima = navio[i + 1];
+          if (!proxima || !proxima.data) eventosAtrasados.push({ ...base, diasAtraso: -dias });
+        }
+      });
+    });
+
+    eventosProximos.sort((a, b) => a.data < b.data ? -1 : a.data > b.data ? 1 : 0);
+    eventosAtrasados.sort((a, b) => b.diasAtraso - a.diasAtraso);
+
+    json(res, 200, {
+      geradoEm,
+      processosAtivos: ativos.length,
+      eventosProximos,
+      eventosAtrasados,
+      pendenciasFinanceiras30d: {
+        aReceber: Math.round(aReceber * 100) / 100,
+        aPagar:   Math.round(aPagar   * 100) / 100,
+      },
+    });
+    return;
+  }
+
   // ── Arquivos estáticos ─────────────────────────────────────────────────────
   let filePath = path.normalize(path.join(ROOT, url === '/' ? 'index.html' : url));
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== ROOT) {
