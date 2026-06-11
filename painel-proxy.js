@@ -56,11 +56,12 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-// dados.json — lê garantindo a chave pilar_processos; cria o arquivo se não existir
+// dados.json — lê garantindo as chaves pilar_processos e pilar_demandas; cria o arquivo se não existir
 function lerDados() {
   const d = lerJson(DADOS_FILE, null);
-  if (!d || typeof d !== 'object') return { pilar_processos: [] };
+  if (!d || typeof d !== 'object') return { pilar_processos: [], pilar_demandas: [] };
   if (!Array.isArray(d.pilar_processos)) d.pilar_processos = [];
+  if (!Array.isArray(d.pilar_demandas))  d.pilar_demandas  = [];
   return d;
 }
 function salvarDados(d) {
@@ -289,6 +290,38 @@ const server = http.createServer((req, res) => {
     dados.pilar_processos = dados.pilar_processos.filter(p => String(p.id) !== id);
     salvarDados(dados);
     json(res, 200, { ok: true, removidos: antes - dados.pilar_processos.length });
+    return;
+  }
+
+  // ── GET /api/demandas ──────────────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/demandas') {
+    json(res, 200, lerDados().pilar_demandas);
+    return;
+  }
+
+  // ── POST /api/demandas ─────────────────────────────────────────────────────
+  // Body: array completo de demandas (ou { pilar_demandas: [...] }).
+  if (req.method === 'POST' && url === '/api/demandas') {
+    readBody(req).then(body => {
+      const arr = Array.isArray(body) ? body
+                : (body && Array.isArray(body.pilar_demandas) ? body.pilar_demandas : null);
+      if (!arr) return json(res, 400, { erro: 'Esperado array de demandas' });
+      const dados = lerDados();
+      dados.pilar_demandas = arr;
+      salvarDados(dados);
+      json(res, 200, { ok: true, total: arr.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── DELETE /api/demandas/:id ───────────────────────────────────────────────
+  if (req.method === 'DELETE' && url.startsWith('/api/demandas/')) {
+    const id    = decodeURIComponent(url.slice('/api/demandas/'.length));
+    const dados = lerDados();
+    const antes = dados.pilar_demandas.length;
+    dados.pilar_demandas = dados.pilar_demandas.filter(d => String(d.id) !== id);
+    salvarDados(dados);
+    json(res, 200, { ok: true, removidos: antes - dados.pilar_demandas.length });
     return;
   }
 

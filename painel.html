@@ -513,6 +513,15 @@ function _despacharHash() {
     return;
   }
 
+  // #/demanda/{id} — abre o módulo Nova Demanda e reabre a conversa salva
+  if (partes[0] === 'demanda' && partes[1]) {
+    _setActiveNav('renderNovaDemanda');
+    const id = decodeURIComponent(partes[1]);
+    if (_demandas().some(d => String(d.id) === id)) ndReabrir(id);
+    else renderNovaDemanda();
+    return;
+  }
+
   // Rotas simples (default: dashboard)
   const rota = ROTAS[partes[0]] || ROTAS['dashboard'];
   _setActiveNav(rota.nav);
@@ -5199,6 +5208,32 @@ function _apiSalvarProcessos(arr) {
   }).catch(() => {});
 }
 
+// ── Demandas: mesmo padrão dos processos (servidor = fonte da verdade) ───────
+// Lê do servidor e atualiza o cache localStorage (sem disparar hook de sync).
+async function _apiCarregarDemandas() {
+  try {
+    const r = await fetch('/api/demandas');
+    if (r.ok) {
+      const arr = await r.json();
+      if (Array.isArray(arr)) _lsSetOrig('pilar_demandas', JSON.stringify(arr));
+    }
+  } catch { /* offline — usa cache localStorage */ }
+}
+// Escreve o array completo no servidor (POST /api/demandas) e atualiza o cache.
+function _apiSalvarDemandas(arr) {
+  _lsSetOrig('pilar_demandas', JSON.stringify(arr));
+  fetch('/api/demandas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(arr)
+  }).catch(() => {});
+}
+// Leitura do cache local (array de demandas).
+function _demandas() {
+  try { return JSON.parse(localStorage.getItem('pilar_demandas') || '[]'); }
+  catch { return []; }
+}
+
 // ── IA: helper compartilhado (Nova Demanda + Proposta) ───────────────────────
 // POST /api/ia/chat — devolve { texto } ou { bloqueado, aviso } (guardrail).
 async function iaChat(fluxo, mensagens) {
@@ -5226,24 +5261,31 @@ function iaCopiar(btn) {
 let _ndMensagens = [];   // conversa pura (formato da API): [{role, content}]
 let _ndErro = null;      // erro transitório (não entra na conversa)
 let _ndEnviando = false;
+let _ndEditId = null;    // id da demanda em edição (null = nova); preenchido ao "Reabrir conversa"
 
 function renderNovaDemanda() {
   document.getElementById('vc').innerHTML = `
-    <div style="max-width:820px">
+    <div style="max-width:920px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <h2 style="font-size:18px;font-weight:700">Nova Demanda
           <span style="font-size:12px;font-weight:400;color:var(--cinza-med)">— qualificação assistida por IA</span></h2>
-        <button class="btn" onclick="ndLimpar()" style="font-size:12px">Nova conversa</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-p" onclick="ndSalvarAbrir()" style="font-size:12px">Salvar demanda</button>
+          <button class="btn" onclick="ndLimpar()" style="font-size:12px">Nova conversa</button>
+        </div>
       </div>
-      <div class="ia-wrap">
+      <div class="ia-wrap" style="max-width:820px">
         <div class="ia-msgs" id="nd-msgs"></div>
         <div class="ia-input-row">
           <textarea id="nd-input" rows="2" placeholder="Descreva a demanda do cliente…  (Enter envia, Shift+Enter quebra linha)" onkeydown="ndTecla(event)"></textarea>
           <button class="btn btn-p" id="nd-enviar" onclick="ndEnviar()">Enviar</button>
         </div>
       </div>
+      <div id="nd-save-form"></div>
+      <div id="nd-lista" style="margin-top:24px"></div>
     </div>`;
   _ndRepaint(false);
+  ndRenderLista();
   const inp = document.getElementById('nd-input'); if (inp) inp.focus();
 }
 
@@ -5302,10 +5344,182 @@ function ndEnviar() {
 
 function ndReenviar() { if (!_ndEnviando) _ndChamar(); }
 
-function ndLimpar() { _ndMensagens = []; _ndErro = null; renderNovaDemanda(); }
+function ndLimpar() { _ndMensagens = []; _ndErro = null; _ndEditId = null; renderNovaDemanda(); }
 
 function ndTecla(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ndEnviar(); }
+}
+
+// ── Nova Demanda: persistência (salvar / listar / status / reabrir / excluir) ─
+const _ND_STATUS = ['aberta', 'cotando', 'calculada', 'proposta_enviada', 'fechada', 'perdida'];
+const _ND_STATUS_LABEL = {
+  aberta: 'Aberta', cotando: 'Cotando', calculada: 'Calculada',
+  proposta_enviada: 'Proposta enviada', fechada: 'Fechada', perdida: 'Perdida',
+};
+
+// Último texto gerado pela IA na conversa atual (vira o "briefing" salvo).
+function _ndUltimoBriefing() {
+  for (let i = _ndMensagens.length - 1; i >= 0; i--)
+    if (_ndMensagens[i].role === 'assistant') return _ndMensagens[i].content;
+  return '';
+}
+
+// Abre o formulário de salvamento (pede/confirma cliente + produto + tipo + link).
+function ndSalvarAbrir() {
+  if (_ndMensagens.length === 0) { toast('Converse com a IA antes de salvar a demanda.'); return; }
+  const cont = document.getElementById('nd-save-form');
+  if (!cont) return;
+  // Se está editando uma demanda existente, pré-preenche com os dados dela.
+  const atual = _ndEditId != null ? _demandas().find(d => String(d.id) === String(_ndEditId)) : null;
+  const cli  = atual ? atual.cliente : '';
+  const prod = atual ? atual.produto : '';
+  const tipo = atual ? atual.tipo : 'novo';
+  const link = atual ? (atual.linkOneDrive || '') : '';
+  cont.innerHTML = `
+    <div style="max-width:820px;margin-top:12px;border:1px solid var(--border,#ddd);border-radius:8px;padding:16px;background:#FAFAFA">
+      <div style="font-weight:600;margin-bottom:12px">${atual ? 'Atualizar demanda' : 'Salvar demanda'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label style="font-size:12px;color:var(--cinza-med)">Cliente
+          <input id="nd-f-cliente" type="text" value="${_cmdEsc(cli)}" placeholder="Cliente" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border,#ccc);border-radius:5px"></label>
+        <label style="font-size:12px;color:var(--cinza-med)">Produto
+          <input id="nd-f-produto" type="text" value="${_cmdEsc(prod)}" placeholder="Produto" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border,#ccc);border-radius:5px"></label>
+        <label style="font-size:12px;color:var(--cinza-med)">Tipo
+          <select id="nd-f-tipo" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border,#ccc);border-radius:5px">
+            <option value="recompra"${tipo === 'recompra' ? ' selected' : ''}>Recompra</option>
+            <option value="novo"${tipo === 'novo' ? ' selected' : ''}>Item novo</option>
+          </select></label>
+        <label style="font-size:12px;color:var(--cinza-med)">Link OneDrive (opcional)
+          <input id="nd-f-link" type="url" value="${_cmdEsc(link)}" placeholder="https://…" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border,#ccc);border-radius:5px"></label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-p" onclick="ndSalvarConfirmar()" style="font-size:12px">${atual ? 'Atualizar' : 'Salvar'}</button>
+        <button class="btn" onclick="ndSalvarCancelar()" style="font-size:12px">Cancelar</button>
+      </div>
+    </div>`;
+  cont.scrollIntoView({ block: 'nearest' });
+  const c = document.getElementById('nd-f-cliente'); if (c) c.focus();
+}
+
+function ndSalvarCancelar() {
+  const cont = document.getElementById('nd-save-form');
+  if (cont) cont.innerHTML = '';
+}
+
+function ndSalvarConfirmar() {
+  const cliente = (document.getElementById('nd-f-cliente')?.value || '').trim();
+  const produto = (document.getElementById('nd-f-produto')?.value || '').trim();
+  const tipo    = document.getElementById('nd-f-tipo')?.value || 'novo';
+  const link    = (document.getElementById('nd-f-link')?.value || '').trim();
+  if (!cliente && !produto) { toast('Informe ao menos cliente ou produto.'); return; }
+
+  const arr = _demandas();
+  const conversa  = _ndMensagens.map(m => ({ role: m.role, content: m.content }));
+  const briefing  = _ndUltimoBriefing();
+
+  if (_ndEditId != null) {
+    const i = arr.findIndex(d => String(d.id) === String(_ndEditId));
+    if (i >= 0) {
+      arr[i] = { ...arr[i], tipo, cliente, produto, linkOneDrive: link, briefing, conversa };
+    }
+  } else {
+    arr.push({
+      id: Date.now(),
+      criadaEm: new Date().toISOString(),
+      tipo, cliente, produto,
+      status: 'aberta',
+      briefing,
+      conversa,
+      linkOneDrive: link,
+      simulacaoId: null,
+      pvFinal: null,
+    });
+  }
+  _apiSalvarDemandas(arr);
+  ndSalvarCancelar();
+  ndRenderLista();
+  toast(_ndEditId != null ? 'Demanda atualizada.' : 'Demanda salva.');
+}
+
+// Tabela de demandas salvas (abaixo do chat).
+function ndRenderLista() {
+  const el = document.getElementById('nd-lista');
+  if (!el) return;
+  const arr = _demandas().slice().reverse(); // mais recentes primeiro
+  if (!arr.length) {
+    el.innerHTML = '<div style="color:var(--cinza-med);font-size:13px">Nenhuma demanda salva ainda.</div>';
+    return;
+  }
+  const fmtData = iso => { try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return '—'; } };
+  const linhas = arr.map(d => {
+    const opts = _ND_STATUS.map(s =>
+      `<option value="${s}"${d.status === s ? ' selected' : ''}>${_ND_STATUS_LABEL[s]}</option>`).join('');
+    const docs = d.linkOneDrive
+      ? `<a class="btn btn-s btn-sm" href="${_cmdEsc(d.linkOneDrive)}" target="_blank" rel="noopener" title="Abrir pasta no OneDrive">📁 Documentos</a>`
+      : '';
+    return `<tr>
+      <td>${d.tipo === 'recompra' ? 'Recompra' : 'Item novo'}</td>
+      <td>${_cmdEsc(d.cliente || '—')}</td>
+      <td>${_cmdEsc(d.produto || '—')}</td>
+      <td style="white-space:nowrap">${fmtData(d.criadaEm)}</td>
+      <td><select onchange="ndStatusChange('${d.id}', this.value)" style="padding:4px 6px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:12px">${opts}</select></td>
+      <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-s btn-sm" onclick="ndReabrir('${d.id}')">Reabrir conversa</button>
+        <button class="btn btn-s btn-sm" onclick="ndCopiarBriefing('${d.id}')">Copiar briefing</button>
+        ${docs}
+        <button class="btn btn-s btn-sm" onclick="ndExcluir('${d.id}')">Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:10px">Demandas salvas</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--cinza-med);border-bottom:1px solid var(--border,#ddd)">
+        <th style="padding:6px 8px">Tipo</th><th style="padding:6px 8px">Cliente</th>
+        <th style="padding:6px 8px">Produto</th><th style="padding:6px 8px">Data</th>
+        <th style="padding:6px 8px">Status</th><th style="padding:6px 8px">Ações</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+function ndStatusChange(id, novo) {
+  if (!_ND_STATUS.includes(novo)) return;
+  const arr = _demandas();
+  const i = arr.findIndex(d => String(d.id) === String(id));
+  if (i < 0) return;
+  arr[i].status = novo;
+  _apiSalvarDemandas(arr);
+  toast('Status atualizado.');
+}
+
+function ndReabrir(id) {
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) { toast('Demanda não encontrada.'); return; }
+  _ndMensagens = (d.conversa || []).map(m => ({ role: m.role, content: m.content }));
+  _ndErro = null;
+  _ndEditId = d.id;
+  renderNovaDemanda();
+  toast('Conversa reaberta — "Salvar demanda" atualiza esta demanda.');
+}
+
+function ndCopiarBriefing(id) {
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) return;
+  const txt = d.briefing || '';
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  toast('Briefing copiado.');
+}
+
+function ndExcluir(id) {
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) return;
+  if (!confirm(`Excluir a demanda "${d.produto || d.cliente || id}"? Esta ação não pode ser desfeita.`)) return;
+  const arr = _demandas().filter(x => String(x.id) !== String(id));
+  _apiSalvarDemandas(arr);
+  fetch('/api/demandas/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+  if (String(_ndEditId) === String(id)) _ndEditId = null;
+  ndRenderLista();
+  toast('Demanda excluída.');
 }
 
 // ── Proposta com IA (fluxo proposta — painel lateral) ────────────────────────
@@ -5463,8 +5677,15 @@ function _cmdIndice() {
              sub: g.cliente || g.fornecedor || '',
              hash: '#/processo/' + encodeURIComponent(p.numero) };
   });
+  const dasDemandas = _demandas().map(d => ({
+    tipo: 'Demanda',
+    label: d.produto || d.cliente || 'demanda',
+    sub: [d.cliente, d.produto && d.cliente ? d.produto : '', _ND_STATUS_LABEL[d.status] || '']
+           .filter(Boolean).join(' · '),
+    hash: '#/demanda/' + encodeURIComponent(d.id),
+  }));
   const dasAcoes = _CMD_ACOES.map(a => ({ tipo: 'Ir para', label: a.label, sub: '', hash: a.hash, url: a.url }));
-  return [...dosProcessos, ...dasAcoes];
+  return [...dosProcessos, ...dasDemandas, ...dasAcoes];
 }
 
 function _cmdFiltrar(q) {
@@ -5591,6 +5812,7 @@ document.addEventListener('keydown', e => {
 (async () => {
   await _apiCarregar();
   await _apiCarregarProcessos();
+  await _apiCarregarDemandas();
   window.addEventListener('hashchange', aplicarHash); // voltar/avançar + links diretos
   _despacharHash();                                   // renderiza conforme o hash inicial
 })();
