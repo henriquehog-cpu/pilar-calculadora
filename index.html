@@ -552,13 +552,28 @@ function loadSeedFromURL() {
   let seed; try { seed = JSON.parse(decodeURIComponent(enc)); } catch { return false; }
   window._demandaVinculo = { demandaId: seed.demandaId, cliente: seed.cliente || '', produto: seed.produto || '' };
   const set = (id, v) => { const e = document.getElementById(id); if (e && v != null) e.value = v; };
+  const qNum = q => { const x = parseInt(String(q == null ? '' : q).replace(/[^\d]/g, ''), 10); return Number.isFinite(x) && x > 0 ? x : null; };
+  const semearItem = (produto, quantidade) => {
+    const id = addItem();
+    if (id == null) return;
+    if (produto) {
+      set('prod_' + id, produto);
+      const match = produtos.find(p => p.produto === produto);
+      if (match) setAliq(id, match);
+    }
+    const q = qNum(quantidade);
+    if (q != null) set('qtd_' + id, q);
+  };
   set('cliente', seed.cliente || '');
-  const id = addItem();                       // 1 item semeado com o produto
-  if (id != null && seed.produto) {
-    set('prod_' + id, seed.produto);
-    const match = produtos.find(p => p.produto === seed.produto);
-    if (match) setAliq(id, match);
-  } else if (id == null) { addItem(); }
+  const itens = Array.isArray(seed.itens)
+    ? seed.itens.filter(it => it && (it.produto || it.quantidade != null)) : [];
+  if (itens.length) {                         // multi-item: uma linha por item
+    itens.forEach(it => semearItem(it.produto || '', it.quantidade));
+  } else if (seed.produto) {                  // compat: demanda antiga sem itens[]
+    semearItem(seed.produto, null);
+  } else {
+    addItem();
+  }
   calcAll();
   return true;
 }

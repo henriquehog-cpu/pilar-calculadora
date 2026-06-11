@@ -94,7 +94,9 @@ function readBody(req) {
 // ── IA: helpers ──────────────────────────────────────────────────────────────
 // Lê o system prompt do fluxo a partir de prompts/*.md (versionados, sem segredos).
 function lerPromptFluxo(fluxo) {
-  const arquivo = fluxo === 'qualificacao' ? 'qualificacao.md' : 'proposta.md';
+  const arquivo = fluxo === 'qualificacao' ? 'qualificacao.md'
+                : fluxo === 'extracao'     ? 'extracao.md'
+                : 'proposta.md';
   try { return fs.readFileSync(path.join(PROMPTS_DIR, arquivo), 'utf8'); }
   catch { return null; }
 }
@@ -550,8 +552,8 @@ const server = http.createServer((req, res) => {
       const fluxo     = body && body.fluxo;
       const mensagens = body && body.mensagens;
 
-      if (fluxo !== 'qualificacao' && fluxo !== 'proposta')
-        return json(res, 400, { erro: 'fluxo inválido (use "qualificacao" ou "proposta")' });
+      if (fluxo !== 'qualificacao' && fluxo !== 'proposta' && fluxo !== 'extracao')
+        return json(res, 400, { erro: 'fluxo inválido (use "qualificacao", "proposta" ou "extracao")' });
       if (!Array.isArray(mensagens) || mensagens.length === 0)
         return json(res, 400, { erro: 'mensagens deve ser um array não vazio' });
       for (const m of mensagens) {

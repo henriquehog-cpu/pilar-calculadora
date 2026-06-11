@@ -5460,6 +5460,7 @@ let _ndMensagens = [];   // conversa pura (formato da API): [{role, content}]
 let _ndErro = null;      // erro transitório (não entra na conversa)
 let _ndEnviando = false;
 let _ndEditId = null;    // id da demanda em edição (null = nova); preenchido ao "Reabrir conversa"
+let _ndItensEdit = [];   // itens [{produto, quantidade}] em edição no formulário de salvar
 
 function renderNovaDemanda() {
   document.getElementById('vc').innerHTML = `
@@ -5590,14 +5591,85 @@ function ndSalvarAbrir() {
         <label style="font-size:12px;color:var(--cinza-med)">Link OneDrive (opcional)
           <input id="nd-f-link" type="url" value="${_cmdEsc(link)}" placeholder="https://…" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border,#ccc);border-radius:5px"></label>
       </div>
+      <div style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--cinza-med);font-weight:600">Itens (para semear na Calculadora)</span>
+          <button class="btn btn-s btn-sm" onclick="_ndExtrairItens()" title="Extrair itens da conversa com IA">↻ Extrair da conversa</button>
+        </div>
+        <div id="nd-f-itens"></div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn btn-p" onclick="ndSalvarConfirmar()" style="font-size:12px">${atual ? 'Atualizar' : 'Salvar'}</button>
         <button class="btn" onclick="ndSalvarCancelar()" style="font-size:12px">Cancelar</button>
       </div>
     </div>`;
   cont.scrollIntoView({ block: 'nearest' });
+  // Itens: usa os já salvos (edição) ou extrai da conversa (demanda nova)
+  if (atual && Array.isArray(atual.itens) && atual.itens.length) {
+    _ndItensEdit = atual.itens.map(it => ({ produto: it.produto || '', quantidade: it.quantidade == null ? '' : it.quantidade }));
+    _ndRenderItens(false);
+  } else {
+    _ndItensEdit = [];
+    _ndExtrairItens();   // assíncrono: mostra "extraindo…" e preenche
+  }
   const c = document.getElementById('nd-f-cliente'); if (c) c.focus();
 }
+
+// ── Itens da demanda: extração por IA (fluxo "extracao") + edição manual ─────
+// Converte a resposta da IA em [{produto, quantidade}], tolerando cercas ```json
+// e texto em volta. SANITIZA: só produto+quantidade — descarta qualquer outro campo.
+function _ndParseItens(texto) {
+  if (!texto) return [];
+  let s = String(texto).trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  const m = s.match(/\[[\s\S]*\]/);
+  if (m) s = m[0];
+  let arr; try { arr = JSON.parse(s); } catch { return []; }
+  if (!Array.isArray(arr)) return [];
+  return arr.map(it => ({
+    produto:    (it && it.produto != null) ? String(it.produto).trim() : '',
+    quantidade: (it && it.quantidade != null && it.quantidade !== '') ? it.quantidade : '',
+  })).filter(it => it.produto || (it.quantidade !== '' && it.quantidade != null));
+}
+
+async function _ndExtrairItens() {
+  if (_ndMensagens.length === 0) { _ndItensEdit = [{ produto: '', quantidade: '' }]; _ndRenderItens(false); return; }
+  _ndRenderItens(true);   // estado "extraindo…"
+  try {
+    const data = await iaChat('extracao', _ndMensagens.map(m => ({ role: m.role, content: m.content })));
+    _ndItensEdit = _ndParseItens(data.texto);
+  } catch (e) {
+    _ndItensEdit = [];
+    toast('Não consegui extrair os itens automaticamente — preencha à mão.');
+  }
+  if (_ndItensEdit.length === 0) _ndItensEdit = [{ produto: '', quantidade: '' }];
+  _ndRenderItens(false);
+}
+
+function _ndRenderItens(extraindo) {
+  const el = document.getElementById('nd-f-itens');
+  if (!el) return;
+  if (extraindo) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--cinza-med);padding:8px 4px">⏳ Extraindo itens da conversa…</div>';
+    return;
+  }
+  const rows = _ndItensEdit.map((it, i) => `
+    <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <input type="text" value="${_cmdEsc(it.produto)}" placeholder="Produto"
+        oninput="_ndItensEdit[${i}].produto=this.value"
+        style="flex:1;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <input type="text" inputmode="numeric" value="${_cmdEsc(it.quantidade == null ? '' : it.quantidade)}" placeholder="Qtd"
+        oninput="_ndItensEdit[${i}].quantidade=this.value"
+        style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <button class="btn btn-s btn-sm" onclick="_ndItemRemover(${i})" title="Remover item">✕</button>
+    </div>`).join('');
+  el.innerHTML = rows + '<button class="btn btn-s btn-sm" onclick="_ndItemAdd()" style="margin-top:2px">+ item</button>';
+}
+
+function _ndItemAdd() { _ndItensEdit.push({ produto: '', quantidade: '' }); _ndRenderItens(false); }
+function _ndItemRemover(i) { _ndItensEdit.splice(i, 1); if (!_ndItensEdit.length) _ndItensEdit.push({ produto: '', quantidade: '' }); _ndRenderItens(false); }
+function _ndQtdNum(q) { if (q == null || q === '') return null; const n = parseInt(String(q).replace(/[^\d]/g, ''), 10); return Number.isFinite(n) && n > 0 ? n : null; }
 
 function ndSalvarCancelar() {
   const cont = document.getElementById('nd-save-form');
@@ -5606,9 +5678,14 @@ function ndSalvarCancelar() {
 
 function ndSalvarConfirmar() {
   const cliente = (document.getElementById('nd-f-cliente')?.value || '').trim();
-  const produto = (document.getElementById('nd-f-produto')?.value || '').trim();
+  let   produto = (document.getElementById('nd-f-produto')?.value || '').trim();
   const tipo    = document.getElementById('nd-f-tipo')?.value || 'novo';
   const link    = (document.getElementById('nd-f-link')?.value || '').trim();
+  // Itens estruturados (sanitizados: só produto + quantidade)
+  const itens = _ndItensEdit
+    .map(it => ({ produto: (it.produto || '').trim(), quantidade: _ndQtdNum(it.quantidade) }))
+    .filter(it => it.produto);
+  if (!produto && itens.length) produto = itens.map(it => it.produto).join(', ');   // título derivado dos itens
   if (!cliente && !produto) { toast('Informe ao menos cliente ou produto.'); return; }
 
   // Guarda contra retrato incompleto: salvar durante a chamada da IA (ou antes
@@ -5627,13 +5704,13 @@ function ndSalvarConfirmar() {
   if (_ndEditId != null) {
     const i = arr.findIndex(d => String(d.id) === String(_ndEditId));
     if (i >= 0) {
-      arr[i] = { ...arr[i], tipo, cliente, produto, linkOneDrive: link, briefing, conversa };
+      arr[i] = { ...arr[i], tipo, cliente, produto, itens, linkOneDrive: link, briefing, conversa };
     }
   } else {
     arr.push({
       id: Date.now(),
       criadaEm: new Date().toISOString(),
-      tipo, cliente, produto,
+      tipo, cliente, produto, itens,
       status: 'aberta',
       briefing,
       conversa,
@@ -5703,10 +5780,10 @@ function ndRenderLista() {
 function ndCalcularPreco(id) {
   const d = _demandas().find(x => String(x.id) === String(id));
   if (!d) { toast('Demanda não encontrada.'); return; }
-  const seed = encodeURIComponent(JSON.stringify({
-    demandaId: d.id, cliente: d.cliente || '', produto: d.produto || ''
-  }));
-  window.location.href = 'index.html?seed=' + seed;
+  const payload = { demandaId: d.id, cliente: d.cliente || '', produto: d.produto || '' };
+  if (Array.isArray(d.itens) && d.itens.length)   // semeia todos os itens (multi-item)
+    payload.itens = d.itens.map(it => ({ produto: it.produto || '', quantidade: it.quantidade == null ? null : it.quantidade }));
+  window.location.href = 'index.html?seed=' + encodeURIComponent(JSON.stringify(payload));
 }
 
 function ndStatusChange(id, novo) {
