@@ -4003,51 +4003,65 @@ function toast(msg) {
 }
 
 // ── Proposta Comercial ──────────────────────────────────────────────────────
-let _propProcesso = null;
+let _propDemanda = null;     // demanda calculada selecionada
+let _propItens   = [];       // itens editáveis: [{produto, quantidade, unidade, pvUnitarioUSD}]
+let _propSeedId  = null;     // demanda a pré-selecionar (vindo de "Gerar proposta")
+
+// Demandas que já têm preço de venda calculado (PV USD ou itens com PV).
+function _propDemandasCalc() {
+  return _demandas()
+    .filter(d => d.pvFinalUSD != null || (Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null)))
+    .slice().reverse();
+}
 
 function renderProposta() {
-  _propProcesso = null;
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
-
-  const opts = todos.length === 0
-    ? '<option value="">— nenhum processo salvo —</option>'
-    : '<option value="">— selecione um processo —</option>' +
-      todos.map(p => {
-        const g = p.dados_gerais || {};
-        return `<option value="${p.id}">${p.numero} — ${g.cliente || g.fornecedor || 'sem nome'}</option>`;
-      }).join('');
+  const calc = _propDemandasCalc();
+  const pre  = _propSeedId; _propSeedId = null;
+  const opts = calc.length === 0
+    ? '<option value="">— nenhuma demanda calculada —</option>'
+    : '<option value="">— selecione uma demanda calculada —</option>' +
+      calc.map(d => `<option value="${d.id}"${String(d.id) === String(pre) ? ' selected' : ''}>${_cmdEsc((d.cliente || 'sem cliente') + ' — ' + (d.produto || 'sem produto'))}</option>`).join('');
 
   document.getElementById('vc').innerHTML = `
     <div style="max-width:980px">
       <h2 style="font-size:18px;font-weight:700;margin-bottom:14px">Proposta Comercial</h2>
 
       <div class="card">
-        <div class="card-hd tq">Selecionar Processo</div>
+        <div class="card-hd tq">Demanda calculada</div>
         <div class="card-bd">
           <div class="field" style="margin-bottom:0">
-            <label>Processo</label>
-            <select id="prop-select" onchange="propSelecionar(this.value)">${opts}</select>
+            <label>Demanda</label>
+            <select id="prop-select" onchange="propSelecionarDemanda(this.value)">${opts}</select>
+            <span class="note">A proposta usa o preço de venda (PV em USD) calculado. FOB, custo e margem não entram.</span>
           </div>
         </div>
       </div>
 
       <div id="prop-form" style="display:none">
         <div class="card">
-          <div class="card-hd">Mercadoria</div>
+          <div class="card-hd">Cabeçalho</div>
           <div class="card-bd">
-            <div class="field">
-              <label>Descrição resumida</label>
-              <input id="prop-desc" type="text" oninput="propRecalc()"
-                placeholder="Ex: Tecido Microfibra 85gsm estampada 250cm de largura">
+            <div class="g3">
+              <div class="field"><label>Cliente</label>
+                <input id="prop-cliente" type="text"></div>
+              <div class="field"><label>Referência da proposta</label>
+                <input id="prop-numero" type="text" placeholder="ex: PROP-2026-001"></div>
+              <div class="field"><label>&nbsp;</label><div></div></div>
             </div>
             <div class="g3">
-              <div class="field"><label>Quantidade total</label>
-                <input id="prop-qtd" type="number" step="any" min="0" oninput="propRecalc()"></div>
-              <div class="field"><label>Unidade</label>
-                <input id="prop-unidade" type="text" placeholder="metros"></div>
-              <div class="field"><label>FOB unitário (USD)</label>
-                <input id="prop-fobunit" type="number" step="any" min="0" oninput="propRecalc()"></div>
+              <div class="field"><label>Qtd. de containers</label>
+                <input id="prop-qtdcont" type="number" step="1" min="1" value="1"></div>
+              <div class="field"><label>Tipo de container</label>
+                <input id="prop-tipocont" type="text" value="40HC"></div>
+              <div class="field"><label>&nbsp;</label><div></div></div>
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">Itens (preço de venda)</div>
+          <div class="card-bd">
+            <div id="prop-itens"></div>
           </div>
         </div>
 
@@ -4068,6 +4082,19 @@ function renderProposta() {
               <div class="field"><label>Vencimento do sinal</label>
                 <input id="prop-datavenc" type="date"></div>
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">Referência em R$ (não vinculante)</div>
+          <div class="card-bd">
+            <div class="g2">
+              <div class="field"><label>Câmbio de referência (R$/USD)</label>
+                <input id="prop-cambioref" type="number" step="any" min="0" oninput="propRecalc()"></div>
+              <div class="field"><label>Data de referência</label>
+                <input id="prop-dataref" type="date"></div>
+            </div>
+            <span class="note">Mostra o total em R$ ao câmbio do dia, apenas como referência — o pagamento segue o câmbio de fechamento do sinal.</span>
           </div>
         </div>
 
@@ -4093,9 +4120,10 @@ function renderProposta() {
           <div class="card-hd tq">Resumo</div>
           <div class="card-bd">
             <div class="sum-grid">
-              <div class="sum-item"><div class="val">USD <span id="prop-fobtotal">0,00</span></div><div class="lbl">FOB Total</div></div>
+              <div class="sum-item"><div class="val">USD <span id="prop-pvtotalusd">0,00</span></div><div class="lbl">PV Total (USD)</div></div>
               <div class="sum-item"><div class="val">USD <span id="prop-sinalusd">0,00</span></div><div class="lbl">Sinal (USD)</div></div>
               <div class="sum-item"><div class="val">R$ <span id="prop-sinalbrl">0,00</span></div><div class="lbl">Sinal (R$)</div></div>
+              <div class="sum-item"><div class="val">R$ <span id="prop-pvtotalbrlref">0,00</span></div><div class="lbl">PV Total (R$ ref.)</div></div>
             </div>
           </div>
         </div>
@@ -4106,82 +4134,97 @@ function renderProposta() {
         </div>
       </div>
     </div>`;
+
+  if (pre && calc.some(d => String(d.id) === String(pre))) propSelecionarDemanda(pre);
 }
 
-function propSelecionar(id) {
+function propSelecionarDemanda(id) {
   const form = document.getElementById('prop-form');
-  if (!id) { _propProcesso = null; form.style.display = 'none'; return; }
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  _propProcesso = todos.find(p => p.id == id) || null;
-  if (!_propProcesso) { form.style.display = 'none'; return; }
+  if (!id) { _propDemanda = null; form.style.display = 'none'; return; }
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) { form.style.display = 'none'; return; }
+  _propDemanda = d;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
 
-  const proc = _propProcesso;
-  const g     = proc.dados_gerais || {};
-  const c     = proc.cambios || {};
-  const itens = proc.itens || [];
+  // Itens da demanda: produto, quantidade e PV unitário em USD (sem custo)
+  _propItens = (d.pvItens || []).map(it => ({
+    produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
+    unidade: '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
+  }));
+  if (!_propItens.length) _propItens = [{ produto: d.produto || '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
 
-  const qtd = itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0), 0);
-  const fobTotal = (proc.resultado && proc.resultado.fob_total_usd)
-    || itens.reduce((s, it) => s + (parseFloat(it.quantidade) || 0) * (parseFloat(it.fob_unit_usd) || 0), 0);
-  const fobUnit = qtd > 0 ? fobTotal / qtd : (parseFloat((itens[0] || {}).fob_unit_usd) || 0);
-
-  // unidade mais comum entre os itens
-  const cont = {};
-  itens.forEach(it => { const u = (it.unidade || '').trim(); if (u) cont[u] = (cont[u] || 0) + 1; });
-  const unidade = Object.keys(cont).sort((a, b) => cont[b] - cont[a])[0] || 'metros';
-
-  const desc = (itens[0] && (itens[0].descricao || itens[0].codigo)) || '';
-  const frete = (parseFloat(proc.frete_internacional_usd) || 0) >= 100
-    ? parseFloat(proc.frete_internacional_usd) : 2200;
-  const isoData = v => /^\d{4}-\d{2}-\d{2}/.test(v || '') ? String(v).slice(0, 10) : '';
-
-  document.getElementById('prop-desc').value     = desc;
-  document.getElementById('prop-qtd').value      = qtd || '';
-  document.getElementById('prop-unidade').value  = unidade;
-  document.getElementById('prop-fobunit').value  = fobUnit ? +fobUnit.toFixed(4) : '';
-  document.getElementById('prop-pctsinal').value = 20;
-  document.getElementById('prop-cambio').value   = parseFloat(c.cambio_sinal) || '';
-  document.getElementById('prop-datasinal').value = isoData(g.data_pedido);
-  document.getElementById('prop-datavenc').value  = '';
-  document.getElementById('prop-diasantes').value = 20;
-  document.getElementById('prop-frete').value     = frete;
-  document.getElementById('prop-prazo').value     = 60;
-  document.getElementById('prop-obs').value       = '';
+  set('prop-cliente', d.cliente || '');
+  set('prop-numero', '');
+  set('prop-qtdcont', 1); set('prop-tipocont', '40HC');
+  set('prop-pctsinal', 20); set('prop-cambio', ''); set('prop-datasinal', hoje); set('prop-datavenc', '');
+  set('prop-cambioref', ''); set('prop-dataref', hoje);
+  set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60); set('prop-obs', '');
 
   form.style.display = 'block';
+  propRenderItens();
   propRecalc();
 }
 
+function propRenderItens() {
+  const el = document.getElementById('prop-itens');
+  if (!el) return;
+  const rows = _propItens.map((it, i) => `
+    <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
+      <input type="text" value="${_cmdEsc(it.produto)}" placeholder="Produto"
+        oninput="_propItens[${i}].produto=this.value" style="flex:2;min-width:160px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <input type="number" step="any" min="0" value="${_cmdEsc(it.quantidade == null ? '' : it.quantidade)}" placeholder="Qtd"
+        oninput="_propItens[${i}].quantidade=this.value;propRecalc()" style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <input type="text" value="${_cmdEsc(it.unidade)}" placeholder="unidade"
+        oninput="_propItens[${i}].unidade=this.value" style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <input type="number" step="any" min="0" value="${_cmdEsc(it.pvUnitarioUSD == null ? '' : it.pvUnitarioUSD)}" placeholder="PV unit USD"
+        oninput="_propItens[${i}].pvUnitarioUSD=this.value;propRecalc()" style="width:120px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <button class="btn btn-s btn-sm" onclick="propItemRemover(${i})" title="Remover item">✕</button>
+    </div>`).join('');
+  el.innerHTML = rows + '<button class="btn btn-s btn-sm" onclick="propItemAdd()" style="margin-top:2px">+ item</button>';
+}
+function propItemAdd() { _propItens.push({ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
+function propItemRemover(i) { _propItens.splice(i, 1); if (!_propItens.length) _propItens.push({ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
+
 function propRecalc() {
-  const n = id => parseFloat(document.getElementById(id).value) || 0;
-  const qtd = n('prop-qtd'), fobUnit = n('prop-fobunit'),
-        pct = n('prop-pctsinal'), cambio = n('prop-cambio');
-  const fobTotal = qtd * fobUnit;
-  const sinalUsd = fobTotal * pct / 100;
+  const n = id => parseFloat(document.getElementById(id)?.value) || 0;
+  let pvTotalUSD = 0;
+  _propItens.forEach(it => { pvTotalUSD += (parseFloat(it.quantidade) || 0) * (parseFloat(it.pvUnitarioUSD) || 0); });
+  const pct = n('prop-pctsinal'), cambio = n('prop-cambio'), cambioRef = n('prop-cambioref');
+  const sinalUsd = pvTotalUSD * pct / 100;
   const sinalBrl = sinalUsd * cambio;
-  document.getElementById('prop-pctsaldo').textContent = fmtN(100 - pct, 0).split(',')[0];
-  document.getElementById('prop-fobtotal').textContent = fmtN(fobTotal, 2);
-  document.getElementById('prop-sinalusd').textContent = fmtN(sinalUsd, 2);
-  document.getElementById('prop-sinalbrl').textContent = fmtN(sinalBrl, 2);
+  const pvTotalBrlRef = pvTotalUSD * cambioRef;
+  const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+  set('prop-pctsaldo', fmtN(100 - pct, 0).split(',')[0]);
+  set('prop-pvtotalusd', fmtN(pvTotalUSD, 2));
+  set('prop-sinalusd', fmtN(sinalUsd, 2));
+  set('prop-sinalbrl', fmtN(sinalBrl, 2));
+  set('prop-pvtotalbrlref', fmtN(pvTotalBrlRef, 2));
 }
 
 async function gerarProposta() {
-  if (!_propProcesso) { toast('Selecione um processo.'); return; }
-  const v = id => document.getElementById(id).value;
-  const numero  = _propProcesso.numero || '';
-  const cliente = (_propProcesso.dados_gerais || {}).cliente || '';
+  if (!_propDemanda) { toast('Selecione uma demanda calculada.'); return; }
+  const v = id => document.getElementById(id)?.value || '';
+  const itens = _propItens
+    .map(it => ({ produto: (it.produto || '').trim(), quantidade: parseFloat(it.quantidade) || 0,
+                  unidade: (it.unidade || '').trim(), pv_unit_usd: parseFloat(it.pvUnitarioUSD) || 0 }))
+    .filter(it => it.produto || it.quantidade > 0);
+  if (!itens.length) { toast('Inclua ao menos um item com produto/quantidade.'); return; }
 
+  const cliente = v('prop-cliente');
+  const numero  = v('prop-numero') || ('DEM-' + _propDemanda.id);
   const payload = {
     numero_pil: numero,
     cliente,
-    descricao_resumida: v('prop-desc'),
-    qtd_total: parseFloat(v('prop-qtd')) || 0,
-    unidade: v('prop-unidade') || 'metros',
-    fob_unit: parseFloat(v('prop-fobunit')) || 0,
+    qtd_containers: parseFloat(v('prop-qtdcont')) || 1,
+    tipo_container: v('prop-tipocont') || '40HC',
+    itens,   // SOMENTE preço de venda — sem FOB/custo/margem/câmbio do cálculo
     pct_sinal: parseFloat(v('prop-pctsinal')) || 0,
     cambio_sinal: parseFloat(v('prop-cambio')) || 0,
     data_sinal: v('prop-datasinal'),
     data_venc_sinal: v('prop-datavenc'),
+    cambio_ref: parseFloat(v('prop-cambioref')) || 0,
+    data_ref: v('prop-dataref'),
     dias_antes_desembarque: parseFloat(v('prop-diasantes')) || 0,
     frete_usd: parseFloat(v('prop-frete')) || 0,
     prazo_entrega: parseFloat(v('prop-prazo')) || 0,
@@ -4211,6 +4254,10 @@ async function gerarProposta() {
     a.click();
     a.remove();
     URL.revokeObjectURL(link);
+    // Status da demanda → proposta_enviada
+    const arr = _demandas();
+    const i = arr.findIndex(x => String(x.id) === String(_propDemanda.id));
+    if (i >= 0 && arr[i].status !== 'proposta_enviada') { arr[i].status = 'proposta_enviada'; _apiSalvarDemandas(arr); }
     toast(`✓ Proposta gerada: ${a.download}`);
   } catch (e) {
     toast('Falha na conexão com o servidor.');
@@ -5779,6 +5826,8 @@ function ndRenderLista() {
       <td><select onchange="ndStatusChange('${d.id}', this.value)" style="padding:4px 6px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:12px">${opts}</select></td>
       <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-s btn-sm" onclick="ndCalcularPreco('${d.id}')" title="Abre a Calculadora pré-preenchida com esta demanda">Calcular preço</button>
+        ${(d.pvFinalUSD != null || (Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null)))
+          ? `<button class="btn btn-s btn-sm" onclick="ndGerarProposta('${d.id}')" title="Gera a Proposta com o preço de venda calculado">Gerar proposta</button>` : ''}
         <button class="btn btn-s btn-sm" onclick="ndReabrir('${d.id}')">Reabrir conversa</button>
         <button class="btn btn-s btn-sm" onclick="ndCopiarBriefing('${d.id}')">Copiar briefing</button>
         ${docs}
@@ -5807,6 +5856,17 @@ function ndCalcularPreco(id) {
   if (Array.isArray(d.itens) && d.itens.length)   // semeia todos os itens (multi-item)
     payload.itens = d.itens.map(it => ({ produto: it.produto || '', quantidade: it.quantidade == null ? null : it.quantidade }));
   window.location.href = 'index.html?seed=' + encodeURIComponent(JSON.stringify(payload));
+}
+
+// Abre a Proposta (no painel) a partir de uma demanda já calculada (com PV).
+function ndGerarProposta(id) {
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) { toast('Demanda não encontrada.'); return; }
+  if (d.pvFinalUSD == null && !(Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null))) {
+    toast('Calcule o preço da demanda antes de gerar a proposta.'); return;
+  }
+  _propSeedId = d.id;
+  location.hash = '#/proposta';   // o roteador chama renderProposta, que lê _propSeedId
 }
 
 function ndStatusChange(id, novo) {
@@ -5855,16 +5915,18 @@ let _pdErro = null, _pdEnviando = false, _pdProcId = null;
 
 // Prompt inicial montado SÓ com campos comerciais (sem FOB/câmbio/custo).
 function propPromptInicial() {
-  const g = (_propProcesso && _propProcesso.dados_gerais) || {};
   const v = id => (document.getElementById(id) || {}).value || '';
-  const desc = v('prop-desc'), qtd = v('prop-qtd'), un = v('prop-unidade'),
-        prazo = v('prop-prazo'), pct = v('prop-pctsinal');
+  const cliente = v('prop-cliente'), prazo = v('prop-prazo'), pct = v('prop-pctsinal');
+  // Só identificação/quantidades — nunca preços (o guardrail do servidor reforça).
+  const itensTxt = (_propItens || [])
+    .filter(it => it.produto || it.quantidade)
+    .map(it => `${it.quantidade || '?'}${it.unidade ? ' ' + it.unidade : ''} de ${it.produto || 'item'}`)
+    .join('; ');
   const l = ['Gere um rascunho de proposta comercial para o cliente.'];
-  if (g.cliente) l.push('Cliente: ' + g.cliente + '.');
-  if (desc)  l.push('Produto: ' + desc + '.');
-  if (qtd)   l.push('Quantidade: ' + qtd + (un ? ' ' + un : '') + '.');
-  if (prazo) l.push('Prazo de entrega estimado: ' + prazo + ' dias.');
-  if (pct)   l.push('Pagamento: ' + pct + '% de sinal, saldo antes do desembarque.');
+  if (cliente)  l.push('Cliente: ' + cliente + '.');
+  if (itensTxt) l.push('Itens: ' + itensTxt + '.');
+  if (prazo)    l.push('Prazo de entrega estimado: ' + prazo + ' dias.');
+  if (pct)      l.push('Pagamento: ' + pct + '% de sinal, saldo antes do desembarque.');
   return l.join('\n');
 }
 
@@ -5886,8 +5948,8 @@ function propMontarDrawer() {
 
 function propAbrirIA() {
   propMontarDrawer();
-  const id = _propProcesso ? _propProcesso.id : null;
-  if (_pdProcId !== id) { _pdMensagens = []; _pdErro = null; _pdProcId = id; } // conversa por processo
+  const id = _propDemanda ? _propDemanda.id : null;
+  if (_pdProcId !== id) { _pdMensagens = []; _pdErro = null; _pdProcId = id; } // conversa por demanda
   document.getElementById('pd-overlay').classList.add('aberto');
   const inp = document.getElementById('pd-input');
   if (_pdMensagens.length === 0 && inp) { inp.value = propPromptInicial(); }

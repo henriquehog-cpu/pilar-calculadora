@@ -35,8 +35,11 @@ import os
 import re
 import sys
 import json
+import copy
 
 from docx import Document
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       'proposta_modelo.docx')
@@ -179,24 +182,60 @@ def num(v, default=0.0):
         return default
 
 
-def montar_mapa(d):
+# Normaliza a lista de itens da proposta (preço de venda em USD; nunca FOB/custo).
+def itens_norm(d):
+    out = []
+    for it in (d.get('itens') or []):
+        it = it or {}
+        prod = str(it.get('produto', '') or '').strip()
+        qtd = num(it.get('quantidade'), 0)
+        unidade = str(it.get('unidade', '') or '').strip()
+        pvu = num(it.get('pv_unit_usd'), 0)
+        if not prod and qtd <= 0:
+            continue
+        out.append({'produto': prod, 'qtd': qtd, 'unidade': unidade,
+                    'pv_unit_usd': pvu, 'total_usd': round(qtd * pvu, 2)})
+    return out
+
+
+def singular_un(u):
+    u = (u or '').strip()
+    return u[:-1] if len(u) > 1 and u.lower().endswith('s') else u
+
+
+# Linha de item SEM "•": o marcador vem do estilo de lista do parágrafo clonado.
+def linha_item(it):
+    qtd_txt = fmt_num(it['qtd'], 0).split(',')[0]
+    pvu = fmt_preco(it['pv_unit_usd'])
+    ext = extenso_usd(it['pv_unit_usd'])
+    tot = fmt_num(it['total_usd'], 2)
+    un = it['unidade']
+    if un:
+        return ('%s %s de %s — USD %s por %s (%s), total USD %s'
+                % (qtd_txt, un, it['produto'], pvu, singular_un(un), ext, tot))
+    return ('%s de %s — USD %s (%s), total USD %s'
+            % (qtd_txt, it['produto'], pvu, ext, tot))
+
+
+def montar_mapa(d, itens):
     cliente = str(d.get('cliente', '') or '')
     numero_pil = str(d.get('numero_pil', '') or '')
-    descricao = str(d.get('descricao_resumida', '') or '')
-    unidade = str(d.get('unidade', 'metros') or 'metros')
-    qtd = num(d.get('qtd_total'), 0)
-    fob_unit = num(d.get('fob_unit'), 0)
+    qtd_containers = num(d.get('qtd_containers'), 1)
+    tipo_container = str(d.get('tipo_container', '40HC') or '40HC')
     pct_sinal = num(d.get('pct_sinal'), 20)
     pct_saldo = 100 - pct_sinal
     cambio = num(d.get('cambio_sinal'), 0)
+    cambio_ref = num(d.get('cambio_ref'), 0)
     dias_antes = num(d.get('dias_antes_desembarque'), 20)
     frete = num(d.get('frete_usd'), 0)
     prazo = num(d.get('prazo_entrega'), 60)
     obs = str(d.get('observacoes', '') or '').strip()
 
-    fob_total = round(qtd * fob_unit, 2)
-    valor_sinal_usd = round(fob_total * pct_sinal / 100.0, 2)
+    # Preço de venda em USD (âncora). R$ é apenas referência do dia.
+    pv_total_usd = round(sum(i['total_usd'] for i in itens), 2)
+    valor_sinal_usd = round(pv_total_usd * pct_sinal / 100.0, 2)
     valor_sinal_brl = round(valor_sinal_usd * cambio, 2)
+    pv_total_brl_ref = round(pv_total_usd * cambio_ref, 2)
 
     def pct_txt(p):
         return '%s%% (%s por cento)' % (fmt_num(p, 0).split(',')[0],
@@ -205,18 +244,16 @@ def montar_mapa(d):
     def dias_txt(n):
         return '%s (%s)' % (fmt_num(n, 0).split(',')[0], extenso_int(n))
 
-    qtd_txt = fmt_num(qtd, 0).split(',')[0]
-
     return {
         '{{CLIENTE}}': cliente,
         '{{NUMERO_PIL}}': numero_pil,
-        '{{QTD_TOTAL}}': qtd_txt,
-        '{{UNIDADE}}': unidade,
-        '{{DESCRICAO_RESUMIDA}}': descricao,
-        '{{FOB_UNIT}}': fmt_preco(fob_unit),
-        '{{FOB_UNIT_EXTENSO}}': extenso_usd(fob_unit),
-        '{{FOB_TOTAL}}': fmt_num(fob_total, 2),
-        '{{FOB_TOTAL_EXTENSO}}': extenso_usd(fob_total),
+        '{{QTD_CONTAINERS}}': fmt_num(qtd_containers, 0).split(',')[0],
+        '{{TIPO_CONTAINER}}': tipo_container,
+        '{{PV_TOTAL_USD}}': fmt_num(pv_total_usd, 2),
+        '{{PV_TOTAL_USD_EXTENSO}}': extenso_usd(pv_total_usd),
+        '{{PV_TOTAL_BRL_REF}}': fmt_num(pv_total_brl_ref, 2),
+        '{{CAMBIO_REF}}': fmt_num(cambio_ref, 4),
+        '{{DATA_REF}}': fmt_data_curta(d.get('data_ref')),
         '{{PCT_SINAL}}': pct_txt(pct_sinal),
         '{{PCT_SALDO}}': pct_txt(pct_saldo),
         '{{VALOR_SINAL_USD}}': fmt_num(valor_sinal_usd, 2),
@@ -231,6 +268,42 @@ def montar_mapa(d):
         '{{PRAZO_ENTREGA}}': dias_txt(prazo),
         '{{OBSERVACOES}}': obs,
     }
+
+
+# Substitui o texto de um parágrafo (elemento w:p) preservando a formatação do
+# 1º run (fonte/tamanho/estilo). Remove realce residual.
+def _set_par_text(p_el, text):
+    runs = p_el.findall(qn('w:r'))
+    for r in runs[1:]:
+        p_el.remove(r)
+    runs = p_el.findall(qn('w:r'))
+    if not runs:
+        r0 = OxmlElement('w:r'); p_el.append(r0)
+    else:
+        r0 = runs[0]
+    rpr = r0.find(qn('w:rPr'))
+    if rpr is not None:
+        h = rpr.find(qn('w:highlight'))
+        if h is not None:
+            rpr.remove(h)
+    for t in r0.findall(qn('w:t')):
+        r0.remove(t)
+    t = OxmlElement('w:t'); t.set(qn('xml:space'), 'preserve'); t.text = text
+    r0.append(t)
+
+
+# Expande {{ITENS}} clonando o próprio parágrafo-placeholder (que já tem o
+# estilo de lista/recuo/fonte do modelo) — uma cópia por item.
+def expandir_itens(doc, itens):
+    for p in list(doc.paragraphs):
+        if '{{ITENS}}' not in p.text:
+            continue
+        for it in itens:
+            novo = copy.deepcopy(p._p)
+            _set_par_text(novo, linha_item(it))
+            p._p.addprevious(novo)
+        p._p.getparent().remove(p._p)
+        return
 
 
 def substituir(doc, mapa):
@@ -267,8 +340,10 @@ def main():
         sys.stderr.write('Modelo não encontrado: %s\n' % MODELO)
         sys.exit(1)
 
-    mapa = montar_mapa(d)
+    itens = itens_norm(d)
+    mapa = montar_mapa(d, itens)
     doc = Document(MODELO)
+    expandir_itens(doc, itens)
     substituir(doc, mapa)
 
     buf = io.BytesIO()

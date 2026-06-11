@@ -486,8 +486,8 @@ function saveSimulacao() {
   _simSalvarServidor(sims);
   // Vínculo com a demanda (se veio semeada): grava simulacaoId + pvItens + pvFinal + status
   if (vinc && vinc.demandaId != null) {
-    const { pvItens, pvFinal } = _coletarPVs();
-    _vincularDemanda(state.id, vinc.demandaId, pvItens, pvFinal);
+    const { pvItens, pvFinal, pvFinalUSD } = _coletarPVs();
+    _vincularDemanda(state.id, vinc.demandaId, pvItens, pvFinal, pvFinalUSD);
   }
   alert(`✅ Salvo: "${state.nome}"`);
   renderSimList();
@@ -584,20 +584,24 @@ function _coletarPVs() {
     fobTotal += (parseFloat(document.getElementById('qtd_' + id)?.value) || 0)
               * (parseFloat(document.getElementById('fob_' + id)?.value) || 0);
   });
-  const pvItens = []; let pvFinal = 0;
+  const pvItens = []; let pvFinal = 0, pvFinalUSD = 0;
   itemIds.forEach(id => {
     const r = calcItem(id, fobTotal, freteT, dolar, comPct);
     if (!r) return;
     const produto = document.getElementById('prod_' + id)?.value || '';
     if (!produto && !(r.qtd > 0)) return;     // ignora linhas vazias
-    pvItens.push({ produto, qtd: r.qtd, pvUnitario: Math.round(r.pv * 100) / 100 });
-    pvFinal += r.pvTotal;
+    // PV em R$ (referência) e em USD (preço ancorado da proposta). Sem FOB/custo/câmbio.
+    pvItens.push({ produto, qtd: r.qtd,
+      pvUnitario: Math.round(r.pv * 100) / 100,
+      pvUnitarioUSD: Math.round(r.pvUSD * 10000) / 10000 });
+    pvFinal    += r.pvTotal;
+    pvFinalUSD += r.pvUSD * r.qtd;
   });
-  return { pvItens, pvFinal: Math.round(pvFinal * 100) / 100 };
+  return { pvItens, pvFinal: Math.round(pvFinal * 100) / 100, pvFinalUSD: Math.round(pvFinalUSD * 100) / 100 };
 }
 
 // Atualiza a demanda no servidor: vincula a simulação e grava só os preços de venda.
-async function _vincularDemanda(simId, demandaId, pvItens, pvFinal) {
+async function _vincularDemanda(simId, demandaId, pvItens, pvFinal, pvFinalUSD) {
   try {
     const r = await fetch('/api/demandas');
     if (!r.ok) return;
@@ -605,7 +609,7 @@ async function _vincularDemanda(simId, demandaId, pvItens, pvFinal) {
     if (!Array.isArray(arr)) return;
     const i = arr.findIndex(d => String(d.id) === String(demandaId));
     if (i < 0) return;
-    arr[i] = { ...arr[i], simulacaoId: simId, pvItens, pvFinal, status: 'calculada' };
+    arr[i] = { ...arr[i], simulacaoId: simId, pvItens, pvFinal, pvFinalUSD, status: 'calculada' };
     fetch('/api/demandas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(arr)
     }).catch(() => {});
