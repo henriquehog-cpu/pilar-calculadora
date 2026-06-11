@@ -322,7 +322,7 @@ function init() {
   updateDifFrete();
   loadPTAX();
   _simInit();   // carrega simulações do servidor (e migra as locais antigas) — não bloqueia
-  if (!loadFromURL()) {
+  if (!loadFromURL() && !loadSeedFromURL()) {
     addItem();
     addItem();
   }
@@ -477,10 +477,17 @@ function saveSimulacao() {
   if (nome === null) return;
   state.nome = nome.trim() || def;
   state.id   = Date.now();
+  const vinc = window._demandaVinculo;
+  if (vinc && vinc.demandaId != null) state.demandaId = vinc.demandaId;
   const sims = _simGet();
   sims.unshift(state);
   if (sims.length > 200) sims.length = 200;   // backstop generoso (antes era 20)
   _simSalvarServidor(sims);
+  // Vínculo com a demanda (se veio semeada): grava simulacaoId + pvItens + pvFinal + status
+  if (vinc && vinc.demandaId != null) {
+    const { pvItens, pvFinal } = _coletarPVs();
+    _vincularDemanda(state.id, vinc.demandaId, pvItens, pvFinal);
+  }
   alert(`✅ Salvo: "${state.nome}"`);
   renderSimList();
 }
@@ -518,6 +525,8 @@ function loadSim(id) {
   const s = _simGet().find(x => String(x.id) === String(id));
   if (!s) return;
   if (!confirm(`Carregar "${s.nome}"? Dados atuais serão substituídos.`)) return;
+  // Preserva (ou limpa) o vínculo com a demanda conforme a simulação carregada
+  window._demandaVinculo = s.demandaId != null ? { demandaId: s.demandaId } : null;
   applySimState(s);
   document.getElementById('sim-panel').style.display = 'none';
 }
@@ -531,6 +540,64 @@ function deleteSim(id) {
   _simSalvarServidor(novo);
   fetch('/api/simulacoes/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
   renderSimList();
+}
+
+// ============================================================
+// SEMEADURA Demanda→Calculadora e VÍNCULO simulação↔demanda (Etapa B parte 2)
+// ============================================================
+// Lê ?seed=<JSON encodeURIComponent> com { demandaId, cliente, produto }.
+function loadSeedFromURL() {
+  const enc = new URLSearchParams(location.search).get('seed');
+  if (!enc) return false;
+  let seed; try { seed = JSON.parse(decodeURIComponent(enc)); } catch { return false; }
+  window._demandaVinculo = { demandaId: seed.demandaId, cliente: seed.cliente || '', produto: seed.produto || '' };
+  const set = (id, v) => { const e = document.getElementById(id); if (e && v != null) e.value = v; };
+  set('cliente', seed.cliente || '');
+  const id = addItem();                       // 1 item semeado com o produto
+  if (id != null && seed.produto) {
+    set('prod_' + id, seed.produto);
+    const match = produtos.find(p => p.produto === seed.produto);
+    if (match) setAliq(id, match);
+  } else if (id == null) { addItem(); }
+  calcAll();
+  return true;
+}
+
+// Coleta SOMENTE preços de venda (chama o motor apenas para leitura, sem alterá-lo).
+// Nunca inclui FOB/custo/margem — só {produto, qtd, pvUnitario} e o total.
+function _coletarPVs() {
+  const dolar = n('dolar'), freteT = n('frete_total'), comPct = n('comissao') / 100;
+  let fobTotal = 0;
+  itemIds.forEach(id => {
+    fobTotal += (parseFloat(document.getElementById('qtd_' + id)?.value) || 0)
+              * (parseFloat(document.getElementById('fob_' + id)?.value) || 0);
+  });
+  const pvItens = []; let pvFinal = 0;
+  itemIds.forEach(id => {
+    const r = calcItem(id, fobTotal, freteT, dolar, comPct);
+    if (!r) return;
+    const produto = document.getElementById('prod_' + id)?.value || '';
+    if (!produto && !(r.qtd > 0)) return;     // ignora linhas vazias
+    pvItens.push({ produto, qtd: r.qtd, pvUnitario: Math.round(r.pv * 100) / 100 });
+    pvFinal += r.pvTotal;
+  });
+  return { pvItens, pvFinal: Math.round(pvFinal * 100) / 100 };
+}
+
+// Atualiza a demanda no servidor: vincula a simulação e grava só os preços de venda.
+async function _vincularDemanda(simId, demandaId, pvItens, pvFinal) {
+  try {
+    const r = await fetch('/api/demandas');
+    if (!r.ok) return;
+    const arr = await r.json();
+    if (!Array.isArray(arr)) return;
+    const i = arr.findIndex(d => String(d.id) === String(demandaId));
+    if (i < 0) return;
+    arr[i] = { ...arr[i], simulacaoId: simId, pvItens, pvFinal, status: 'calculada' };
+    fetch('/api/demandas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(arr)
+    }).catch(() => {});
+  } catch {}
 }
 
 // ============================================================

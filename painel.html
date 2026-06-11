@@ -5658,19 +5658,27 @@ function ndRenderLista() {
     return;
   }
   const fmtData = iso => { try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return '—'; } };
+  const fmtPV = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const linhas = arr.map(d => {
     const opts = _ND_STATUS.map(s =>
       `<option value="${s}"${d.status === s ? ' selected' : ''}>${_ND_STATUS_LABEL[s]}</option>`).join('');
     const docs = d.linkOneDrive
       ? `<a class="btn btn-s btn-sm" href="${_cmdEsc(d.linkOneDrive)}" target="_blank" rel="noopener" title="Abrir pasta no OneDrive">📁 Documentos</a>`
       : '';
+    let pvInfo = '';
+    if (d.pvFinal != null) {
+      const tt = (d.pvItens || []).map(it =>
+        `${it.produto || 'item'}: ${it.qtd}× R$ ${fmtPV(it.pvUnitario)}`).join('\n');
+      pvInfo = `<div style="font-size:11px;color:var(--turquesa-dark,#00838f);margin-top:2px" title="${_cmdEsc(tt)}">💰 PV total: R$ ${fmtPV(d.pvFinal)}</div>`;
+    }
     return `<tr>
       <td>${d.tipo === 'recompra' ? 'Recompra' : 'Item novo'}</td>
       <td>${_cmdEsc(d.cliente || '—')}</td>
-      <td>${_cmdEsc(d.produto || '—')}</td>
+      <td>${_cmdEsc(d.produto || '—')}${pvInfo}</td>
       <td style="white-space:nowrap">${fmtData(d.criadaEm)}</td>
       <td><select onchange="ndStatusChange('${d.id}', this.value)" style="padding:4px 6px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:12px">${opts}</select></td>
       <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-s btn-sm" onclick="ndCalcularPreco('${d.id}')" title="Abre a Calculadora pré-preenchida com esta demanda">Calcular preço</button>
         <button class="btn btn-s btn-sm" onclick="ndReabrir('${d.id}')">Reabrir conversa</button>
         <button class="btn btn-s btn-sm" onclick="ndCopiarBriefing('${d.id}')">Copiar briefing</button>
         ${docs}
@@ -5688,6 +5696,17 @@ function ndRenderLista() {
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>`;
+}
+
+// Abre a Calculadora (página própria) pré-preenchida com a demanda (cliente + produto + id).
+// Só identificação/preços trafegam pela URL — nunca FOB/custo/margem.
+function ndCalcularPreco(id) {
+  const d = _demandas().find(x => String(x.id) === String(id));
+  if (!d) { toast('Demanda não encontrada.'); return; }
+  const seed = encodeURIComponent(JSON.stringify({
+    demandaId: d.id, cliente: d.cliente || '', produto: d.produto || ''
+  }));
+  window.location.href = 'index.html?seed=' + seed;
 }
 
 function ndStatusChange(id, novo) {
@@ -6022,6 +6041,13 @@ document.addEventListener('keydown', e => {
   await _apiCarregarProcessos();
   await _apiCarregarDemandas();
   window.addEventListener('hashchange', aplicarHash); // voltar/avançar + links diretos
+  // Ao voltar da Calculadora (inclusive via bfcache), recarrega demandas para
+  // refletir status "calculada"/PV gravados pela Calculadora no servidor.
+  window.addEventListener('pageshow', e => {
+    if (e.persisted) _apiCarregarDemandas().then(() => {
+      if ((location.hash || '').includes('nova-demanda')) ndRenderLista();
+    });
+  });
   _despacharHash();                                   // renderiza conforme o hash inicial
 })();
 </script>
