@@ -5633,11 +5633,34 @@ function _ndParseItens(texto) {
   })).filter(it => it.produto || (it.quantidade !== '' && it.quantidade != null));
 }
 
+// Nomes do catálogo Omie para a extração casar com os nomes EXATOS.
+// Se a lista completa for grande demais para o prompt, manda só candidatos
+// (pré-filtrados por palavras-chave da conversa).
+function _ndCatalogoParaExtracao() {
+  let nomes = [];
+  try { nomes = [...new Set(JSON.parse(localStorage.getItem('pilar_produtos') || '[]').map(p => p && p.produto).filter(Boolean))]; }
+  catch { nomes = []; }
+  const LIMITE = 16000; // ~chars; abaixo disso mandamos tudo
+  if (nomes.join('\n').length <= LIMITE) return nomes;
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const kw = new Set(norm(_ndMensagens.filter(m => m.role === 'user').map(m => m.content).join(' '))
+    .split(/[^a-z0-9]+/).filter(w => w.length >= 4));
+  const score = nm => norm(nm).split(/[^a-z0-9]+/).filter(w => kw.has(w)).length;
+  const filt = nomes.map(nm => [nm, score(nm)]).filter(([, s]) => s > 0)
+    .sort((a, b) => b[1] - a[1]).map(([nm]) => nm).slice(0, 200);
+  return filt.length ? filt : nomes.slice(0, 200);
+}
+
 async function _ndExtrairItens() {
   if (_ndMensagens.length === 0) { _ndItensEdit = [{ produto: '', quantidade: '' }]; _ndRenderItens(false); return; }
   _ndRenderItens(true);   // estado "extraindo…"
+  // Monta UMA mensagem de usuário: catálogo (nomes exatos) + transcrição da conversa.
+  const nomes = _ndCatalogoParaExtracao();
+  const catalogo = nomes.length ? nomes.map(n => '- ' + n).join('\n') : '(catálogo vazio)';
+  const transcript = _ndMensagens.map(m => (m.role === 'user' ? 'USUÁRIO' : 'ASSISTENTE') + ': ' + m.content).join('\n');
+  const msg = 'CATÁLOGO OMIE (nomes exatos disponíveis):\n' + catalogo + '\n\n=== CONVERSA ===\n' + transcript;
   try {
-    const data = await iaChat('extracao', _ndMensagens.map(m => ({ role: m.role, content: m.content })));
+    const data = await iaChat('extracao', [{ role: 'user', content: msg }]);
     _ndItensEdit = _ndParseItens(data.texto);
   } catch (e) {
     _ndItensEdit = [];

@@ -79,6 +79,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* cadastro de produto no banco */
 .btn-cad{margin-top:8px;background:none;border:1px dashed var(--turquesa);color:var(--turquesa-dark);border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
 .btn-cad:hover{background:#E0F7FA}
+.prod-naoenc{margin-top:6px;font-size:12px;font-weight:600;color:#c62828}
 .cad-box{margin-top:10px;border:1px solid var(--turquesa);border-radius:6px;padding:12px;background:#F8FEFF}
 .cad-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .cad-f{display:flex;flex-direction:column;gap:3px}
@@ -556,11 +557,7 @@ function loadSeedFromURL() {
   const semearItem = (produto, quantidade) => {
     const id = addItem();
     if (id == null) return;
-    if (produto) {
-      set('prod_' + id, produto);
-      const match = produtos.find(p => p.produto === produto);
-      if (match) setAliq(id, match);
-    }
+    seedSelecionarItem(id, produto || '');   // exato→seleciona (NCM+alíquotas); senão sinaliza
     const q = qNum(quantidade);
     if (q != null) set('qtd_' + id, q);
   };
@@ -1240,10 +1237,44 @@ const CAD_ALIQ = [
   ['reg_espec_inter',   'Reg. Esp. Inter %', 1.5,   'reg_espec_inter']
 ];
 
+// Normalização para casamento: minúsculas, sem acentos, espaços colapsados.
+const _normProd = s => (s || '').toString().toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+// Produtos do catálogo com nome EXATAMENTE igual (ignorando caixa/acentos).
+function produtosExatos(name) {
+  const q = _normProd(name);
+  if (!q) return [];
+  return produtos.filter(p => _normProd(p.produto) === q);
+}
+// Casamento exato e ÚNICO: ambíguo (>1) ou ausente (0) → null (não escolhe sozinho).
 function findProdByName(name) {
-  const q = (name || '').trim().toLowerCase();
-  if (!q) return null;
-  return produtos.find(p => (p.produto || '').trim().toLowerCase() === q) || null;
+  const ms = produtosExatos(name);
+  return ms.length === 1 ? ms[0] : null;
+}
+
+// Semeadura (Demanda→Calculadora): aplica a mesma lógica do autocomplete.
+// Exato e único → seleciona (carrega NCM + alíquotas). Caso contrário, mantém o
+// texto, NCM vazio e sinaliza "não encontrado — selecione manualmente".
+function seedSelecionarItem(id, produtoText) {
+  const prodEl = document.getElementById('prod_' + id);
+  if (prodEl) prodEl.value = produtoText || '';
+  const ms = produtosExatos(produtoText);
+  if (ms.length === 1) {
+    if (prodEl) prodEl.value = ms[0].produto;   // usa o nome EXATO do catálogo
+    updateCadastroUI(id);                        // carrega NCM + alíquotas (estado readonly)
+  } else if ((produtoText || '').trim()) {
+    seedMarcarNaoEncontrado(id);                 // 0 ou >1 correspondências
+  }
+}
+function seedMarcarNaoEncontrado(id) {
+  const ncm = document.getElementById('ncm_' + id); if (ncm) ncm.value = '';
+  const aliqEl = document.getElementById('aliq_' + id); if (aliqEl) aliqEl.innerHTML = '';
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) {
+    cont.innerHTML = '<div class="prod-naoenc">⚠ produto não encontrado — selecione manualmente</div>'
+      + `<button type="button" class="btn-cad" onclick="cadAbrir(${id})">＋ Cadastrar no banco</button>`;
+    cont.dataset.state = 'naoenc';
+  }
 }
 
 function cadToast(msg) {
