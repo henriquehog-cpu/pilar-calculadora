@@ -5101,7 +5101,10 @@ function _apiSincronizar() {
   const dados = {
     pilar_processos:     JSON.parse(localStorage.getItem('pilar_processos')     || '[]'),
     pilar_config:        JSON.parse(localStorage.getItem('pilar_config')        || '{}'),
-    pilar_descricoes_di: JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}')
+    pilar_descricoes_di: JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}'),
+    // pilar_demandas vai junto: o POST /api/dados sobrescreve o arquivo inteiro,
+    // então omiti-lo apagaria as demandas já gravadas via /api/demandas.
+    pilar_demandas:      JSON.parse(localStorage.getItem('pilar_demandas')      || '[]')
   };
   fetch('/api/dados', {
     method: 'POST',
@@ -5367,6 +5370,7 @@ function _ndUltimoBriefing() {
 // Abre o formulário de salvamento (pede/confirma cliente + produto + tipo + link).
 function ndSalvarAbrir() {
   if (_ndMensagens.length === 0) { toast('Converse com a IA antes de salvar a demanda.'); return; }
+  if (_ndEnviando) { toast('A IA ainda está respondendo. Aguarde para salvar a conversa completa.'); return; }
   const cont = document.getElementById('nd-save-form');
   if (!cont) return;
   // Se está editando uma demanda existente, pré-preenche com os dados dela.
@@ -5411,6 +5415,15 @@ function ndSalvarConfirmar() {
   const tipo    = document.getElementById('nd-f-tipo')?.value || 'novo';
   const link    = (document.getElementById('nd-f-link')?.value || '').trim();
   if (!cliente && !produto) { toast('Informe ao menos cliente ou produto.'); return; }
+
+  // Guarda contra retrato incompleto: salvar durante a chamada da IA (ou antes
+  // de a resposta chegar) congelaria a conversa pela metade. Ver bug do histórico.
+  if (_ndEnviando) { toast('A IA ainda está respondendo. Aguarde para salvar a conversa completa.'); return; }
+  const temAssistant = _ndMensagens.some(m => m.role === 'assistant');
+  const ultimaEhUser = _ndMensagens.length > 0 && _ndMensagens[_ndMensagens.length - 1].role === 'user';
+  if (!temAssistant || ultimaEhUser) {
+    if (!confirm('A conversa parece incompleta: a última resposta da IA ainda não foi registrada. Salvar mesmo assim?')) return;
+  }
 
   const arr = _demandas();
   const conversa  = _ndMensagens.map(m => ({ role: m.role, content: m.content }));
