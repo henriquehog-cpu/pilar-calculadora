@@ -435,6 +435,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <a class="nav-link" href="#" onclick="return navTo(this, renderFluxoCaixa)">
       <span class="nav-icon">📊</span> Fluxo de Caixa
     </a>
+    <a class="nav-link" href="index.html">
+      <span class="nav-icon">🧮</span> Calculadora
+    </a>
 
     <div class="nav-sep">Produtos</div>
     <a class="nav-link" href="#" onclick="return navTo(this, renderCatalogo)">
@@ -512,6 +515,9 @@ function _despacharHash() {
     }
     return;
   }
+
+  // #/calculadora — a Calculadora é página própria (index.html); redireciona
+  if (partes[0] === 'calculadora') { window.location.href = 'index.html'; return; }
 
   // #/demanda/{id} — abre o módulo Nova Demanda e reabre a conversa salva
   if (partes[0] === 'demanda' && partes[1]) {

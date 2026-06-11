@@ -56,12 +56,13 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-// dados.json — lê garantindo as chaves pilar_processos e pilar_demandas; cria o arquivo se não existir
+// dados.json — lê garantindo as chaves pilar_processos, pilar_demandas e pilar_simulacoes; cria o arquivo se não existir
 function lerDados() {
   const d = lerJson(DADOS_FILE, null);
-  if (!d || typeof d !== 'object') return { pilar_processos: [], pilar_demandas: [] };
-  if (!Array.isArray(d.pilar_processos)) d.pilar_processos = [];
-  if (!Array.isArray(d.pilar_demandas))  d.pilar_demandas  = [];
+  if (!d || typeof d !== 'object') return { pilar_processos: [], pilar_demandas: [], pilar_simulacoes: [] };
+  if (!Array.isArray(d.pilar_processos))  d.pilar_processos  = [];
+  if (!Array.isArray(d.pilar_demandas))   d.pilar_demandas   = [];
+  if (!Array.isArray(d.pilar_simulacoes)) d.pilar_simulacoes = [];
   return d;
 }
 function salvarDados(d) {
@@ -322,6 +323,38 @@ const server = http.createServer((req, res) => {
     dados.pilar_demandas = dados.pilar_demandas.filter(d => String(d.id) !== id);
     salvarDados(dados);
     json(res, 200, { ok: true, removidos: antes - dados.pilar_demandas.length });
+    return;
+  }
+
+  // ── GET /api/simulacoes ────────────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/simulacoes') {
+    json(res, 200, lerDados().pilar_simulacoes);
+    return;
+  }
+
+  // ── POST /api/simulacoes ───────────────────────────────────────────────────
+  // Body: array completo de simulações (ou { pilar_simulacoes: [...] }).
+  if (req.method === 'POST' && url === '/api/simulacoes') {
+    readBody(req).then(body => {
+      const arr = Array.isArray(body) ? body
+                : (body && Array.isArray(body.pilar_simulacoes) ? body.pilar_simulacoes : null);
+      if (!arr) return json(res, 400, { erro: 'Esperado array de simulações' });
+      const dados = lerDados();
+      dados.pilar_simulacoes = arr;
+      salvarDados(dados);
+      json(res, 200, { ok: true, total: arr.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── DELETE /api/simulacoes/:id ─────────────────────────────────────────────
+  if (req.method === 'DELETE' && url.startsWith('/api/simulacoes/')) {
+    const id    = decodeURIComponent(url.slice('/api/simulacoes/'.length));
+    const dados = lerDados();
+    const antes = dados.pilar_simulacoes.length;
+    dados.pilar_simulacoes = dados.pilar_simulacoes.filter(s => String(s.id) !== id);
+    salvarDados(dados);
+    json(res, 200, { ok: true, removidos: antes - dados.pilar_simulacoes.length });
     return;
   }
 

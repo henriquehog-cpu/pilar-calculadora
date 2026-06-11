@@ -321,6 +321,7 @@ function init() {
   updateAFRMM();
   updateDifFrete();
   loadPTAX();
+  _simInit();   // carrega simulações do servidor (e migra as locais antigas) — não bloqueia
   if (!loadFromURL()) {
     addItem();
     addItem();
@@ -441,16 +442,45 @@ function applySimState(state) {
   calcAll();
 }
 
+// Persistência no servidor (dados.json, chave pilar_simulacoes); localStorage é cache/offline.
+function _simGet() {
+  try { return JSON.parse(localStorage.getItem('pilar_sims') || '[]'); } catch { return []; }
+}
+function _simSalvarServidor(arr) {
+  localStorage.setItem('pilar_sims', JSON.stringify(arr));
+  fetch('/api/simulacoes', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(arr)
+  }).catch(() => {});
+}
+// Carga inicial: o servidor é a fonte da verdade. Migra (uma vez) simulações
+// locais antigas — salvas só no navegador, sem id — para o servidor.
+async function _simInit() {
+  const local = _simGet();
+  local.forEach((s, i) => { if (s.id == null) s.id = (s.ts || Date.now()) + i; });
+  try {
+    const r = await fetch('/api/simulacoes');
+    if (!r.ok) throw 0;
+    const server = await r.json();
+    if (!Array.isArray(server)) throw 0;
+    if (server.length === 0 && local.length > 0) _simSalvarServidor(local);          // migra locais → servidor
+    else localStorage.setItem('pilar_sims', JSON.stringify(server));                 // servidor manda
+  } catch {
+    localStorage.setItem('pilar_sims', JSON.stringify(local));                       // offline: mantém cache (com ids)
+  }
+  if (document.getElementById('sim-panel')?.style.display === 'block') renderSimList();
+}
+
 function saveSimulacao() {
   const state = getSimState();
   const def   = state.cliente || `Simulação ${new Date().toLocaleDateString('pt-BR')}`;
   const nome  = prompt('Nome para esta simulação:', def);
   if (nome === null) return;
   state.nome = nome.trim() || def;
-  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  state.id   = Date.now();
+  const sims = _simGet();
   sims.unshift(state);
-  if (sims.length > 20) sims.length = 20;
-  localStorage.setItem('pilar_sims', JSON.stringify(sims));
+  if (sims.length > 200) sims.length = 200;   // backstop generoso (antes era 20)
+  _simSalvarServidor(sims);
   alert(`✅ Salvo: "${state.nome}"`);
   renderSimList();
 }
@@ -463,11 +493,11 @@ function toggleSimulacoes() {
 }
 
 function renderSimList() {
-  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
+  const sims = _simGet();
   const el = document.getElementById('sim-list');
   if (!el) return;
   if (!sims.length) { el.innerHTML = '<p style="color:#888;font-size:13px">Nenhuma simulação salva.</p>'; return; }
-  el.innerHTML = sims.map((s, i) => {
+  el.innerHTML = sims.map(s => {
     const dt   = new Date(s.ts).toLocaleString('pt-BR');
     const prods = (s.items||[]).map(it=>it.prod).filter(Boolean).join(', ') || '—';
     return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -477,26 +507,29 @@ function renderSimList() {
         <div style="font-size:12px;color:var(--turquesa)">USD ${(s.dolar||0).toFixed(4)} · Frete USD ${(s.frete_total||0).toLocaleString('pt-BR')}/ctn</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-p" style="padding:6px 14px;font-size:12px" onclick="loadSim(${i})">▶ Carregar</button>
-        <button class="btn btn-s" style="padding:6px 14px;font-size:12px" onclick="deleteSim(${i})">🗑</button>
+        <button class="btn btn-p" style="padding:6px 14px;font-size:12px" onclick="loadSim(${s.id})">▶ Carregar</button>
+        <button class="btn btn-s" style="padding:6px 14px;font-size:12px" onclick="deleteSim(${s.id})">🗑</button>
       </div>
     </div>`;
   }).join('');
 }
 
-function loadSim(idx) {
-  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
-  if (!sims[idx]) return;
-  if (!confirm(`Carregar "${sims[idx].nome}"? Dados atuais serão substituídos.`)) return;
-  applySimState(sims[idx]);
+function loadSim(id) {
+  const s = _simGet().find(x => String(x.id) === String(id));
+  if (!s) return;
+  if (!confirm(`Carregar "${s.nome}"? Dados atuais serão substituídos.`)) return;
+  applySimState(s);
   document.getElementById('sim-panel').style.display = 'none';
 }
 
-function deleteSim(idx) {
-  const sims = JSON.parse(localStorage.getItem('pilar_sims') || '[]');
-  if (!confirm(`Excluir "${sims[idx]?.nome}"?`)) return;
-  sims.splice(idx, 1);
-  localStorage.setItem('pilar_sims', JSON.stringify(sims));
+function deleteSim(id) {
+  const sims = _simGet();
+  const s = sims.find(x => String(x.id) === String(id));
+  if (!s) return;
+  if (!confirm(`Excluir "${s.nome}"?`)) return;
+  const novo = sims.filter(x => String(x.id) !== String(id));
+  _simSalvarServidor(novo);
+  fetch('/api/simulacoes/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
   renderSimList();
 }
 
