@@ -1075,6 +1075,7 @@ function renderNovoProcesso(proc) {
   const g    = proc?.dados_gerais || {};
   const c    = proc?.cambios      || {};
   const fr   = proc?.frete        || {};
+  const op   = proc?.operacional  || {};
   const inco = g.incoterm || 'FOB';
   const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
   const btnLabel  = proc ? 'Salvar Alterações' : 'Salvar Processo';
@@ -1122,6 +1123,75 @@ function renderNovoProcesso(proc) {
           <div style="max-width:320px">
             <div class="field"><label>Prev. Chegada Cliente</label>
               <input id="np-chegada" type="date" value="${g.prev_chegada_cliente||''}"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">Operacional &amp; Documentos
+          <span style="font-weight:400;font-size:12px;color:var(--cinza-med)">— tudo opcional, preencha conforme o embarque avança</span></div>
+        <div class="card-bd">
+          <div class="g3">
+            <div class="field"><label>Invoice (CI) — nº</label>
+              <input id="np-op-invoice-num" type="text" value="${esc(op.invoice?.num)}" placeholder="Nº da Commercial Invoice"></div>
+            <div class="field"><label>Invoice — data</label>
+              <input id="np-op-invoice-data" type="date" value="${op.invoice?.data||''}"></div>
+            <div class="field"><label>Packing List — nº/ref</label>
+              <input id="np-op-packing-num" type="text" value="${esc(op.packing?.num)}"></div>
+          </div>
+          <div class="g3">
+            <div class="field"><label>Packing List — data</label>
+              <input id="np-op-packing-data" type="date" value="${op.packing?.data||''}"></div>
+            <div class="field"><label>BL — nº</label>
+              <input id="np-op-bl-num" type="text" value="${esc(op.bl?.num)}" placeholder="Nº do Bill of Lading"></div>
+            <div class="field"><label>BL — data de emissão</label>
+              <input id="np-op-bl-data" type="date" value="${op.bl?.data||''}"></div>
+          </div>
+          <div class="g3">
+            <div class="field"><label>DI — nº</label>
+              <input id="np-op-di-num" type="text" value="${esc(op.di?.num)}"></div>
+            <div class="field"><label>DI — data de registro</label>
+              <input id="np-op-di-data" type="date" value="${op.di?.data||''}"></div>
+            <div class="field"><label>Navio / Viagem</label>
+              <input id="np-op-navio" type="text" value="${esc(op.navio)}" placeholder="Navio">
+              <input id="np-op-viagem" type="text" value="${esc(op.viagem)}" placeholder="Viagem" style="margin-top:6px"></div>
+          </div>
+          <div class="g3">
+            <div class="field"><label>Contêiner(es) — códigos</label>
+              <input id="np-op-conteineres" type="text" value="${esc(op.conteineres)}" placeholder="Ex: MSKU1234567, TCLU7654321"></div>
+            <div class="field"><label>Free time (dias)</label>
+              <input id="np-op-freetime" type="text" value="${esc(op.free_time_dias)}" placeholder="Ex: 14"></div>
+            <div class="field"><label>Demurrage (observação)</label>
+              <input id="np-op-demurrage" type="text" value="${esc(op.demurrage)}" placeholder="Sobre-estadia / alerta"></div>
+          </div>
+
+          <div class="g2" style="margin-top:6px">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--cinza-med);margin-bottom:6px">Recebidos do fornecedor</div>
+              ${_npChkRow('rec','ci','Commercial Invoice', op.recebidos?.commercial_invoice)}
+              ${_npChkRow('rec','pl','Packing List', op.recebidos?.packing_list)}
+              ${_npChkRow('rec','bld','BL (draft)', op.recebidos?.bl_draft)}
+              ${_npChkRow('rec','blo','BL (original/telex)', op.recebidos?.bl_original)}
+              ${_npChkRow('rec','co','Certificado de Origem', op.recebidos?.certificado_origem)}
+              ${_npChkRow('rec','out','Outros', op.recebidos?.outros, true)}
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--cinza-med);margin-bottom:6px">Enviados ao despachante</div>
+              ${_npChkRow('env','ci','CI', op.enviados?.ci)}
+              ${_npChkRow('env','pl','PL', op.enviados?.pl)}
+              ${_npChkRow('env','bl','BL', op.enviados?.bl)}
+              ${_npChkRow('env','num','Instruções / numerário', op.enviados?.instrucoes_numerario)}
+              ${_npChkRow('env','out','Outros', op.enviados?.outros, true)}
+            </div>
+          </div>
+
+          <div style="margin-top:12px;max-width:520px">
+            <div class="field"><label>Link OneDrive (pasta de documentos)</label>
+              <div style="display:flex;gap:6px">
+                <input id="np-op-onedrive" type="url" value="${esc(op.onedrive_link)}" placeholder="https://…" style="flex:1">
+                ${op.onedrive_link ? `<a class="btn btn-s" href="${esc(op.onedrive_link)}" target="_blank" rel="noopener" style="white-space:nowrap">📁 Abrir</a>` : ''}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1608,6 +1678,79 @@ function npAtualizarAlertaAliquotas() {
     : '';
 }
 
+// ── Etapa D: Operacional & Documentos (tudo opcional) ───────────────────────
+// Linha de checklist: checkbox + data automática (editável) + texto opcional.
+function _npChkRow(grupo, key, label, item, temTxt) {
+  item = item || {};
+  const cbId = `np-op-${grupo}-${key}`, dtId = `${cbId}-data`, txId = `${cbId}-txt`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+    <label style="display:flex;align-items:center;gap:6px;flex:1;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="${cbId}"${item.ok ? ' checked' : ''} onchange="npChkData('${cbId}','${dtId}')">
+      <span>${label}</span>
+    </label>
+    ${temTxt ? `<input type="text" id="${txId}" value="${esc(item.txt)}" placeholder="qual?" style="width:120px;font-size:12px;padding:3px 6px">` : ''}
+    <input type="date" id="${dtId}" value="${item.data || ''}" style="font-size:12px;padding:3px 6px">
+  </div>`;
+}
+// Ao marcar, grava a data de hoje se ainda vazia (continua editável).
+function npChkData(cbId, dtId) {
+  const cb = document.getElementById(cbId), dt = document.getElementById(dtId);
+  if (cb && cb.checked && dt && !dt.value) dt.value = today();
+}
+// Lê a seção operacional do formulário. Tudo defensivo: ausência vira vazio.
+function npLerOperacional() {
+  const chk = (grupo, key) => ({
+    ok:   !!document.getElementById(`np-op-${grupo}-${key}`)?.checked,
+    data: document.getElementById(`np-op-${grupo}-${key}-data`)?.value || '',
+  });
+  const chkTxt = (grupo, key) => ({
+    ...chk(grupo, key),
+    txt: (document.getElementById(`np-op-${grupo}-${key}-txt`)?.value || '').trim(),
+  });
+  return {
+    invoice:        { num: val('np-op-invoice-num'), data: val('np-op-invoice-data') },
+    packing:        { num: val('np-op-packing-num'), data: val('np-op-packing-data') },
+    bl:             { num: val('np-op-bl-num'),       data: val('np-op-bl-data') },
+    di:             { num: val('np-op-di-num'),       data: val('np-op-di-data') },
+    conteineres:    val('np-op-conteineres'),
+    navio:          val('np-op-navio'),
+    viagem:         val('np-op-viagem'),
+    free_time_dias: val('np-op-freetime'),
+    demurrage:      val('np-op-demurrage'),
+    onedrive_link:  val('np-op-onedrive'),
+    recebidos: {
+      commercial_invoice: chk('rec', 'ci'),
+      packing_list:       chk('rec', 'pl'),
+      bl_draft:           chk('rec', 'bld'),
+      bl_original:        chk('rec', 'blo'),
+      certificado_origem: chk('rec', 'co'),
+      outros:             chkTxt('rec', 'out'),
+    },
+    enviados: {
+      ci:                   chk('env', 'ci'),
+      pl:                   chk('env', 'pl'),
+      bl:                   chk('env', 'bl'),
+      instrucoes_numerario: chk('env', 'num'),
+      outros:               chkTxt('env', 'out'),
+    },
+  };
+}
+// Badge "X/5" dos documentos principais recebidos do fornecedor.
+// Neutro (cinza) enquanto não embarcou; só vira pendência (âmbar) após o embarque.
+function npDocsBadge(p) {
+  const rec = (p.operacional || {}).recebidos || {};
+  const core = ['commercial_invoice', 'packing_list', 'bl_draft', 'bl_original', 'certificado_origem'];
+  const n = core.filter(k => rec[k] && rec[k].ok).length;
+  const emb = (p.dados_gerais || {}).prev_embarque;
+  const embarcou = !!emb && emb <= today();
+  let bg = '#ECEFF1', fg = '#90A4AE';          // neutro (pré-embarque)
+  if (embarcou) {
+    if (n >= 5) { bg = '#E8F5E9'; fg = '#2E7D32'; }   // completo
+    else        { bg = '#FFF3E0'; fg = '#E65100'; }   // pendência
+  }
+  return `<span class="badge" style="background:${bg};color:${fg}" title="${embarcou ? 'Documentos recebidos do fornecedor' : 'Ainda não embarcou — sem pendência'}">docs ${n}/5</span>`;
+}
+
 function npSalvar() {
   const itensValidos = _itens.filter(it => it.descricao || it.codigo || it.quantidade > 0);
   const dadosForm = {
@@ -1635,7 +1778,8 @@ function npSalvar() {
     custos_defaults: {
       frete_rodoviario: parseFloat(val('np-frete-rodoviario')) || 0
     },
-    itens: itensValidos
+    itens: itensValidos,
+    operacional: npLerOperacional()   // Etapa D — 100% opcional, nunca bloqueia o salvamento
   };
 
   // Calcular e persistir resultado
@@ -1806,21 +1950,26 @@ function renderProcessos() {
     .slice().reverse(); // mais recentes primeiro
 
   const linhas = todos.length === 0
-    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--cinza-med)">Nenhum processo cadastrado ainda.</td></tr>`
+    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--cinza-med)">Nenhum processo cadastrado ainda.</td></tr>`
     : todos.map(p => {
         const g    = p.dados_gerais || {};
         const fob  = (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
         const data = g.data_pedido ? g.data_pedido.split('-').reverse().join('/') : '—';
         const badge = `<span class="badge badge-${p.status||'ativo'}">${p.status||'ativo'}</span>`;
+        const link  = (p.operacional||{}).onedrive_link;
+        const btnDocs = link
+          ? `<a class="btn btn-s btn-sm" href="${esc(link)}" target="_blank" rel="noopener" title="Abrir pasta no OneDrive" style="margin-right:4px">📁</a>`
+          : '';
         return `<tr>
           <td style="font-weight:600">${p.numero||'—'}</td>
           <td>${g.cliente||'—'}</td>
           <td>${g.fornecedor||'—'}</td>
           <td>${data}</td>
           <td>${badge}</td>
+          <td style="text-align:center">${npDocsBadge(p)}</td>
           <td style="text-align:right;font-variant-numeric:tabular-nums">USD ${fmtN(fob)}</td>
           <td style="text-align:right;white-space:nowrap">
-            <button onclick="procEditar(${p.id})" class="btn btn-s btn-sm" style="margin-right:4px">✎ Editar</button>
+            ${btnDocs}<button onclick="procEditar(${p.id})" class="btn btn-s btn-sm" style="margin-right:4px">✎ Editar</button>
             <button onclick="procDeletar(${p.id})" title="Excluir" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:16px;padding:2px 6px;vertical-align:middle">🗑</button>
           </td>
         </tr>`;
@@ -1842,7 +1991,7 @@ function renderProcessos() {
         <table class="tbl">
           <thead><tr>
             <th>Número</th><th>Cliente</th><th>Fornecedor</th>
-            <th>Data</th><th>Status</th><th style="text-align:right">FOB Total USD</th><th></th>
+            <th>Data</th><th>Status</th><th style="text-align:center">Docs</th><th style="text-align:right">FOB Total USD</th><th></th>
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
@@ -3182,7 +3331,7 @@ function rdSelecionarProcesso(id) {
       <div class="card-hd">Preview — ${_rdProcesso.numero}</div>
       <div style="padding:10px 20px;border-bottom:1px solid var(--cinza-light);font-size:13px;color:var(--cinza-med)">
         <strong style="color:var(--cinza)">${g.fornecedor||'—'}</strong>
-        · ${g.pais||''} · ${g.incoterm||''} · ${g.data_pedido||''}
+        · ${g.pais||''} · ${g.incoterm||''} · ${g.data_pedido||''}${(_rdProcesso.operacional?.invoice?.num) ? ` · Invoice: ${esc(_rdProcesso.operacional.invoice.num)}` : ''}${(_rdProcesso.operacional?.bl?.num) ? ` · BL: ${esc(_rdProcesso.operacional.bl.num)}` : ''}
       </div>
       <div style="overflow-x:auto">
         <table class="tbl">
