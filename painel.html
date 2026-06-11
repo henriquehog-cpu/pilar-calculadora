@@ -1135,23 +1135,23 @@ function renderNovoProcesso(proc) {
             <div class="field"><label>Invoice (CI) — nº</label>
               <input id="np-op-invoice-num" type="text" value="${esc(op.invoice?.num)}" placeholder="Nº da Commercial Invoice"></div>
             <div class="field"><label>Invoice — data</label>
-              <input id="np-op-invoice-data" type="date" value="${op.invoice?.data||''}"></div>
+              ${_npData('np-op-invoice-data', op.invoice?.data)}</div>
             <div class="field"><label>Packing List — nº/ref</label>
               <input id="np-op-packing-num" type="text" value="${esc(op.packing?.num)}"></div>
           </div>
           <div class="g3">
             <div class="field"><label>Packing List — data</label>
-              <input id="np-op-packing-data" type="date" value="${op.packing?.data||''}"></div>
+              ${_npData('np-op-packing-data', op.packing?.data)}</div>
             <div class="field"><label>BL — nº</label>
               <input id="np-op-bl-num" type="text" value="${esc(op.bl?.num)}" placeholder="Nº do Bill of Lading"></div>
             <div class="field"><label>BL — data de emissão</label>
-              <input id="np-op-bl-data" type="date" value="${op.bl?.data||''}"></div>
+              ${_npData('np-op-bl-data', op.bl?.data)}</div>
           </div>
           <div class="g3">
             <div class="field"><label>DI — nº</label>
               <input id="np-op-di-num" type="text" value="${esc(op.di?.num)}"></div>
             <div class="field"><label>DI — data de registro</label>
-              <input id="np-op-di-data" type="date" value="${op.di?.data||''}"></div>
+              ${_npData('np-op-di-data', op.di?.data)}</div>
             <div class="field"><label>Navio / Viagem</label>
               <input id="np-op-navio" type="text" value="${esc(op.navio)}" placeholder="Navio">
               <input id="np-op-viagem" type="text" value="${esc(op.viagem)}" placeholder="Viagem" style="margin-top:6px"></div>
@@ -1172,7 +1172,6 @@ function renderNovoProcesso(proc) {
               ${_npChkRow('rec','pl','Packing List', op.recebidos?.packing_list)}
               ${_npChkRow('rec','bld','BL (draft)', op.recebidos?.bl_draft)}
               ${_npChkRow('rec','blo','BL (original/telex)', op.recebidos?.bl_original)}
-              ${_npChkRow('rec','co','Certificado de Origem', op.recebidos?.certificado_origem)}
               ${_npChkRow('rec','out','Outros', op.recebidos?.outros, true)}
             </div>
             <div>
@@ -1679,6 +1678,39 @@ function npAtualizarAlertaAliquotas() {
 }
 
 // ── Etapa D: Operacional & Documentos (tudo opcional) ───────────────────────
+// Datas: armazenadas em ISO (YYYY-MM-DD), exibidas/digitadas como dd/mm/aaaa.
+function _dataBR(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+function _dataISO(txt) {
+  const s = (txt || '').trim();
+  if (!s) return '';
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);            // dd/mm/aaaa digitado
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;                  // já ISO (veio do calendário)
+  return '';                                                    // formato inválido → vazio (não bloqueia)
+}
+// Campo de data: digitação direta dd/mm/aaaa + botão 📅 (calendário opcional).
+// O valor lido no salvamento é SEMPRE o input de texto (id), convertido para ISO.
+function _npData(id, iso) {
+  const pid = id + '-pick';
+  return `<span style="position:relative;display:inline-flex;gap:4px;align-items:center">
+    <input id="${id}" type="text" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa"
+      value="${_dataBR(iso)}" style="width:104px;font-size:12px;padding:3px 6px">
+    <input id="${pid}" type="date" value="${iso || ''}" tabindex="-1" aria-hidden="true"
+      onchange="var t=document.getElementById('${id}');if(t)t.value=_dataBR(this.value)"
+      style="position:absolute;right:30px;width:1px;height:1px;opacity:0;pointer-events:none">
+    <button type="button" class="btn btn-s" title="Abrir calendário" onclick="npAbrirCal('${pid}')"
+      style="padding:3px 7px;flex:0 0 auto">📅</button>
+  </span>`;
+}
+function npAbrirCal(pid) {
+  const p = document.getElementById(pid);
+  if (!p) return;
+  try { if (typeof p.showPicker === 'function') p.showPicker(); else { p.focus(); p.click(); } }
+  catch { p.focus(); }
+}
 // Linha de checklist: checkbox + data automática (editável) + texto opcional.
 function _npChkRow(grupo, key, label, item, temTxt) {
   item = item || {};
@@ -1688,30 +1720,31 @@ function _npChkRow(grupo, key, label, item, temTxt) {
       <input type="checkbox" id="${cbId}"${item.ok ? ' checked' : ''} onchange="npChkData('${cbId}','${dtId}')">
       <span>${label}</span>
     </label>
-    ${temTxt ? `<input type="text" id="${txId}" value="${esc(item.txt)}" placeholder="qual?" style="width:120px;font-size:12px;padding:3px 6px">` : ''}
-    <input type="date" id="${dtId}" value="${item.data || ''}" style="font-size:12px;padding:3px 6px">
+    ${temTxt ? `<input type="text" id="${txId}" value="${esc(item.txt)}" placeholder="qual?" style="width:110px;font-size:12px;padding:3px 6px">` : ''}
+    ${_npData(dtId, item.data)}
   </div>`;
 }
-// Ao marcar, grava a data de hoje se ainda vazia (continua editável).
+// Ao marcar, grava a data de hoje (dd/mm/aaaa) se ainda vazia (continua editável).
 function npChkData(cbId, dtId) {
   const cb = document.getElementById(cbId), dt = document.getElementById(dtId);
-  if (cb && cb.checked && dt && !dt.value) dt.value = today();
+  if (cb && cb.checked && dt && !dt.value) dt.value = _dataBR(today());
 }
 // Lê a seção operacional do formulário. Tudo defensivo: ausência vira vazio.
 function npLerOperacional() {
+  const dt  = id => _dataISO(document.getElementById(id)?.value || '');
   const chk = (grupo, key) => ({
     ok:   !!document.getElementById(`np-op-${grupo}-${key}`)?.checked,
-    data: document.getElementById(`np-op-${grupo}-${key}-data`)?.value || '',
+    data: dt(`np-op-${grupo}-${key}-data`),
   });
   const chkTxt = (grupo, key) => ({
     ...chk(grupo, key),
     txt: (document.getElementById(`np-op-${grupo}-${key}-txt`)?.value || '').trim(),
   });
   return {
-    invoice:        { num: val('np-op-invoice-num'), data: val('np-op-invoice-data') },
-    packing:        { num: val('np-op-packing-num'), data: val('np-op-packing-data') },
-    bl:             { num: val('np-op-bl-num'),       data: val('np-op-bl-data') },
-    di:             { num: val('np-op-di-num'),       data: val('np-op-di-data') },
+    invoice:        { num: val('np-op-invoice-num'), data: dt('np-op-invoice-data') },
+    packing:        { num: val('np-op-packing-num'), data: dt('np-op-packing-data') },
+    bl:             { num: val('np-op-bl-num'),       data: dt('np-op-bl-data') },
+    di:             { num: val('np-op-di-num'),       data: dt('np-op-di-data') },
     conteineres:    val('np-op-conteineres'),
     navio:          val('np-op-navio'),
     viagem:         val('np-op-viagem'),
@@ -1723,8 +1756,8 @@ function npLerOperacional() {
       packing_list:       chk('rec', 'pl'),
       bl_draft:           chk('rec', 'bld'),
       bl_original:        chk('rec', 'blo'),
-      certificado_origem: chk('rec', 'co'),
       outros:             chkTxt('rec', 'out'),
+      // certificado_origem saiu da UI; preservado no npSalvar se já existir
     },
     enviados: {
       ci:                   chk('env', 'ci'),
@@ -1735,20 +1768,20 @@ function npLerOperacional() {
     },
   };
 }
-// Badge "X/5" dos documentos principais recebidos do fornecedor.
+// Badge "X/4" dos documentos principais recebidos do fornecedor (CI, PL, BL draft, BL original).
 // Neutro (cinza) enquanto não embarcou; só vira pendência (âmbar) após o embarque.
 function npDocsBadge(p) {
   const rec = (p.operacional || {}).recebidos || {};
-  const core = ['commercial_invoice', 'packing_list', 'bl_draft', 'bl_original', 'certificado_origem'];
+  const core = ['commercial_invoice', 'packing_list', 'bl_draft', 'bl_original'];
   const n = core.filter(k => rec[k] && rec[k].ok).length;
   const emb = (p.dados_gerais || {}).prev_embarque;
   const embarcou = !!emb && emb <= today();
   let bg = '#ECEFF1', fg = '#90A4AE';          // neutro (pré-embarque)
   if (embarcou) {
-    if (n >= 5) { bg = '#E8F5E9'; fg = '#2E7D32'; }   // completo
+    if (n >= 4) { bg = '#E8F5E9'; fg = '#2E7D32'; }   // completo
     else        { bg = '#FFF3E0'; fg = '#E65100'; }   // pendência
   }
-  return `<span class="badge" style="background:${bg};color:${fg}" title="${embarcou ? 'Documentos recebidos do fornecedor' : 'Ainda não embarcou — sem pendência'}">docs ${n}/5</span>`;
+  return `<span class="badge" style="background:${bg};color:${fg}" title="${embarcou ? 'Documentos recebidos do fornecedor' : 'Ainda não embarcou — sem pendência'}">docs ${n}/4</span>`;
 }
 
 function npSalvar() {
@@ -1796,6 +1829,13 @@ function npSalvar() {
   } : {};
 
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+
+  // Etapa D: "Certificado de Origem" saiu da UI; preserva o dado se o processo já o tinha.
+  if (_npEditId) {
+    const ant = todos.find(p => p.id === _npEditId)?.operacional?.recebidos?.certificado_origem;
+    if (ant && dadosForm.operacional && dadosForm.operacional.recebidos)
+      dadosForm.operacional.recebidos.certificado_origem = ant;
+  }
 
   if (_npEditId) {
     const idx = todos.findIndex(p => p.id === _npEditId);
