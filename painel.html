@@ -1030,6 +1030,7 @@ function fmtN(v, d=2) { return (parseFloat(v)||0).toLocaleString('pt-BR',{minimu
 // ── Novo Processo ──────────────────────────────────────────────────────────
 let _itens = [];
 let _npEditId = null; // id do processo em edição; null = criação nova
+let _npSeed   = null; // semente p/ Novo Processo vindo de uma demanda (cliente/itens/PVs/demandaId)
 
 function gerarNumero() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
@@ -1072,16 +1073,18 @@ async function fetchPTAX(inputId) {
   el.placeholder = 'indisponível';
 }
 
-function renderNovoProcesso(proc) {
+function renderNovoProcesso(proc, seed) {
   _npEditId = proc ? proc.id : null;
-  _itens    = proc?.itens?.length ? proc.itens.map(it => ({...it})) : [newItemRow()];
+  _npSeed   = (!proc && seed) ? seed : null;   // semente só vale na criação nova
+  const base = proc || _npSeed || null;        // fonte de pré-preenchimento
+  _itens    = base?.itens?.length ? base.itens.map(it => ({...it})) : [newItemRow()];
   { const _pls = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
     _itens.forEach(it => { it.is_novo = !!(it.codigo) && !_pls.some(p => (p.codigo||'').toLowerCase() === (it.codigo||'').toLowerCase()); }); }
 
-  const g    = proc?.dados_gerais || {};
-  const c    = proc?.cambios      || {};
-  const fr   = proc?.frete        || {};
-  const op   = proc?.operacional  || {};
+  const g    = base?.dados_gerais || {};
+  const c    = base?.cambios      || {};
+  const fr   = base?.frete        || {};
+  const op   = base?.operacional  || {};
   const inco = g.incoterm || 'FOB';
   const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
   const btnLabel  = proc ? 'Salvar Alterações' : 'Salvar Processo';
@@ -1843,6 +1846,13 @@ function npSalvar() {
       dadosForm.operacional.recebidos.certificado_origem = ant;
   }
 
+  // Etapa C: processo criado a partir de uma demanda → guarda os PVs (preço de
+  // venda, só USD) e o vínculo. Whitelist — nunca FOB/custo/margem.
+  if (!_npEditId && _npSeed) {
+    dadosForm.pvItens   = (_npSeed._pvItens || []).map(it => ({ produto: it.produto || '', qtd: it.qtd || 0, pvUnitarioUSD: it.pvUnitarioUSD }));
+    dadosForm.demandaId = _npSeed._demandaId != null ? _npSeed._demandaId : null;
+  }
+
   if (_npEditId) {
     const idx = todos.findIndex(p => p.id === _npEditId);
     if (idx >= 0) {
@@ -1859,6 +1869,14 @@ function npSalvar() {
 
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
   _apiSalvarProcessos(todos);
+
+  // Demanda vinculada → status "fechada" (cliente aprovou e virou processo)
+  if (!_npEditId && _npSeed && _npSeed._demandaId != null) {
+    const dem = _demandas();
+    const di = dem.findIndex(x => String(x.id) === String(_npSeed._demandaId));
+    if (di >= 0) { dem[di].status = 'fechada'; _apiSalvarDemandas(dem); }
+  }
+  _npSeed = null;
 
   // Alerta automático ao salvar — não bloqueia
   const semAliq = npContarSemAliquotas();
@@ -4003,36 +4021,29 @@ function toast(msg) {
 }
 
 // ── Proposta Comercial ──────────────────────────────────────────────────────
-let _propDemanda = null;     // demanda calculada selecionada
+let _propProcesso = null;    // processo selecionado (o processo é a fonte dos documentos)
 let _propItens   = [];       // itens editáveis: [{produto, quantidade, unidade, pvUnitarioUSD}]
-let _propSeedId  = null;     // demanda a pré-selecionar (vindo de "Gerar proposta")
-
-// Demandas que já têm preço de venda calculado (PV USD ou itens com PV).
-function _propDemandasCalc() {
-  return _demandas()
-    .filter(d => d.pvFinalUSD != null || (Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null)))
-    .slice().reverse();
-}
 
 function renderProposta() {
-  const calc = _propDemandasCalc();
-  const pre  = _propSeedId; _propSeedId = null;
-  const opts = calc.length === 0
-    ? '<option value="">— nenhuma demanda calculada —</option>'
-    : '<option value="">— selecione uma demanda calculada —</option>' +
-      calc.map(d => `<option value="${d.id}"${String(d.id) === String(pre) ? ' selected' : ''}>${_cmdEsc((d.cliente || 'sem cliente') + ' — ' + (d.produto || 'sem produto'))}</option>`).join('');
+  _propProcesso = null;
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const opts = todos.length === 0
+    ? '<option value="">— nenhum processo salvo —</option>'
+    : '<option value="">— selecione um processo —</option>' +
+      todos.map(p => { const g = p.dados_gerais || {};
+        return `<option value="${p.id}">${_cmdEsc((p.numero || 'sem nº') + ' — ' + (g.cliente || g.fornecedor || 'sem nome'))}</option>`; }).join('');
 
   document.getElementById('vc').innerHTML = `
     <div style="max-width:980px">
       <h2 style="font-size:18px;font-weight:700;margin-bottom:14px">Proposta Comercial</h2>
 
       <div class="card">
-        <div class="card-hd tq">Demanda calculada</div>
+        <div class="card-hd tq">Selecionar Processo</div>
         <div class="card-bd">
           <div class="field" style="margin-bottom:0">
-            <label>Demanda</label>
-            <select id="prop-select" onchange="propSelecionarDemanda(this.value)">${opts}</select>
-            <span class="note">A proposta usa o preço de venda (PV em USD) calculado. FOB, custo e margem não entram.</span>
+            <label>Processo</label>
+            <select id="prop-select" onchange="propSelecionarProcesso(this.value)">${opts}</select>
+            <span class="note">A proposta usa o preço de venda (PV em USD) do processo. FOB, custo e margem não entram.</span>
           </div>
         </div>
       </div>
@@ -4135,28 +4146,35 @@ function renderProposta() {
       </div>
     </div>`;
 
-  if (pre && calc.some(d => String(d.id) === String(pre))) propSelecionarDemanda(pre);
 }
 
-function propSelecionarDemanda(id) {
+function propSelecionarProcesso(id) {
   const form = document.getElementById('prop-form');
-  if (!id) { _propDemanda = null; form.style.display = 'none'; return; }
-  const d = _demandas().find(x => String(x.id) === String(id));
-  if (!d) { form.style.display = 'none'; return; }
-  _propDemanda = d;
+  if (!id) { _propProcesso = null; form.style.display = 'none'; return; }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  _propProcesso = todos.find(p => String(p.id) === String(id)) || null;
+  if (!_propProcesso) { form.style.display = 'none'; return; }
+  const proc = _propProcesso, g = proc.dados_gerais || {};
   const hoje = new Date().toISOString().slice(0, 10);
   const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
 
-  // Itens da demanda: produto, quantidade e PV unitário em USD (sem custo)
-  _propItens = (d.pvItens || []).map(it => ({
-    produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
-    unidade: '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
-  }));
-  if (!_propItens.length) _propItens = [{ produto: d.produto || '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+  // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
+  // processo (descrição/qtd) com PV em branco para preencher à mão.
+  if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
+    _propItens = proc.pvItens.map(it => ({
+      produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
+      unidade: '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
+    }));
+  } else {
+    _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
+      .map(it => ({ produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
+                    unidade: it.unidade || '', pvUnitarioUSD: '' }));
+  }
+  if (!_propItens.length) _propItens = [{ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
 
-  set('prop-cliente', d.cliente || '');
-  set('prop-numero', '');
-  set('prop-qtdcont', 1); set('prop-tipocont', '40HC');
+  set('prop-cliente', g.cliente || '');
+  set('prop-numero', proc.numero || '');
+  set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
   set('prop-pctsinal', 20); set('prop-cambio', ''); set('prop-datasinal', hoje); set('prop-datavenc', '');
   set('prop-cambioref', ''); set('prop-dataref', hoje);
   set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60); set('prop-obs', '');
@@ -4203,7 +4221,7 @@ function propRecalc() {
 }
 
 async function gerarProposta() {
-  if (!_propDemanda) { toast('Selecione uma demanda calculada.'); return; }
+  if (!_propProcesso) { toast('Selecione um processo.'); return; }
   const v = id => document.getElementById(id)?.value || '';
   const itens = _propItens
     .map(it => ({ produto: (it.produto || '').trim(), quantidade: parseFloat(it.quantidade) || 0,
@@ -4212,7 +4230,7 @@ async function gerarProposta() {
   if (!itens.length) { toast('Inclua ao menos um item com produto/quantidade.'); return; }
 
   const cliente = v('prop-cliente');
-  const numero  = v('prop-numero') || ('DEM-' + _propDemanda.id);
+  const numero  = v('prop-numero') || _propProcesso.numero || '';
   const payload = {
     numero_pil: numero,
     cliente,
@@ -4254,10 +4272,6 @@ async function gerarProposta() {
     a.click();
     a.remove();
     URL.revokeObjectURL(link);
-    // Status da demanda → proposta_enviada
-    const arr = _demandas();
-    const i = arr.findIndex(x => String(x.id) === String(_propDemanda.id));
-    if (i >= 0 && arr[i].status !== 'proposta_enviada') { arr[i].status = 'proposta_enviada'; _apiSalvarDemandas(arr); }
     toast(`✓ Proposta gerada: ${a.download}`);
   } catch (e) {
     toast('Falha na conexão com o servidor.');
@@ -5827,7 +5841,7 @@ function ndRenderLista() {
       <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-s btn-sm" onclick="ndCalcularPreco('${d.id}')" title="Abre a Calculadora pré-preenchida com esta demanda">Calcular preço</button>
         ${(d.pvFinalUSD != null || (Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null)))
-          ? `<button class="btn btn-s btn-sm" onclick="ndGerarProposta('${d.id}')" title="Gera a Proposta com o preço de venda calculado">Gerar proposta</button>` : ''}
+          ? `<button class="btn btn-s btn-sm" onclick="ndCriarProcesso('${d.id}')" title="Cliente aprovou → cria o Novo Processo com cliente, itens e PVs desta demanda">Criar processo</button>` : ''}
         <button class="btn btn-s btn-sm" onclick="ndReabrir('${d.id}')">Reabrir conversa</button>
         <button class="btn btn-s btn-sm" onclick="ndCopiarBriefing('${d.id}')">Copiar briefing</button>
         ${docs}
@@ -5858,15 +5872,24 @@ function ndCalcularPreco(id) {
   window.location.href = 'index.html?seed=' + encodeURIComponent(JSON.stringify(payload));
 }
 
-// Abre a Proposta (no painel) a partir de uma demanda já calculada (com PV).
-function ndGerarProposta(id) {
+// Cliente aprovou a cotação → cria o Novo Processo a partir da demanda calculada.
+// Semeia cliente + itens + quantidades + PVs (whitelist: nunca FOB/custo/margem)
+// e vincula demandaId; ao salvar o processo, a demanda vira "fechada".
+function ndCriarProcesso(id) {
   const d = _demandas().find(x => String(x.id) === String(id));
   if (!d) { toast('Demanda não encontrada.'); return; }
-  if (d.pvFinalUSD == null && !(Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null))) {
-    toast('Calcule o preço da demanda antes de gerar a proposta.'); return;
+  if (!(Array.isArray(d.pvItens) && d.pvItens.some(it => it.pvUnitarioUSD != null))) {
+    toast('Calcule o preço da demanda antes de criar o processo.'); return;
   }
-  _propSeedId = d.id;
-  location.hash = '#/proposta';   // o roteador chama renderProposta, que lê _propSeedId
+  const seed = {
+    dados_gerais: { cliente: d.cliente || '' },
+    itens: d.pvItens.map(it => ({ descricao: it.produto || '', quantidade: it.qtd != null ? it.qtd : '' })),
+    _pvItens: d.pvItens.map(it => ({ produto: it.produto || '', qtd: it.qtd || 0, pvUnitarioUSD: it.pvUnitarioUSD })),
+    _demandaId: d.id,
+  };
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  document.querySelector('.nav-link[onclick*=renderNovoProcesso]')?.classList.add('active');
+  renderNovoProcesso(null, seed);
 }
 
 function ndStatusChange(id, novo) {
@@ -5948,8 +5971,8 @@ function propMontarDrawer() {
 
 function propAbrirIA() {
   propMontarDrawer();
-  const id = _propDemanda ? _propDemanda.id : null;
-  if (_pdProcId !== id) { _pdMensagens = []; _pdErro = null; _pdProcId = id; } // conversa por demanda
+  const id = _propProcesso ? _propProcesso.id : null;
+  if (_pdProcId !== id) { _pdMensagens = []; _pdErro = null; _pdProcId = id; } // conversa por processo
   document.getElementById('pd-overlay').classList.add('aberto');
   const inp = document.getElementById('pd-input');
   if (_pdMensagens.length === 0 && inp) { inp.value = propPromptInicial(); }
