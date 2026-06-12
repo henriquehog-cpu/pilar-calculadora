@@ -36,13 +36,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .field input.ro{background:#F0FAFB;border-color:var(--turquesa);color:#006064;font-weight:600}
 .field input.bi{background:#FFFDE7;border-color:#F9A825;color:#5D4037;font-weight:600}
 .note{font-size:10px;color:var(--cinza-med);margin-top:2px}
-/* item */
-.item-card{border:2px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
-.item-hd{background:var(--cinza);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
-.item-hd h3{font-size:13px;font-weight:700}
-.btn-rm{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
-.btn-rm:hover{background:#c62828}
-.item-bd{padding:16px}
+/* item table */
+.items-tbl{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px}
+.items-tbl thead th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);white-space:nowrap}
+.items-tbl thead th.col-prod{text-align:left}
+.items-tbl thead th.col-chev{width:54px}
+.items-tbl tbody{border-bottom:1px solid var(--border)}
+.item-row>td{padding:6px 10px;vertical-align:top;text-align:right}
+.item-row>td.cell-prod{text-align:left;min-width:220px}
+.item-row input{padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza);width:100%;text-align:right;transition:border-color .15s}
+.item-row input:focus{outline:none;border-color:var(--turquesa)}
+.item-row .cell-prod input{text-align:left}
+.item-row input.bi{background:#FFFDE7;border-color:#F9A825;color:#5D4037;font-weight:600}
+.item-row td.num{width:92px}
+.item-row td.calc{font-weight:600;color:var(--turquesa-dark);white-space:nowrap;padding-top:13px}
+.prod-sub{font-size:10px;color:var(--cinza-med);margin-top:3px}
+.mrg-badge{display:inline-block;margin-top:4px;font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px}
+.mrg-badge.ok{background:#E8F5E9;color:#2e7d32}
+.mrg-badge.low{background:#FFF8E1;color:#F9A825}
+.chev{background:none;border:none;cursor:pointer;font-size:15px;color:var(--cinza-med);transition:transform .15s;line-height:1;padding:4px}
+.chev.open{transform:rotate(90deg);color:var(--turquesa-dark)}
+.item-det>td{padding:0 10px 16px;background:#FAFCFC;border-top:1px dashed var(--border)}
+.det-edits{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0}
+.det-edits .field{min-width:160px}
+.btn-rm{background:none;border:1px solid var(--border);color:#c62828;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+.btn-rm:hover{background:#c62828;color:#fff}
 .res-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
 .sec-div{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--cinza-med);padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px}
 .rt{width:100%;border-collapse:collapse;font-size:13px}
@@ -229,10 +247,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
 <!-- Items -->
-<div id="items-container"></div>
+<table id="items-table" class="items-tbl">
+  <thead><tr>
+    <th class="col-prod">Produto</th>
+    <th>Qtd</th>
+    <th>FOB USD</th>
+    <th>PV USD</th>
+    <th>PV R$</th>
+    <th>Margem</th>
+    <th>Lucro R$</th>
+    <th class="col-chev"></th>
+  </tr></thead>
+</table>
 
 <div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-  <button class="btn btn-p" onclick="addItem()">+ Adicionar Item</button>
+  <button class="btn btn-p" onclick="addItemUI()">+ Adicionar Item</button>
   <button class="btn btn-s" onclick="saveSimulacao()">💾 Salvar Simulação</button>
   <button class="btn btn-s" onclick="toggleSimulacoes()">📋 Simulações Salvas</button>
   <button class="btn btn-s" onclick="copySimUrl()">🔗 Copiar Link</button>
@@ -939,9 +968,16 @@ function calcAll() {
 
 function renderItemResult(id, r) {
   const s = (suf, val) => setEl('r_' + suf + '_' + id, val);
+  // Subtexto do Produto (NCM + nº de containers) — só apresentação.
+  const _ncm  = document.getElementById('ncm_'  + id)?.value || '';
+  const _cont = document.getElementById('cont_' + id)?.value || '';
+  const _sub  = document.getElementById('prodsub_' + id);
+  if (_sub) _sub.textContent = (_ncm ? 'NCM ' + _ncm : 'sem NCM') + (_cont ? ' · ' + _cont + 'c' : '');
   if (!r) {
     ['cif','ii','ipi','piI','coI','icI','cfR','frd','crd','ciT','ciU',
      'com','ipV','piV','coV','icE','csl','ir','ira','pvU','pvD','pvT','mrg','luc'].forEach(k => s(k,'—'));
+    const _b = document.getElementById('mrgbadge_' + id);
+    if (_b) { _b.textContent = ''; _b.className = 'mrg-badge'; }
     return;
   }
   s('cif', fmtBRL(r.cifRS));
@@ -969,6 +1005,14 @@ function renderItemResult(id, r) {
   s('mrg', fmtPct(r.margemReal));
   s('luc', fmtBRL(r.lucroTotal));
 
+  // Badge semafórico: margem real vs. margem desejada do item (só apresentação).
+  const _badge = document.getElementById('mrgbadge_' + id);
+  if (_badge) {
+    const _desej = (parseFloat(document.getElementById('margem_' + id)?.value) || 0) / 100;
+    _badge.textContent = fmtPct(r.margemReal);
+    _badge.className = 'mrg-badge ' + (r.margemReal >= _desej ? 'ok' : 'low');
+  }
+
   // Sincronizar campo PV USD editável:
   //   • não sobrescreve se o usuário está digitando nele (activeElement)
   //   • não sobrescreve se pvManual[id]=true (usuário fixou o PV)
@@ -988,13 +1032,38 @@ function addItem() {
   itemAliq[id]  = defaultAliq();
   pvManual[id]  = false;
 
-  const div = document.createElement('div');
-  div.className = 'item-card';
-  div.id = 'item_' + id;
-  div.innerHTML = itemHTML(id);
-  document.getElementById('items-container').appendChild(div);
+  // Cada item é um <tbody> com 2 linhas (linha visível + linha-detalhe do acordeão).
+  // Acordeão nasce FECHADO; só o botão "+ Adicionar Item" (addItemUI) abre e foca.
+  const tb = document.createElement('tbody');
+  tb.id = 'item_' + id;
+  tb.innerHTML = itemHTML(id);
+  document.getElementById('items-table').appendChild(tb);
   calcAll();
   return id;
+}
+
+// Chamado pelo botão "+ Adicionar Item": cria o item, abre o acordeão e foca o Produto.
+function addItemUI() {
+  const id = addItem();
+  if (!id) return id;
+  abrirAcc(id);
+  document.getElementById('prod_' + id)?.focus();
+  return id;
+}
+
+function toggleAcc(id) {
+  const det = document.getElementById('det_' + id);
+  const ch  = document.getElementById('chev_' + id);
+  if (!det) return;
+  const abrir = (det.style.display === 'none' || !det.style.display);
+  det.style.display = abrir ? 'table-row' : 'none';
+  if (ch) ch.classList.toggle('open', abrir);
+}
+function abrirAcc(id) {
+  const det = document.getElementById('det_' + id);
+  const ch  = document.getElementById('chev_' + id);
+  if (det) det.style.display = 'table-row';
+  if (ch) ch.classList.add('open');
 }
 
 function removeItem(id) {
@@ -1012,101 +1081,88 @@ function removeItem(id) {
 
 function itemHTML(id) {
   return `
-  <div class="item-hd">
-    <h3>ITEM ${id}</h3>
-    <button class="btn-rm" onclick="removeItem(${id})">✕ Remover</button>
-  </div>
-  <div class="item-bd">
-    <div class="g4" style="margin-bottom:14px">
-      <div class="field" style="grid-column:span 2">
-        <label>Produto</label>
-        <div class="ac-wrap">
-          <input type="text" id="prod_${id}" placeholder="Digite para buscar produto..."
-                 oninput="filterAC(${id});updateCadastroUI(${id})" onkeydown="acKey(event,${id})" autocomplete="off">
-          <div class="ac-list" id="ac_${id}"></div>
+  <tr class="item-row" id="row_${id}">
+    <td class="cell-prod">
+      <div class="ac-wrap">
+        <input type="text" id="prod_${id}" placeholder="Buscar produto..."
+               oninput="filterAC(${id});updateCadastroUI(${id})" onkeydown="acKey(event,${id})" autocomplete="off">
+        <div class="ac-list" id="ac_${id}"></div>
+      </div>
+      <div class="prod-sub" id="prodsub_${id}"></div>
+      <div class="aliq-row" id="aliq_${id}"></div>
+      <div class="cad-cont" id="cadastro_${id}"></div>
+    </td>
+    <td class="num"><input type="number" id="qtd_${id}" value="1000" min="1" oninput="calcAll()"></td>
+    <td class="num"><input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()"></td>
+    <td class="num"><input type="number" id="pvusd_${id}" step="0.01" min="0" placeholder="0,00" class="bi" oninput="onPvUsdChange(${id})"></td>
+    <td class="calc" id="r_pvU_${id}">—</td>
+    <td class="num"><input type="number" id="margem_${id}" value="20" step="1" min="0" max="99" oninput="onMargemChange(${id})"><span class="mrg-badge" id="mrgbadge_${id}"></span></td>
+    <td class="calc" id="r_luc_${id}">—</td>
+    <td style="text-align:center;white-space:nowrap;padding-top:8px">
+      <button class="chev" id="chev_${id}" title="Expandir detalhamento" onclick="toggleAcc(${id})">▶</button>
+    </td>
+  </tr>
+  <tr class="item-det" id="det_${id}" style="display:none">
+    <td colspan="8">
+      <div class="det-edits">
+        <div class="field">
+          <label>NCM</label>
+          <input type="text" id="ncm_${id}" placeholder="0000.00.00" oninput="calcAll()">
         </div>
-        <div class="aliq-row" id="aliq_${id}"></div>
-        <div class="cad-cont" id="cadastro_${id}"></div>
-      </div>
-      <div class="field">
-        <label>NCM</label>
-        <input type="text" id="ncm_${id}" placeholder="0000.00.00" oninput="calcAll()">
-      </div>
-      <div class="field">
-        <label>Qtd. Containers</label>
-        <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
-      </div>
-    </div>
-    <div class="g5" style="margin-bottom:14px">
-      <div class="field">
-        <label>Qtd. de Unidades</label>
-        <input type="number" id="qtd_${id}" value="1000" min="1" oninput="calcAll()">
-      </div>
-      <div class="field">
-        <label>FOB Unitário (USD)</label>
-        <input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()">
-      </div>
-      <div class="field">
-        <label>PV em USD</label>
-        <input type="number" id="pvusd_${id}" step="0.01" min="0" placeholder="0,00"
-               class="bi" oninput="onPvUsdChange(${id})">
-        <span class="note">↕ edite: atualiza Margem automaticamente</span>
-      </div>
-      <div class="field">
-        <label>Frete Rodoviário (R$/container)</label>
-        <input type="number" id="frod_${id}" value="0" step="100" min="0" oninput="calcAll()">
-        <span class="note">×containers deste item</span>
-      </div>
-      <div class="field">
-        <label>Margem Desejada (%)</label>
-        <input type="number" id="margem_${id}" value="20" step="1" min="0" max="99"
-               oninput="onMargemChange(${id})">
-        <span class="note">↕ edite: atualiza PV USD automaticamente</span>
-      </div>
-    </div>
-
-    <div class="res-grid">
-      <div>
-        <div class="sec-div">Custos de Importação (totais do processo)</div>
-        <table class="rt">
-          <tr><td>CIF (R$)</td><td id="r_cif_${id}">—</td></tr>
-          <tr><td>II — Imposto de Importação</td><td id="r_ii_${id}">—</td></tr>
-          <tr><td>IPI</td><td id="r_ipi_${id}">—</td></tr>
-          <tr><td>PIS Importação</td><td id="r_piI_${id}">—</td></tr>
-          <tr><td>COFINS Importação</td><td id="r_coI_${id}">—</td></tr>
-          <tr><td>ICMS Importação (informativo)</td><td id="r_icI_${id}">—</td></tr>
-          <tr><td>Desembaraço + Log. (fixos rateados)</td><td id="r_cfR_${id}">—</td></tr>
-          <tr><td>Frete Rodoviário</td><td id="r_frd_${id}">—</td></tr>
-          <tr><td style="color:#2e7d32">(-) Créditos IPI/PIS/COFINS</td><td id="r_crd_${id}" style="color:#2e7d32">—</td></tr>
-          <tr class="tot"><td>Custo Total Importação</td><td id="r_ciT_${id}">—</td></tr>
-          <tr><td>Custo Unitário Importação</td><td id="r_ciU_${id}">—</td></tr>
-        </table>
-      </div>
-      <div>
-        <div class="sec-div">Custos de Venda (totais) &amp; Resultado</div>
-        <table class="rt">
-          <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
-          <tr><td>IPI Venda (por fora)</td><td id="r_ipV_${id}">—</td></tr>
-          <tr><td>PIS Venda (1,65% × BC)</td><td id="r_piV_${id}">—</td></tr>
-          <tr><td>COFINS Venda (7,60% × BC)</td><td id="r_coV_${id}">—</td></tr>
-          <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
-          <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
-          <tr><td>IR (15%)</td><td id="r_ir_${id}">—</td></tr>
-          <tr><td>IR Adicional (10%)</td><td id="r_ira_${id}">—</td></tr>
-        </table>
-        <div class="icms-badge">
-          ICMS destacado em NF: <strong>4%</strong> &nbsp;|&nbsp; ICMS efetivo recolhido (Reg. Espec. MG): <strong>1,5%</strong>
+        <div class="field">
+          <label>Qtd. Containers</label>
+          <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
         </div>
-        <table class="rt" style="margin-top:10px">
-          <tr class="hl"><td>Preço de Venda Unitário (R$)</td><td id="r_pvU_${id}">—</td></tr>
-          <tr><td>Preço de Venda Unitário (USD)</td><td id="r_pvD_${id}">—</td></tr>
-          <tr class="hl"><td>Preço de Venda Total (R$)</td><td id="r_pvT_${id}">—</td></tr>
-          <tr><td>Margem Real</td><td id="r_mrg_${id}">—</td></tr>
-          <tr class="hl"><td>Lucro Líquido Total (R$)</td><td id="r_luc_${id}">—</td></tr>
-        </table>
+        <div class="field">
+          <label>Frete Rodoviário (R$/container)</label>
+          <input type="number" id="frod_${id}" value="0" step="100" min="0" oninput="calcAll()">
+          <span class="note">×containers deste item</span>
+        </div>
+        <div class="field" style="justify-content:flex-end">
+          <button class="btn-rm" onclick="removeItem(${id})">✕ Remover item</button>
+        </div>
       </div>
-    </div>
-  </div>`;
+      <div class="res-grid">
+        <div>
+          <div class="sec-div">Custos de Importação (totais do processo)</div>
+          <table class="rt">
+            <tr><td>CIF (R$)</td><td id="r_cif_${id}">—</td></tr>
+            <tr><td>II — Imposto de Importação</td><td id="r_ii_${id}">—</td></tr>
+            <tr><td>IPI</td><td id="r_ipi_${id}">—</td></tr>
+            <tr><td>PIS Importação</td><td id="r_piI_${id}">—</td></tr>
+            <tr><td>COFINS Importação</td><td id="r_coI_${id}">—</td></tr>
+            <tr><td>ICMS Importação (informativo)</td><td id="r_icI_${id}">—</td></tr>
+            <tr><td>Desembaraço + Log. (fixos rateados)</td><td id="r_cfR_${id}">—</td></tr>
+            <tr><td>Frete Rodoviário</td><td id="r_frd_${id}">—</td></tr>
+            <tr><td style="color:#2e7d32">(-) Créditos IPI/PIS/COFINS</td><td id="r_crd_${id}" style="color:#2e7d32">—</td></tr>
+            <tr class="tot"><td>Custo Total Importação</td><td id="r_ciT_${id}">—</td></tr>
+            <tr><td>Custo Unitário Importação</td><td id="r_ciU_${id}">—</td></tr>
+          </table>
+        </div>
+        <div>
+          <div class="sec-div">Custos de Venda (totais) &amp; Resultado</div>
+          <table class="rt">
+            <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
+            <tr><td>IPI Venda (por fora)</td><td id="r_ipV_${id}">—</td></tr>
+            <tr><td>PIS Venda (1,65% × BC)</td><td id="r_piV_${id}">—</td></tr>
+            <tr><td>COFINS Venda (7,60% × BC)</td><td id="r_coV_${id}">—</td></tr>
+            <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
+            <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
+            <tr><td>IR (15%)</td><td id="r_ir_${id}">—</td></tr>
+            <tr><td>IR Adicional (10%)</td><td id="r_ira_${id}">—</td></tr>
+          </table>
+          <div class="icms-badge">
+            ICMS destacado em NF: <strong>4%</strong> &nbsp;|&nbsp; ICMS efetivo recolhido (Reg. Espec. MG): <strong>1,5%</strong>
+          </div>
+          <table class="rt" style="margin-top:10px">
+            <tr><td>Preço de Venda Unitário (USD)</td><td id="r_pvD_${id}">—</td></tr>
+            <tr class="hl"><td>Preço de Venda Total (R$)</td><td id="r_pvT_${id}">—</td></tr>
+            <tr><td>Margem Real</td><td id="r_mrg_${id}">—</td></tr>
+          </table>
+        </div>
+      </div>
+    </td>
+  </tr>`;
 }
 
 // ============================================================
