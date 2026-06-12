@@ -2,5 +2,7 @@ pilar-config.json
 .DS_Store
 node_modules/
 dados.json
+produtos_genericos.json
+catalogo_omie.json
 logs/
 config/fornecedores-bloqueados.json

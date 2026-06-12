@@ -312,10 +312,10 @@ let itemCounter = 0;
 let itemAliq  = {};   // alíquotas por item id
 let pvManual  = {};   // true quando o usuário digitou PV USD manualmente
 
-fetch('produtos.json')
+fetch('/api/produtos-genericos')
   .then(r => r.json())
-  .then(data => { produtos = data; init(); })
-  .catch(() => alert('Erro ao carregar produtos.json.\nAbra via servidor local (ex: python3 -m http.server 8080) ou use Live Server no VS Code.'));
+  .then(data => { produtos = Array.isArray(data) ? data : []; init(); })
+  .catch(() => alert('Erro ao carregar o catálogo de produtos genéricos.\nAbra o painel pelo servidor (painel-proxy) — a calculadora usa /api/produtos-genericos.'));
 
 function init() {
   document.getElementById('data_proc').value = today();
@@ -1417,7 +1417,8 @@ function cadSalvar(id) {
     pis_importacao: pct('pis_importacao'), cofins_importacao: pct('cofins_importacao'),
     pis_venda: 0.0165, cofins_venda: 0.076,
     icms_intra: pct('icms_intra'), icms_inter: pct('icms_inter'),
-    reg_espec_intra: 0.14, reg_espec_inter: pct('reg_espec_inter')
+    reg_espec_intra: 0.14, reg_espec_inter: pct('reg_espec_inter'),
+    origem: 'generico'
   };
   const mf = parseFloat(document.getElementById('cad_menorfob_' + id)?.value);
   const vf = parseFloat(document.getElementById('cad_valorfob_' + id)?.value);
@@ -1428,8 +1429,8 @@ function cadSalvar(id) {
   if (idx >= 0) produtos[idx] = { ...produtos[idx], ...novo };
   else produtos.push(novo);
 
-  localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
-  fetch('/api/produtos', {
+  localStorage.setItem('pilar_produtos_genericos', JSON.stringify(produtos));
+  fetch('/api/produtos-genericos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(produtos)

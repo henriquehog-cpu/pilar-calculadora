@@ -9,7 +9,10 @@ const PORT        = process.env.PORT || 8080;
 const ROOT        = __dirname;
 const CONFIG_FILE = path.join(ROOT, 'pilar-config.json');
 const DADOS_FILE  = path.join(ROOT, 'dados.json');
-const PROD_FILE   = path.join(ROOT, 'produtos.json');
+const PROD_FILE   = path.join(ROOT, 'produtos.json');            // legado: só fonte da migração
+const PROD_GEN_FILE      = path.join(ROOT, 'produtos_genericos.json');      // runtime (gitignorado)
+const PROD_GEN_SEED      = path.join(ROOT, 'produtos_genericos.seed.json'); // semente versionada
+const CATALOGO_OMIE_FILE = path.join(ROOT, 'catalogo_omie.json');          // runtime (gitignorado)
 const BANCODI_FILE = path.join(ROOT, 'banco_di.json');
 const OMIE_HOST   = 'app.omie.com.br';
 const OMIE_PATH   = '/api/v1/geral/produtos/';
@@ -67,16 +70,38 @@ function lerDados() {
 }
 // Escrita atômica: grava num temporário no MESMO diretório e renomeia por cima.
 // rename() é atômico no mesmo filesystem — um crash no meio da escrita não deixa
-// o dados.json truncado/corrompido (o arquivo antigo permanece intacto até o rename).
-function salvarDados(d) {
-  const tmp = DADOS_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(d, null, 2));
-  fs.renameSync(tmp, DADOS_FILE);
+// o arquivo truncado/corrompido (o arquivo antigo permanece intacto até o rename).
+function gravarAtomico(file, obj) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, file);
 }
+function salvarDados(d) { gravarAtomico(DADOS_FILE, d); }
 if (!fs.existsSync(DADOS_FILE)) {
   try { fs.writeFileSync(DADOS_FILE, JSON.stringify({ pilar_processos: [] }, null, 2)); }
   catch {}
 }
+
+// ── Migração única dos catálogos (idempotente: nunca sobrescreve runtime) ─────
+// produtos_genericos.json: a partir do produtos.json atual (332, validados como
+// genéricos) marcando origem:"generico"; se ausente, usa a semente versionada.
+// catalogo_omie.json: nasce vazio até o primeiro sync Omie.
+function migrarCatalogos() {
+  try {
+    if (!fs.existsSync(PROD_GEN_FILE)) {
+      let base = lerJson(PROD_FILE, null);
+      if (!Array.isArray(base)) base = lerJson(PROD_GEN_SEED, []);
+      const comFlag = (Array.isArray(base) ? base : []).map(p => ({ ...p, origem: 'generico' }));
+      gravarAtomico(PROD_GEN_FILE, comFlag);
+      console.log('Migração: produtos_genericos.json criado com', comFlag.length, 'itens (origem=generico).');
+    }
+    if (!fs.existsSync(CATALOGO_OMIE_FILE)) {
+      gravarAtomico(CATALOGO_OMIE_FILE, []);
+      console.log('Migração: catalogo_omie.json criado vazio.');
+    }
+  } catch (e) { console.error('Falha na migração de catálogos:', e.message); }
+}
+migrarCatalogos();
 
 function json(res, code, obj) {
   cors(res);
@@ -245,19 +270,44 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ── GET /api/produtos ──────────────────────────────────────────────────────
-  if (req.method === 'GET' && url === '/api/produtos') {
-    json(res, 200, lerJson(PROD_FILE, []));
+  // ── GET /api/produtos-genericos ────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/produtos-genericos') {
+    json(res, 200, lerJson(PROD_GEN_FILE, []));
+    return;
+  }
+  // ── POST /api/produtos-genericos ───────────────────────────────────────────
+  if (req.method === 'POST' && url === '/api/produtos-genericos') {
+    readBody(req).then(data => {
+      if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de produtos' });
+      gravarAtomico(PROD_GEN_FILE, data);
+      json(res, 200, { ok: true, total: data.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
   }
 
-  // ── POST /api/produtos ─────────────────────────────────────────────────────
-  if (req.method === 'POST' && url === '/api/produtos') {
+  // ── GET /api/catalogo-omie ─────────────────────────────────────────────────
+  if (req.method === 'GET' && url === '/api/catalogo-omie') {
+    json(res, 200, lerJson(CATALOGO_OMIE_FILE, []));
+    return;
+  }
+  // ── POST /api/catalogo-omie ────────────────────────────────────────────────
+  if (req.method === 'POST' && url === '/api/catalogo-omie') {
     readBody(req).then(data => {
-      fs.writeFileSync(PROD_FILE, JSON.stringify(data, null, 2));
-      json(res, 200, { ok: true });
+      if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de produtos' });
+      gravarAtomico(CATALOGO_OMIE_FILE, data);
+      json(res, 200, { ok: true, total: data.length });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
+  }
+
+  // ── GET /api/produtos ──── alias READ-ONLY do catálogo genérico (compat) ────
+  if (req.method === 'GET' && url === '/api/produtos') {
+    json(res, 200, lerJson(PROD_GEN_FILE, []));
+    return;
+  }
+  // ── POST /api/produtos ──── descontinuado (use as rotas separadas) ──────────
+  if (req.method === 'POST' && url === '/api/produtos') {
+    return json(res, 410, { erro: 'Rota descontinuada. Use /api/produtos-genericos ou /api/catalogo-omie.' });
   }
 
   // ── GET /api/processos ─────────────────────────────────────────────────────

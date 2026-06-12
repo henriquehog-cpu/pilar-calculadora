@@ -550,7 +550,7 @@ function navTo(link, renderFn) {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function renderDashboard() {
   const processos  = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  const produtos   = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]');
+  const produtos   = JSON.parse(localStorage.getItem('pilar_catalogo_omie')  || '[]');
   const ativos     = processos.filter(p => p.status === 'ativo');
   const fobTotal   = processos.reduce((s, p) => s + (p.resultado?.fob_total_usd || 0), 0);
   const itensTotal = processos.reduce((s, p) => s + (p.itens?.length || 0), 0);
@@ -921,7 +921,7 @@ async function testarOmie() {
 }
 
 function exportarDados() {
-  const keys = ['pilar_processos', 'pilar_produtos', 'pilar_config', 'pilar_descricoes_di'];
+  const keys = ['pilar_processos', 'pilar_produtos_genericos', 'pilar_catalogo_omie', 'pilar_config', 'pilar_descricoes_di'];
   const backup = {};
   keys.forEach(k => {
     const v = localStorage.getItem(k);
@@ -951,20 +951,31 @@ function importarDados() {
       catch { toast('Arquivo inválido — não é um JSON válido.'); return; }
 
       const processos = Array.isArray(data.pilar_processos) ? data.pilar_processos : [];
-      const produtos  = Array.isArray(data.pilar_produtos)  ? data.pilar_produtos  : [];
+      // Catálogos: aceita as chaves novas; backup legado (pilar_produtos) entra como genérico.
+      const genericos = Array.isArray(data.pilar_produtos_genericos) ? data.pilar_produtos_genericos
+                       : Array.isArray(data.pilar_produtos)          ? data.pilar_produtos : null;
+      const omie      = Array.isArray(data.pilar_catalogo_omie)      ? data.pilar_catalogo_omie : null;
 
       const existProc = JSON.parse(localStorage.getItem('pilar_processos') || '[]').length;
-      const existProd = JSON.parse(localStorage.getItem('pilar_produtos')  || '[]').length;
+      const existGen  = JSON.parse(localStorage.getItem('pilar_produtos_genericos') || '[]').length;
+      const existOmie = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]').length;
 
-      if ((existProc > 0 || existProd > 0) &&
-          !confirm(`Isso irá sobrescrever ${existProc} processo(s) e ${existProd} produto(s) existentes. Continuar?`)) return;
+      if ((existProc > 0 || existGen > 0 || existOmie > 0) &&
+          !confirm(`Isso irá sobrescrever ${existProc} processo(s), ${existGen} genérico(s) e ${existOmie} item(ns) Omie existentes. Continuar?`)) return;
 
-      if (data.pilar_processos    !== undefined) localStorage.setItem('pilar_processos',    JSON.stringify(processos));
-      if (data.pilar_produtos     !== undefined) localStorage.setItem('pilar_produtos',     JSON.stringify(produtos));
-      if (data.pilar_config       !== undefined) localStorage.setItem('pilar_config',       JSON.stringify(data.pilar_config));
+      if (data.pilar_processos     !== undefined) localStorage.setItem('pilar_processos',     JSON.stringify(processos));
+      if (data.pilar_config        !== undefined) localStorage.setItem('pilar_config',        JSON.stringify(data.pilar_config));
       if (data.pilar_descricoes_di !== undefined) localStorage.setItem('pilar_descricoes_di', JSON.stringify(data.pilar_descricoes_di));
+      if (genericos !== null) {
+        localStorage.setItem('pilar_produtos_genericos', JSON.stringify(genericos));
+        fetch('/api/produtos-genericos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(genericos) }).catch(() => {});
+      }
+      if (omie !== null) {
+        localStorage.setItem('pilar_catalogo_omie', JSON.stringify(omie));
+        fetch('/api/catalogo-omie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(omie) }).catch(() => {});
+      }
 
-      toast(`✓ Importados: ${processos.length} processo${processos.length !== 1 ? 's' : ''} e ${produtos.length} produto${produtos.length !== 1 ? 's' : ''}`);
+      toast(`✓ Importados: ${processos.length} processo(s)` + (genericos !== null ? `, ${genericos.length} genérico(s)` : '') + (omie !== null ? `, ${omie.length} Omie` : ''));
     };
     reader.readAsText(file);
   };
@@ -1011,10 +1022,11 @@ async function sincronizarOmie(onProgresso) {
     pis_venda:        0.0165,
     cofins_venda:     0.076,
     icms_intra:       0.14,  icms_inter:       0.04,
-    reg_espec_intra:  0.14,  reg_espec_inter:  0.015
+    reg_espec_intra:  0.14,  reg_espec_inter:  0.015,
+    origem:           'omie'
   }));
-  localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
-  fetch('/api/produtos', {
+  localStorage.setItem('pilar_catalogo_omie', JSON.stringify(produtos));
+  fetch('/api/catalogo-omie', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(produtos)
@@ -1078,7 +1090,7 @@ function renderNovoProcesso(proc, seed) {
   _npSeed   = (!proc && seed) ? seed : null;   // semente só vale na criação nova
   const base = proc || _npSeed || null;        // fonte de pré-preenchimento
   _itens    = base?.itens?.length ? base.itens.map(it => ({...it})) : [newItemRow()];
-  { const _pls = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  { const _pls = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
     _itens.forEach(it => { it.is_novo = !!(it.codigo) && !_pls.some(p => (p.codigo||'').toLowerCase() === (it.codigo||'').toLowerCase()); }); }
 
   const g    = base?.dados_gerais || {};
@@ -1311,7 +1323,7 @@ const NPM_FAMILIAS = [
 ];
 
 function npmFamiliasDosCatalogo() {
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const set = new Set(NPM_FAMILIAS);
   prods.forEach(p => {
     const pref = (p.codigo || '').slice(0, 4).toUpperCase();
@@ -1321,7 +1333,7 @@ function npmFamiliasDosCatalogo() {
 }
 
 function npmNCMdaFamilia(familia) {
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const ncms = {};
   prods.filter(p => (p.codigo || '').startsWith(familia + '.'))
        .forEach(p => { if (p.ncm) ncms[p.ncm] = (ncms[p.ncm] || 0) + 1; });
@@ -1329,7 +1341,7 @@ function npmNCMdaFamilia(familia) {
 }
 
 function npmInferirDaFamilia(familia) {
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const dafam = prods.filter(p => (p.codigo || '').startsWith(familia + '.'));
   if (!dafam.length) return null;
 
@@ -1368,7 +1380,7 @@ function npmProximoSequencial(familia, tamanho, gramatura) {
   let max = 0;
   const extrairSeq = cod => parseInt(((cod || '').split('.')[3] || '0'), 10);
 
-  JSON.parse(localStorage.getItem('pilar_produtos') || '[]').forEach(p => {
+  JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]').forEach(p => {
     if ((p.codigo || '').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
   });
 
@@ -1595,7 +1607,7 @@ function npItemChange(i, campo, valor) {
     npRecalcular();
   } else if (campo === 'codigo') {
     _itens[i].codigo = valor;
-    const _pls = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+    const _pls = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
     _itens[i].is_novo = !!valor && !_pls.some(p => (p.codigo||'').toLowerCase() === valor.toLowerCase());
     const numCell = document.getElementById(`np-num-${i}`);
     if (numCell) {
@@ -1984,15 +1996,15 @@ function npSalvarAliquotas(i) {
   const ncm = (it.ncm || '').trim();
   let count = 0;
   if (ncm) {
-    const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+    const produtos = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
     produtos.forEach(p => {
       if ((p.ncm || '').trim() === ncm) {
         Object.assign(p, novas);
         count++;
       }
     });
-    localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
-    fetch('/api/produtos', {
+    localStorage.setItem('pilar_catalogo_omie', JSON.stringify(produtos));
+    fetch('/api/catalogo-omie', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(produtos)
@@ -4988,7 +5000,7 @@ function buildOrSheet(proc, obs, pt) {
 }
 
 function atualizarFOBProdutos(itens) {
-  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const produtos = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   let count = 0;
   itens.forEach(it => {
     if (!it.codigo || !(it.fob_unit_usd > 0)) return;
@@ -4999,14 +5011,21 @@ function atualizarFOBProdutos(itens) {
       produtos[idx].menor_fob = it.fob_unit_usd;
     count++;
   });
-  if (count > 0) localStorage.setItem('pilar_produtos', JSON.stringify(produtos));
+  if (count > 0) {
+    localStorage.setItem('pilar_catalogo_omie', JSON.stringify(produtos));
+    fetch('/api/catalogo-omie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(produtos)
+    }).catch(() => {});
+  }
   return count;
 }
 
 // ── Catálogo Omie ─────────────────────────────────────────────────────────
 
 function renderCatalogo() {
-  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const produtos = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const familias = [...new Set(produtos.map(p => p.familia).filter(Boolean))].sort();
   const famOpts  = familias.map(f => `<option value="${esc(f)}">${f}</option>`).join('');
 
@@ -5071,7 +5090,7 @@ function catRenderGrade(lista) {
 function catFiltrar() {
   const q      = (document.getElementById('cat-q')?.value || '').toLowerCase();
   const fam    = document.getElementById('cat-familia')?.value || '';
-  const todos  = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const todos  = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const lista  = todos.filter(p =>
     (!fam || p.familia === fam) &&
     (!q   || p.produto.toLowerCase().includes(q) || (p.codigo||'').toLowerCase().includes(q) || (p.ncm||'').includes(q))
@@ -5169,13 +5188,19 @@ function catProcessarXlsx(input) {
         pis_venda: 0.0165, cofins_venda: 0.076,
         icms_intra: 0.14, icms_inter: 0.04,
         reg_espec_intra: 0.14, reg_espec_inter: 0.015,
-        menor_fob: null
+        menor_fob: null,
+        origem: 'omie'
       });
     }
 
     if (!novos.length) { toast('Nenhum produto válido encontrado no arquivo.'); return; }
 
-    localStorage.setItem('pilar_produtos', JSON.stringify(novos));
+    localStorage.setItem('pilar_catalogo_omie', JSON.stringify(novos));
+    fetch('/api/catalogo-omie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(novos)
+    }).catch(() => {});
     toast(`✓ ${novos.length} produto${novos.length !== 1 ? 's' : ''} importado${novos.length !== 1 ? 's' : ''}`);
     renderCatalogo();
   };
@@ -5193,7 +5218,7 @@ function npAcFilter(i, campo, q) {
   if (!q || q.length < 1) { ac.style.display = 'none'; return; }
 
   const ql      = q.toLowerCase();
-  const todos   = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const todos   = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const matches = todos.filter(p =>
     campo === 'cod'
       ? (p.codigo || '').toLowerCase().includes(ql)
@@ -5340,7 +5365,10 @@ function npExportarOmie() {
 }
 
 // ── Persistência servidor ──────────────────────────────────────────────────
-const _PILAR_KEYS = new Set(['pilar_processos','pilar_config','pilar_descricoes_di','pilar_produtos']);
+// Catálogos (pilar_produtos_genericos / pilar_catalogo_omie) NÃO entram aqui:
+// têm rotas próprias (/api/produtos-genericos, /api/catalogo-omie) e são salvos
+// explicitamente por quem os edita. Auto-sync via /api/dados é só para estes:
+const _PILAR_KEYS = new Set(['pilar_processos','pilar_config','pilar_descricoes_di']);
 let _syncTimer = null;
 
 // Hook transparente: qualquer localStorage.setItem numa chave PILAR dispara sync
@@ -5371,20 +5399,15 @@ function _apiSincronizar() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(dados)
   }).catch(() => {});
-
-  const produtos = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
-  fetch('/api/produtos', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(produtos)
-  }).catch(() => {});
+  // Catálogos não vão por aqui (rotas próprias) — ver _PILAR_KEYS acima.
 }
 
 async function _apiCarregar() {
   try {
-    const [rDados, rProd] = await Promise.all([
+    const [rDados, rGen, rOmie] = await Promise.all([
       fetch('/api/dados'),
-      fetch('/api/produtos')
+      fetch('/api/produtos-genericos'),
+      fetch('/api/catalogo-omie')
     ]);
     if (rDados.ok) {
       const d = await rDados.json();
@@ -5395,10 +5418,13 @@ async function _apiCarregar() {
       if (d.pilar_descricoes_di && typeof d.pilar_descricoes_di === 'object')
         _lsSetOrig('pilar_descricoes_di', JSON.stringify(d.pilar_descricoes_di));
     }
-    if (rProd.ok) {
-      const p = await rProd.json();
-      console.log('produtos carregados do servidor:', Array.isArray(p) ? p.length : 'não é array');
-      if (Array.isArray(p) && p.length > 0) _lsSetOrig('pilar_produtos', JSON.stringify(p));
+    if (rGen.ok) {
+      const g = await rGen.json();
+      if (Array.isArray(g)) _lsSetOrig('pilar_produtos_genericos', JSON.stringify(g));
+    }
+    if (rOmie.ok) {
+      const o = await rOmie.json();
+      if (Array.isArray(o)) _lsSetOrig('pilar_catalogo_omie', JSON.stringify(o));
     }
   } catch { /* offline — usa cache localStorage */ }
 }
@@ -5424,7 +5450,7 @@ async function _apiCarregarProcessos() {
 //  (b) senão, faz lookup no banco (pilar_produtos) pelo prefixo do código.
 function _migrarAliquotasProcessos(procs) {
   let mudou = false;
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos') || '[]');
+  const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
   const fromFields = src => ({
     ii:                src.ii                || 0,
     ipi:               src.ipi               || 0,
@@ -5711,12 +5737,13 @@ function _ndParseItens(texto) {
   })).filter(it => it.produto || (it.quantidade !== '' && it.quantidade != null));
 }
 
-// Nomes do catálogo Omie para a extração casar com os nomes EXATOS.
+// Nomes do catálogo de produtos GENÉRICOS para a extração casar com os nomes
+// EXATOS (a extração alimenta a Calculadora, que usa os genéricos por nome).
 // Se a lista completa for grande demais para o prompt, manda só candidatos
 // (pré-filtrados por palavras-chave da conversa).
 function _ndCatalogoParaExtracao() {
   let nomes = [];
-  try { nomes = [...new Set(JSON.parse(localStorage.getItem('pilar_produtos') || '[]').map(p => p && p.produto).filter(Boolean))]; }
+  try { nomes = [...new Set(JSON.parse(localStorage.getItem('pilar_produtos_genericos') || '[]').map(p => p && p.produto).filter(Boolean))]; }
   catch { nomes = []; }
   const LIMITE = 16000; // ~chars; abaixo disso mandamos tudo
   if (nomes.join('\n').length <= LIMITE) return nomes;
@@ -5736,7 +5763,7 @@ async function _ndExtrairItens() {
   const nomes = _ndCatalogoParaExtracao();
   const catalogo = nomes.length ? nomes.map(n => '- ' + n).join('\n') : '(catálogo vazio)';
   const transcript = _ndMensagens.map(m => (m.role === 'user' ? 'USUÁRIO' : 'ASSISTENTE') + ': ' + m.content).join('\n');
-  const msg = 'CATÁLOGO OMIE (nomes exatos disponíveis):\n' + catalogo + '\n\n=== CONVERSA ===\n' + transcript;
+  const msg = 'CATÁLOGO DE PRODUTOS (nomes exatos disponíveis):\n' + catalogo + '\n\n=== CONVERSA ===\n' + transcript;
   try {
     const data = await iaChat('extracao', [{ role: 'user', content: msg }]);
     _ndItensEdit = _ndParseItens(data.texto);
@@ -6555,7 +6582,7 @@ function wizParsearTexto() {
 
     // Busca NCM: primeiro por código com prefixo, depois por campo familia
     const ncm = npmNCMdaFamilia(familia) || (()=>{
-      const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
+      const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie')||'[]');
       const ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.ncm);
       return ref?.ncm || '';
     })();
@@ -6597,7 +6624,7 @@ function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
   const extrairSeq = cod => parseInt(((cod||'').split('.')[3]||'0'),10);
   let max = 0;
   // Verifica produtos já cadastrados
-  JSON.parse(localStorage.getItem('pilar_produtos')||'[]').forEach(p => {
+  JSON.parse(localStorage.getItem('pilar_catalogo_omie')||'[]').forEach(p => {
     if ((p.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
   });
   // Verifica itens já gerados nessa sessão do wizard (para não repetir)
@@ -6609,7 +6636,7 @@ function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
 }
 
 function wizAliquotasDaFamilia(familia) {
-  const prods = JSON.parse(localStorage.getItem('pilar_produtos')||'[]');
+  const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie')||'[]');
   // Busca produto do banco com alíquota plana preenchida (p.ii > 0)
   let ref = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.ii > 0);
   if (!ref) ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.ii > 0);
