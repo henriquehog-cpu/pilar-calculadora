@@ -81,6 +81,12 @@ Arquivos alterados, a nova linha de deploy (para as Notas), e qualquer chamador 
 
 ---
 
+## Pendências conhecidas
+
+- **Alíquotas manuais em itens Omie não sobrevivem ao sync.** `sincronizarOmie()` é **replace**: recria `catalogo_omie.json` do zero com `ii` vindo do `perc_ii` do Omie (frequentemente 0) e as demais alíquotas zeradas/padrão. Logo, alíquotas salvas manualmente num item Omie via `npSalvarAliquotas` (e propagadas por NCM no catálogo Omie) **são perdidas no próximo sync**. Isso é esperado pelo desenho (Omie é a fonte da verdade do seu arquivo), mas significa que curadoria de alíquota feita no lado Omie é volátil.
+  - **Mitigação já em vigor (jun/2026):** o wizard resolve alíquotas por **NCM com fallback** (`_aliquotasPorNCM`): item Omie sem alíquota herda de outro item de mesmo NCM ou do **catálogo genérico** pelo NCM. Assim, mesmo após um sync zerar o lado Omie, o item ainda calcula corretamente desde que o NCM exista com alíquotas no catálogo genérico.
+  - **Solução definitiva:** tabela NCM→alíquotas centralizada (ver melhorias futuras) — a alíquota deixa de ser propriedade do item e passa a ser do NCM, eliminando a volatilidade.
+
 ## Melhorias futuras (não implementar agora)
 
 - **Tabela de NCM centralizada (NCM → alíquotas) como fonte única**, substituindo as alíquotas armazenadas por item. Alíquota é propriedade do **NCM**, não do produto; hoje cada item carrega sua cópia das alíquotas. Centralizar elimina divergência e o `npSalvarAliquotas`/migração de alíquotas por item.

@@ -1616,6 +1616,13 @@ function npItemChange(i, campo, valor) {
         : String(i + 1);
     }
     npUpdateExportBtn();
+  } else if (campo === 'ncm') {
+    _itens[i].ncm = valor;
+    // Se o item ainda não tem alíquota, tenta herdar do NCM digitado (só leitura).
+    if ((_itens[i].aliquotas?.ii || 0) === 0) {
+      const fb = _aliquotasPorNCM(valor);
+      if (fb) { _itens[i].aliquotas = fb; npRenderItens(); npRecalcular(); }
+    }
   } else {
     _itens[i][campo] = valor;
   }
@@ -5246,6 +5253,32 @@ function npAcFilter(i, campo, q) {
   console.log('ac display após show:', ac.style.display, '| ac no DOM:', document.contains(ac));
 }
 
+// Resolve alíquotas por NCM (SOMENTE LEITURA — nenhuma escrita cruzada entre
+// catálogos). Compara NCM por dígitos (ignora pontuação: "5407.53.00" = "54075300").
+// Ordem: 1º catálogo Omie (outro item de mesmo NCM com ii>0); 2º catálogo genérico.
+// Retorna objeto de alíquotas normalizado ou null se nenhum NCM casar com ii>0.
+function _aliquotasPorNCM(ncm) {
+  const alvo = String(ncm || '').replace(/\D/g, '');
+  if (!alvo) return null;
+  const norm = s => String(s || '').replace(/\D/g, '');
+  const acha = arr => (Array.isArray(arr) ? arr : []).find(p => norm(p.ncm) === alvo && (p.ii || 0) > 0);
+  let ref = acha(JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]'));
+  if (!ref) ref = acha(JSON.parse(localStorage.getItem('pilar_produtos_genericos') || '[]'));
+  if (!ref) return null;
+  return {
+    ii:                ref.ii                || 0,
+    ipi:               ref.ipi               || 0,
+    pis_importacao:    ref.pis_importacao    || 0.021,
+    cofins_importacao: ref.cofins_importacao || 0.1065,
+    pis_venda:         ref.pis_venda         || 0.0165,
+    cofins_venda:      ref.cofins_venda      || 0.076,
+    icms_intra:        ref.icms_intra        || 0.14,
+    icms_inter:        ref.icms_inter        || 0.04,
+    reg_espec_intra:   ref.reg_espec_intra   || 0.14,
+    reg_espec_inter:   ref.reg_espec_inter   || 0.015
+  };
+}
+
 function npAcSelect(i, acId, idx) {
   const p = (_acMatches[acId] || [])[idx];
   console.log('selecionado', i, p);
@@ -5270,6 +5303,12 @@ function npAcSelect(i, acId, idx) {
     reg_espec_intra:   p.reg_espec_intra   || 0.14,
     reg_espec_inter:   p.reg_espec_inter   || 0.015
   };
+  // Fallback por NCM: itens Omie vêm do sync sem alíquotas (ii=0). Herda do NCM
+  // (outro item Omie de mesmo NCM, depois catálogo genérico). Só leitura.
+  if ((_itens[i].aliquotas.ii || 0) === 0) {
+    const fb = _aliquotasPorNCM(_itens[i].ncm);
+    if (fb) _itens[i].aliquotas = fb;
+  }
   console.log('_itens[i] após preenchimento:', JSON.stringify(_itens[i]));
 
   document.querySelectorAll('.ac-list').forEach(el => el.style.display = 'none');
@@ -6586,7 +6625,7 @@ function wizParsearTexto() {
       const ref = prods.find(p => (p.familia||'').toUpperCase() === familia.toUpperCase() && p.ncm);
       return ref?.ncm || '';
     })();
-    const al  = wizAliquotasDaFamilia(familia);
+    const al  = wizAliquotasDaFamilia(familia, ncm);
 
     _wizItens.push({
       id:           Date.now() + Math.random(),
@@ -6635,7 +6674,7 @@ function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
   return `${prefixo}${String(max + 1).padStart(4,'0')}`;
 }
 
-function wizAliquotasDaFamilia(familia) {
+function wizAliquotasDaFamilia(familia, ncm) {
   const prods = JSON.parse(localStorage.getItem('pilar_catalogo_omie')||'[]');
   // Busca produto do banco com alíquota plana preenchida (p.ii > 0)
   let ref = prods.find(p => (p.codigo||'').startsWith(familia+'.') && p.ii > 0);
@@ -6652,6 +6691,9 @@ function wizAliquotasDaFamilia(familia) {
     reg_espec_intra:   ref.reg_espec_intra   || 0.14,
     reg_espec_inter:   ref.reg_espec_inter   || 0.015
   };
+  // Fallback por NCM (Omie de mesmo NCM, depois catálogo genérico) antes do chute.
+  const porNcm = _aliquotasPorNCM(ncm);
+  if (porNcm) return porNcm;
   return {
     ii:0.162, ipi:0, pis_importacao:0.021, cofins_importacao:0.1065,
     pis_venda:0.0165, cofins_venda:0.076,
