@@ -65,8 +65,13 @@ function lerDados() {
   if (!Array.isArray(d.pilar_simulacoes)) d.pilar_simulacoes = [];
   return d;
 }
+// Escrita atômica: grava num temporário no MESMO diretório e renomeia por cima.
+// rename() é atômico no mesmo filesystem — um crash no meio da escrita não deixa
+// o dados.json truncado/corrompido (o arquivo antigo permanece intacto até o rename).
 function salvarDados(d) {
-  fs.writeFileSync(DADOS_FILE, JSON.stringify(d, null, 2));
+  const tmp = DADOS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(d, null, 2));
+  fs.renameSync(tmp, DADOS_FILE);
 }
 if (!fs.existsSync(DADOS_FILE)) {
   try { fs.writeFileSync(DADOS_FILE, JSON.stringify({ pilar_processos: [] }, null, 2)); }

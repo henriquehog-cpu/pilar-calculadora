@@ -5360,7 +5360,11 @@ function _apiSincronizar() {
     pilar_descricoes_di: JSON.parse(localStorage.getItem('pilar_descricoes_di') || '{}'),
     // pilar_demandas vai junto: o POST /api/dados sobrescreve o arquivo inteiro,
     // então omiti-lo apagaria as demandas já gravadas via /api/demandas.
-    pilar_demandas:      JSON.parse(localStorage.getItem('pilar_demandas')      || '[]')
+    pilar_demandas:      JSON.parse(localStorage.getItem('pilar_demandas')      || '[]'),
+    // pilar_simulacoes idem: o POST /api/dados sobrescreve o arquivo inteiro,
+    // então omiti-lo apagaria as simulações gravadas via /api/simulacoes (Calculadora).
+    // O cache local é populado por _apiCarregarSimulacoes() no init e no pageshow.
+    pilar_simulacoes:    JSON.parse(localStorage.getItem('pilar_simulacoes')    || '[]')
   };
   fetch('/api/dados', {
     method: 'POST',
@@ -5491,6 +5495,19 @@ function _apiSalvarDemandas(arr) {
 function _demandas() {
   try { return JSON.parse(localStorage.getItem('pilar_demandas') || '[]'); }
   catch { return []; }
+}
+
+// ── Simulações: o painel não as edita, mas precisa do cache para NÃO apagá-las ─
+// no POST /api/dados (overwrite do arquivo inteiro). Mesmo padrão das demandas:
+// lê do servidor e atualiza o cache via _lsSetOrig (sem disparar o hook de sync).
+async function _apiCarregarSimulacoes() {
+  try {
+    const r = await fetch('/api/simulacoes');
+    if (r.ok) {
+      const arr = await r.json();
+      if (Array.isArray(arr)) _lsSetOrig('pilar_simulacoes', JSON.stringify(arr));
+    }
+  } catch { /* offline — usa cache localStorage */ }
 }
 
 // ── IA: helper compartilhado (Nova Demanda + Proposta) ───────────────────────
@@ -6225,13 +6242,19 @@ document.addEventListener('keydown', e => {
   await _apiCarregar();
   await _apiCarregarProcessos();
   await _apiCarregarDemandas();
+  await _apiCarregarSimulacoes();   // popula o cache antes de qualquer sync (protege as simulações)
   window.addEventListener('hashchange', aplicarHash); // voltar/avançar + links diretos
   // Ao voltar da Calculadora (inclusive via bfcache), recarrega demandas para
-  // refletir status "calculada"/PV gravados pela Calculadora no servidor.
+  // refletir status "calculada"/PV gravados pela Calculadora no servidor; e
+  // recarrega simulações para manter o cache fresco (senão o próximo sync do
+  // painel poderia sobrescrever no servidor um sim mais novo criado na Calculadora).
   window.addEventListener('pageshow', e => {
-    if (e.persisted) _apiCarregarDemandas().then(() => {
-      if ((location.hash || '').includes('nova-demanda')) ndRenderLista();
-    });
+    if (e.persisted) {
+      _apiCarregarSimulacoes();
+      _apiCarregarDemandas().then(() => {
+        if ((location.hash || '').includes('nova-demanda')) ndRenderLista();
+      });
+    }
   });
   _despacharHash();                                   // renderiza conforme o hash inicial
 })();
