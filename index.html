@@ -91,9 +91,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ac-item:hover,.ac-item.act{background:var(--cinza-light)}
 .ac-ncm{font-size:11px;color:var(--cinza-med);margin-left:8px}
 /* aliquotas mini-display */
-.aliq-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.aliq-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.aliq-row{display:flex;flex-wrap:wrap;gap:6px}
 .aliq-tag{background:var(--cinza-light);border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:11px;color:var(--cinza-med)}
 .aliq-tag b{color:var(--cinza)}
+/* estado recolhido: botão "Editar alíquotas" como chip, na linha dos badges */
+.btn-aliq-edit{background:#E0F7FA;border:1px solid var(--turquesa);color:var(--turquesa-dark);border-radius:3px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.6}
+.btn-aliq-edit:hover{background:#B2EBF2}
+/* expandido: o quadro azul ocupa a própria linha (largura cheia, abaixo dos badges) */
+.cad-cont:has(.cad-box){flex-basis:100%}
 /* cadastro de produto no banco */
 .btn-cad{margin-top:8px;background:none;border:1px dashed var(--turquesa);color:var(--turquesa-dark);border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
 .btn-cad:hover{background:#E0F7FA}
@@ -1126,8 +1132,10 @@ function itemHTML(id) {
         <div class="ac-list" id="ac_${id}"></div>
       </div>
       <div class="prod-sub" id="prodsub_${id}"></div>
-      <div class="aliq-row" id="aliq_${id}"></div>
-      <div class="cad-cont" id="cadastro_${id}"></div>
+      <div class="aliq-line">
+        <div class="aliq-row" id="aliq_${id}"></div>
+        <div class="cad-cont" id="cadastro_${id}"></div>
+      </div>
     </td>
     <td class="num"><input type="number" id="qtd_${id}" value="1000" min="1" oninput="calcAll()"></td>
     <td class="num"><input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()"></td>
@@ -1437,9 +1445,8 @@ function cadRender(id, mode) {
   // readonly = RECOLHIDO: mostra só o botão "Editar alíquotas". O resumo das
   // alíquotas continua nos badges (aliq_<id>), que ficam fora deste container.
   if (mode === 'readonly') {
-    cont.innerHTML = `<div class="cad-box"><div class="cad-ft">`
-      + `<button type="button" class="btn-cad-edit" onclick="cadEditar(${id})">✏ Editar alíquotas</button>`
-      + `</div></div>`;
+    // Recolhido: SEM quadro azul — só o botão (chip) ao lado dos badges.
+    cont.innerHTML = `<button type="button" class="btn-aliq-edit" onclick="cadEditar(${id})">✏ Editar alíquotas</button>`;
     return;
   }
   const ro     = mode === 'readonly';
