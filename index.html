@@ -239,6 +239,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <span class="note">×containers/item</span>
       </div>
       <div class="field">
+        <label>Frete Rodoviário (R$/container)</label>
+        <input type="number" id="c_frod" value="0" step="100" min="0" oninput="propagarFrod()">
+        <span class="note">×containers/item</span>
+      </div>
+      <div class="field">
         <label>Total Custos Fixos (R$)</label>
         <input id="total_cf" class="ro" readonly>
       </div>
@@ -473,6 +478,17 @@ function applySimState(state) {
       }
     }
   });
+  // Frete rodoviário virou único no processo. Mostra o valor dos itens:
+  // todos iguais → esse valor; algum diferente (sim legado) → usa o do 1º item
+  // e propaga para todos (comportamento escolhido). getSimState segue salvando
+  // frod por item, então o formato salvo não muda.
+  const _frods = itemIds.map(id => parseFloat(document.getElementById('frod_' + id)?.value) || 0);
+  const _fUnico = _frods.length ? _frods[0] : 0;
+  const _cFrodEl = document.getElementById('c_frod');
+  if (_cFrodEl) _cFrodEl.value = _fUnico;
+  if (_frods.some(f => f !== _fUnico)) {
+    itemIds.forEach(id => { const el = document.getElementById('frod_' + id); if (el) el.value = _fUnico; });
+  }
   onFreteChange();
   calcAll();
 }
@@ -1043,8 +1059,24 @@ function addItem() {
   tb.id = 'item_' + id;
   tb.innerHTML = itemHTML(id);
   document.getElementById('items-table').appendChild(tb);
+  // Item novo herda o frete rodoviário único do processo (Custos Fixos).
+  const _cf = document.getElementById('c_frod')?.value;
+  if (_cf != null && _cf !== '') {
+    const _fe = document.getElementById('frod_' + id);
+    if (_fe) _fe.value = _cf;
+  }
   calcAll();
   return id;
+}
+
+// Frete rodoviário único: propaga o valor de c_frod para todos os frod_<id>.
+function propagarFrod() {
+  const v = document.getElementById('c_frod')?.value ?? '0';
+  itemIds.forEach(id => {
+    const el = document.getElementById('frod_' + id);
+    if (el) el.value = v;
+  });
+  calcAll();
 }
 
 // Chamado pelo botão "+ Adicionar Item": cria o item, abre o acordeão e foca o Produto.
@@ -1118,11 +1150,9 @@ function itemHTML(id) {
           <label>Qtd. Containers</label>
           <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
         </div>
-        <div class="field">
-          <label>Frete Rodoviário (R$/container)</label>
-          <input type="number" id="frod_${id}" value="0" step="100" min="0" oninput="calcAll()">
-          <span class="note">×containers deste item</span>
-        </div>
+        <!-- Frete rodoviário agora é único no processo (Custos Fixos). O input por
+             item permanece oculto, alimentando o motor; é propagado por propagarFrod(). -->
+        <input type="hidden" id="frod_${id}" value="0">
         <div class="field" style="justify-content:flex-end">
           <button class="btn-rm" onclick="removeItem(${id})">✕ Remover item</button>
         </div>
