@@ -465,7 +465,12 @@ function applySimState(state) {
     pvManual[id] = false;
     if (it.prod) {
       const match = produtos.find(p => p.produto === it.prod);
-      if (match) setAliq(id, match);
+      if (match) {
+        setAliq(id, match);
+        cadRender(id, 'readonly');   // quadro recolhido (badges + botão Editar)
+        const _c = document.getElementById('cadastro_' + id);
+        if (_c) _c.dataset.state = 'ro:' + (it.prod || '').trim();
+      }
     }
   });
   onFreteChange();
@@ -1387,10 +1392,26 @@ function cadEditar(id) {
   if (cont) cont.dataset.state = 'edit:' + name;
 }
 
+// Recolhe o quadro de volta — preserva itemAliq (eventual edição) e os badges;
+// marca 'ro:'+nome para o updateCadastroUI não re-sobrescrever as alíquotas.
+function cadFechar(id) {
+  cadRender(id, 'readonly');
+  const cont = document.getElementById('cadastro_' + id);
+  if (cont) cont.dataset.state = 'ro:' + (document.getElementById('prod_' + id)?.value || '').trim();
+}
+
 // mode: 'new' | 'readonly' | 'editcalc'
 function cadRender(id, mode) {
   const cont = document.getElementById('cadastro_' + id);
   if (!cont) return;
+  // readonly = RECOLHIDO: mostra só o botão "Editar alíquotas". O resumo das
+  // alíquotas continua nos badges (aliq_<id>), que ficam fora deste container.
+  if (mode === 'readonly') {
+    cont.innerHTML = `<div class="cad-box"><div class="cad-ft">`
+      + `<button type="button" class="btn-cad-edit" onclick="cadEditar(${id})">✏ Editar alíquotas</button>`
+      + `</div></div>`;
+    return;
+  }
   const ro     = mode === 'readonly';
   const isNew  = mode === 'new';
   const roAttr = ro ? 'readonly' : '';
@@ -1427,7 +1448,8 @@ function cadRender(id, mode) {
   } else if (ro) {
     footer = `<button type="button" class="btn-cad-edit" onclick="cadEditar(${id})">✏ Editar alíquotas</button>`;
   } else {
-    footer = `<span class="cad-note">Ajuste aplicado apenas neste cálculo (não salva no banco).</span>`;
+    footer = `<span class="cad-note">Ajuste aplicado apenas neste cálculo (não salva no banco).</span>`
+           + `<button type="button" class="btn-cad-edit" onclick="cadFechar(${id})">✕ Fechar alíquotas</button>`;
   }
 
   cont.innerHTML = `<div class="cad-box">
