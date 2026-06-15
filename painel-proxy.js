@@ -262,9 +262,35 @@ const server = http.createServer((req, res) => {
   }
 
   // ── POST /api/dados ────────────────────────────────────────────────────────
+  // BLINDADO (Fase 5, item 0) — antes sobrescrevia o dados.json INTEIRO, então
+  // quem esquecesse uma chave (pilar_simulacoes, pilar_demandas…) a apagava
+  // silenciosamente: a causa-raiz do R1. Agora faz MERGE DEFENSIVO:
+  //   • parte do dados.json atual (lerDados) e só substitui as chaves PRESENTES
+  //     no payload; chave AUSENTE no payload → a do disco é PRESERVADA;
+  //   • grava de forma ATÔMICA (.tmp + rename, via salvarDados);
+  //   • VALIDA a estrutura e rejeita payload malformado SEM tocar no arquivo.
+  // Assim, mesmo um chamador que esqueça uma chave (ex.: a Astrid, antes de ser
+  // reapontada para as rotas de merge) nunca mais apaga as demais fatias.
   if (req.method === 'POST' && url === '/api/dados') {
     readBody(req).then(data => {
-      fs.writeFileSync(DADOS_FILE, JSON.stringify(data, null, 2));
+      // Estrutura: precisa ser objeto simples (não array, null ou primitivo).
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return json(res, 400, { erro: 'Esperado objeto com as chaves do dados.json' });
+      }
+      // Tipos das chaves conhecidas, quando presentes (não corromper o store).
+      for (const k of ['pilar_processos', 'pilar_demandas', 'pilar_simulacoes']) {
+        if (k in data && !Array.isArray(data[k])) {
+          return json(res, 400, { erro: `${k} deve ser um array` });
+        }
+      }
+      for (const k of ['pilar_config', 'pilar_descricoes_di']) {
+        if (k in data && (typeof data[k] !== 'object' || data[k] === null || Array.isArray(data[k]))) {
+          return json(res, 400, { erro: `${k} deve ser um objeto` });
+        }
+      }
+      // Merge defensivo: base = disco; só as chaves enviadas sobrescrevem.
+      const merged = Object.assign({}, lerDados(), data);
+      salvarDados(merged);   // escrita atômica (.tmp + rename)
       json(res, 200, { ok: true });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
