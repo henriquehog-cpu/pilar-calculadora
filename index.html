@@ -146,6 +146,58 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .g2,.g3,.g4,.g5{grid-template-columns:1fr}
   .sum-grid{grid-template-columns:1fr 1fr}
 }
+/* ─────────────────────────────────────────────────────────────
+   MOBILE (≤768px): a tabela de itens vira CARTÕES empilhados.
+   100% apresentação — mesmos ids, mesmo motor, mesma lógica.
+   Desktop (>768px) usa a tabela aprovada, intocada.
+   ───────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  /* Cabeçalho e Custos Fixos: campos um abaixo do outro */
+  .g2,.g3,.g4,.g5{grid-template-columns:1fr}
+
+  /* Tabela → blocos. thead escondido (rótulos passam a vir por CSS). */
+  .items-tbl{border-collapse:separate;border-spacing:0;margin-bottom:14px}
+  .items-tbl thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  .items-tbl,.items-tbl tbody,.items-tbl tr,.items-tbl td{display:block;width:auto}
+
+  /* Cada item (tbody) = um cartão */
+  .items-tbl tbody{position:relative;border:1px solid var(--border);border-radius:8px;background:var(--white);box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:14px;padding:12px 14px 14px}
+
+  /* Linha visível vira grade de 2 colunas */
+  .item-row{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+  .item-row>td{padding:0;text-align:left;width:auto}
+
+  /* Produto: largura cheia no topo (deixa espaço p/ o chevron) */
+  .item-row>td.cell-prod{grid-column:1/-1;min-width:0;padding-right:42px}
+
+  /* Rótulos visíveis nos 6 campos de dados (sem tocar no markup) */
+  .item-row>td:nth-child(n+2)::before{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);margin-bottom:4px}
+  .item-row>td:nth-child(2)::before{content:"Qtd"}
+  .item-row>td:nth-child(3)::before{content:"FOB USD"}
+  .item-row>td:nth-child(4)::before{content:"PV USD"}
+  .item-row>td:nth-child(5)::before{content:"PV R$"}
+  .item-row>td:nth-child(6)::before{content:"Margem"}
+  .item-row>td:nth-child(7)::before{content:"Lucro R$"}
+
+  /* Editáveis touch-friendly (Qtd, FOB, PV USD, Margem) */
+  .item-row td.num{width:auto}
+  .item-row input{min-height:44px;font-size:15px;text-align:left}
+
+  /* Resultados (PV R$, Lucro R$): exibição, não editáveis */
+  .item-row>td.calc{padding-top:0;font-size:16px;min-height:24px}
+
+  /* Badge de margem (verde/âmbar) abaixo do input de Margem */
+  .item-row .mrg-badge{display:inline-block;margin-top:6px}
+
+  /* Chevron do acordeão: canto superior direito do cartão */
+  .item-row>td:last-child{position:absolute;top:8px;right:8px;padding:0;width:auto;text-align:center}
+  .item-row>td:last-child::before{content:none}
+
+  /* Acordeão aberto: toggleAcc/abrirAcc setam inline display:table-row;
+     no cartão isso vira bloco de largura cheia (sem tocar no JS). */
+  .items-tbl .item-det[style*="table-row"]{display:block!important}
+  .items-tbl .item-det>td{padding:12px 0 0;margin-top:12px;background:transparent;border-top:1px dashed var(--border)}
+}
 @media print{
   #calc-sec{display:none!important}
   #cotacao-sec{display:block!important}
