@@ -199,11 +199,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .items-tbl .item-det>td{padding:12px 0 0;margin-top:12px;background:transparent;border-top:1px dashed var(--border)}
 }
 @media print{
+  /* Zera a margem da página: é nela que o Safari/iOS desenha URL, data/hora
+     e "Página X de Y". Sem margem, o navegador não tem onde injetá-los. */
+  @page{margin:0}
   #calc-sec{display:none!important}
   #cotacao-sec{display:block!important}
   .no-print{display:none!important}
   .cot-ta{border:none;padding:0}
   body{background:#fff}
+  /* Com @page margin:0 o conteúdo encostaria na borda; recompõe o respiro
+     internamente (em mm) e remove sombra/margens próprias da tela. */
+  .cot-wrap{margin:0!important;max-width:none!important;box-shadow:none!important;padding:15mm!important}
 }
 </style>
 </head>
