@@ -384,17 +384,12 @@ const server = http.createServer((req, res) => {
   }
 
   // ── POST /api/processos ────────────────────────────────────────────────────
-  // Body: array completo de processos (ou { pilar_processos: [...] }).
+  // MERGE POR ID (default): atualiza/adiciona por id, nunca remove o omitido.
+  // Uniformiza com simulações/demandas — protege a criação de processos pela
+  // Astrid (payload parcial não apaga mais os demais). Mesmo helper, sem duplicar.
+  // ?modo=substituir = substituição total explícita. Deleção: DELETE /api/processos/:id.
   if (req.method === 'POST' && url === '/api/processos') {
-    readBody(req).then(body => {
-      const arr = Array.isArray(body) ? body
-                : (body && Array.isArray(body.pilar_processos) ? body.pilar_processos : null);
-      if (!arr) return json(res, 400, { erro: 'Esperado array de processos' });
-      const dados = lerDados();
-      dados.pilar_processos = arr;
-      salvarDados(dados);
-      json(res, 200, { ok: true, total: arr.length });
-    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    mergeFatiaPorId(req, res, 'pilar_processos', 'processos');
     return;
   }
 
