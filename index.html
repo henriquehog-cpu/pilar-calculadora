@@ -212,6 +212,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .cot-wrap{margin:0!important;max-width:none!important;box-shadow:none!important;padding:15mm!important}
 }
 </style>
+<!-- Geração de PDF da cotação client-side (fora do caminho de impressão do
+     navegador: não injeta URL/data/"Página X de Y"). Carregado via CDN. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.12.1/html2pdf.bundle.min.js" integrity="sha512-D25Z8/1q2z65ZpJ3NzY6XiPZfwjhbv34OTQHDIZd+KPK+uWCovGt+fMkSzW8ArzCMFUgZt6Cdu7qoXNuy6a2GA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
 
@@ -395,7 +398,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div id="cotacao-sec">
   <div class="cot-wrap" id="cot-content"></div>
   <div class="no-print" style="text-align:center;padding:20px;display:flex;justify-content:center;gap:12px">
-    <button class="btn btn-p" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+    <button class="btn btn-p" onclick="gerarPdfCotacao(this)">📄 Salvar PDF da Cotação</button>
+    <button class="btn btn-s" onclick="window.print()">🖨️ Imprimir (navegador)</button>
     <button class="btn btn-s" onclick="hideCotacao()">← Voltar à Calculadora</button>
   </div>
 </div>
@@ -1754,6 +1758,68 @@ function showCotacao() {
 function hideCotacao() {
   document.getElementById('calc-sec').style.display = 'block';
   document.getElementById('cotacao-sec').style.display = 'none';
+}
+
+// ============================================================
+// GERAÇÃO DE PDF (client-side, sem rodapé do navegador)
+// Não toca no motor de precificação nem no conteúdo: apenas lê o
+// .cot-wrap já renderizado por showCotacao() e o transforma em PDF.
+// ============================================================
+function gerarPdfCotacao(btn) {
+  const src = document.getElementById('cot-content');
+  if (!src) return;
+  if (typeof html2pdf === 'undefined') {
+    alert('Biblioteca de PDF não carregada. Verifique a conexão e tente novamente.');
+    return;
+  }
+
+  // Clona o container e converte os <textarea> (cujo texto digitado o
+  // html2canvas não captura) em <div> com o mesmo valor, preservando layout.
+  const clone = src.cloneNode(true);
+  const origTAs  = src.querySelectorAll('textarea');
+  const cloneTAs = clone.querySelectorAll('textarea');
+  cloneTAs.forEach((ta, i) => {
+    const div = document.createElement('div');
+    div.className = ta.className;
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.minHeight = ta.offsetHeight + 'px';
+    div.textContent = (origTAs[i] ? origTAs[i].value : ta.value) || '';
+    ta.parentNode.replaceChild(div, ta);
+  });
+
+  // Evita cortar tabelas/blocos no meio entre páginas.
+  clone.querySelectorAll('table, .cot-table, .cot-hdr, .cot-footer, tr')
+       .forEach(el => { el.style.pageBreakInside = 'avoid'; });
+
+  // Renderiza o clone fora da tela (sem alterar o que o usuário vê).
+  const holder = document.createElement('div');
+  holder.style.position = 'fixed';
+  holder.style.left = '-10000px';
+  holder.style.top = '0';
+  holder.style.width = src.offsetWidth + 'px';
+  clone.style.margin = '0';
+  clone.style.boxShadow = 'none';
+  holder.appendChild(clone);
+  document.body.appendChild(holder);
+
+  const nomeCliente = (document.getElementById('cliente')?.value || 'Cliente')
+    .trim().replace(/[\\/:*?"<>|]+/g, '-') || 'Cliente';
+
+  if (btn) { btn.disabled = true; btn.dataset.txt = btn.textContent; btn.textContent = '⏳ Gerando PDF...'; }
+
+  html2pdf().set({
+    margin: 10,
+    filename: `Cotação - ${nomeCliente}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak: { mode: ['css', 'legacy'] }
+  }).from(clone).save()
+    .catch(err => { console.error(err); alert('Falha ao gerar o PDF: ' + err.message); })
+    .finally(() => {
+      document.body.removeChild(holder);
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.txt || '📄 Salvar PDF da Cotação'; }
+    });
 }
 </script>
 </body>
