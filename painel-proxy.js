@@ -121,6 +121,47 @@ function readBody(req) {
   });
 }
 
+// Merge por ID de uma fatia-array do dados.json (pilar_simulacoes / pilar_demandas).
+// CORREÇÃO (pós-incidente): antes a rota fazia `dados[chave] = arr`, então uma lista
+// PARCIAL apagava as fatias omitidas (apagou 20 de 24 simulações). Agora:
+//   • DEFAULT = MERGE POR ID: atualiza itens de mesmo id, adiciona novos e NUNCA
+//     remove os que não vieram no payload. Cada item precisa ter `id`.
+//   • ?modo=substituir = substituição total EXPLÍCITA (única forma de encolher o
+//     array por POST). Deleção pontual continua só pelo DELETE /api/<fatia>/:id.
+//   • Escrita ATÔMICA (salvarDados → .tmp + rename). Payload malformado → 400 SEM
+//     tocar no arquivo (validação antes de qualquer escrita).
+function mergeFatiaPorId(req, res, chave, label) {
+  const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
+  readBody(req).then(body => {
+    const arr = Array.isArray(body) ? body
+              : (body && Array.isArray(body[chave]) ? body[chave]
+              : (body && typeof body === 'object' && !Array.isArray(body) && body.id != null ? [body] : null));
+    if (!arr) return json(res, 400, { erro: `Esperado array de ${label}, {${chave}:[...]} ou uma ${label} única com id` });
+    const dados = lerDados();
+    if (substituir) {
+      dados[chave] = arr;                       // escape hatch explícito
+      salvarDados(dados);
+      return json(res, 200, { ok: true, modo: 'substituir', total: arr.length });
+    }
+    // Merge por id: cada item precisa de id estável.
+    for (const item of arr) {
+      if (!item || typeof item !== 'object' || item.id == null || item.id === '') {
+        return json(res, 400, { erro: `Cada item de ${label} precisa de um id para o merge` });
+      }
+    }
+    const porId = new Map(dados[chave].map(x => [String(x.id), x]));
+    let atualizados = 0, adicionados = 0;
+    for (const item of arr) {
+      const k = String(item.id);
+      if (porId.has(k)) atualizados++; else adicionados++;
+      porId.set(k, item);                       // atualiza no lugar ou adiciona
+    }
+    dados[chave] = [...porId.values()];         // nenhum id omitido é removido
+    salvarDados(dados);
+    json(res, 200, { ok: true, modo: 'merge', total: dados[chave].length, atualizados, adicionados });
+  }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+}
+
 // ── IA: helpers ──────────────────────────────────────────────────────────────
 // Lê o system prompt do fluxo a partir de prompts/*.md (versionados, sem segredos).
 function lerPromptFluxo(fluxo) {
@@ -384,17 +425,10 @@ const server = http.createServer((req, res) => {
   }
 
   // ── POST /api/demandas ─────────────────────────────────────────────────────
-  // Body: array completo de demandas (ou { pilar_demandas: [...] }).
+  // MERGE POR ID (default): atualiza/adiciona por id, nunca remove o omitido.
+  // ?modo=substituir = substituição total explícita. Deleção: DELETE /api/demandas/:id.
   if (req.method === 'POST' && url === '/api/demandas') {
-    readBody(req).then(body => {
-      const arr = Array.isArray(body) ? body
-                : (body && Array.isArray(body.pilar_demandas) ? body.pilar_demandas : null);
-      if (!arr) return json(res, 400, { erro: 'Esperado array de demandas' });
-      const dados = lerDados();
-      dados.pilar_demandas = arr;
-      salvarDados(dados);
-      json(res, 200, { ok: true, total: arr.length });
-    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    mergeFatiaPorId(req, res, 'pilar_demandas', 'demandas');
     return;
   }
 
@@ -416,17 +450,11 @@ const server = http.createServer((req, res) => {
   }
 
   // ── POST /api/simulacoes ───────────────────────────────────────────────────
-  // Body: array completo de simulações (ou { pilar_simulacoes: [...] }).
+  // MERGE POR ID (default): atualiza/adiciona por id, nunca remove o omitido.
+  // Corrige o overwrite que apagou 20 de 24 simulações ao receber lista parcial.
+  // ?modo=substituir = substituição total explícita. Deleção: DELETE /api/simulacoes/:id.
   if (req.method === 'POST' && url === '/api/simulacoes') {
-    readBody(req).then(body => {
-      const arr = Array.isArray(body) ? body
-                : (body && Array.isArray(body.pilar_simulacoes) ? body.pilar_simulacoes : null);
-      if (!arr) return json(res, 400, { erro: 'Esperado array de simulações' });
-      const dados = lerDados();
-      dados.pilar_simulacoes = arr;
-      salvarDados(dados);
-      json(res, 200, { ok: true, total: arr.length });
-    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    mergeFatiaPorId(req, res, 'pilar_simulacoes', 'simulações');
     return;
   }
 
