@@ -118,6 +118,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase}
 .badge-ativo{background:#E8F5E9;color:#2E7D32}
 .badge-concluido{background:#E3F2FD;color:#1565C0}
+.badge-finalizado{background:#ECEFF1;color:#546E7A}
 .badge-arquivado{background:var(--cinza-light);color:var(--cinza-med)}
 
 /* ── Textarea — mesmo padrão dos inputs ── */
@@ -1043,6 +1044,8 @@ function fmtN(v, d=2) { return (parseFloat(v)||0).toLocaleString('pt-BR',{minimu
 let _itens = [];
 let _npEditId = null; // id do processo em edição; null = criação nova
 let _npSeed   = null; // semente p/ Novo Processo vindo de uma demanda (cliente/itens/PVs/demandaId)
+let _npNfSeq  = 0;    // contador p/ ids únicos das linhas de Nota Fiscal (Etapa D)
+let _procFiltro = 'ativos'; // lista de processos: 'ativos' | 'finalizados' | 'todos' (padrão: ativos)
 
 function gerarNumero() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
@@ -1097,6 +1100,7 @@ function renderNovoProcesso(proc, seed) {
   const c    = base?.cambios      || {};
   const fr   = base?.frete        || {};
   const op   = base?.operacional  || {};
+  _npNfSeq   = (base?.notasFiscais || []).length; // ids das linhas novas começam após as existentes
   const inco = g.incoterm || 'FOB';
   const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
   const btnLabel  = proc ? 'Salvar Alterações' : 'Salvar Processo';
@@ -1106,7 +1110,12 @@ function renderNovoProcesso(proc, seed) {
     <div style="max-width:980px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
         <h2 style="font-size:18px;font-weight:700">${titulo}</h2>
-        <button class="btn btn-p" onclick="npSalvar()">${btnLabel}</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${proc ? (proc.status === 'finalizado'
+            ? `<button class="btn btn-s" onclick="procReabrir(${proc.id})">↩ Reabrir processo</button>`
+            : `<button class="btn btn-s" onclick="procFinalizar(${proc.id})">✓ Finalizar processo</button>`) : ''}
+          <button class="btn btn-p" onclick="npSalvar()">${btnLabel}</button>
+        </div>
       </div>
 
       <div class="card">
@@ -1212,6 +1221,15 @@ function renderNovoProcesso(proc, seed) {
                 ${op.onedrive_link ? `<a class="btn btn-s" href="${esc(op.onedrive_link)}" target="_blank" rel="noopener" style="white-space:nowrap">📁 Abrir</a>` : ''}
               </div>
             </div>
+          </div>
+
+          <div style="margin-top:16px;border-top:1px dashed var(--border);padding-top:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <div style="font-size:12px;font-weight:600;color:var(--cinza-med)">Notas Fiscais
+                <span style="font-weight:400">— opcional; adicione quantas precisar</span></div>
+              <button type="button" class="btn btn-s" onclick="npAddNota()">+ Adicionar nota</button>
+            </div>
+            <div id="np-notas-list">${(base?.notasFiscais || []).map((nf, i) => _npNotaRow(nf, i)).join('')}</div>
           </div>
         </div>
       </div>
@@ -1796,6 +1814,35 @@ function npLerOperacional() {
     },
   };
 }
+// ── Notas Fiscais (Etapa D) — lista dinâmica, 100% opcional ──────────────────
+const _NF_TIPOS = ['Entrada/Importação', 'Remessa Armazém', 'Retorno Armazém', 'Venda', 'Outros'];
+// Uma linha: dropdown de tipo + número + data (dd/mm/aaaa via _npData) + remover.
+function _npNotaRow(nf, uid) {
+  nf = nf || {};
+  const opts = _NF_TIPOS.map(t => `<option${nf.tipo === t ? ' selected' : ''}>${t}</option>`).join('');
+  return `<div class="np-nf-row" data-uid="${uid}" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+    <select class="np-nf-tipo" style="font-size:12px;padding:4px 6px"><option value="">— tipo —</option>${opts}</select>
+    <input class="np-nf-num" type="text" value="${esc(nf.numero)}" placeholder="Número" style="width:150px;font-size:12px;padding:4px 6px">
+    ${_npData('np-nf-data-' + uid, nf.data)}
+    <button type="button" class="btn btn-s" title="Remover nota" onclick="npRemNota(this)" style="padding:3px 9px;color:#c62828">✕</button>
+  </div>`;
+}
+function npAddNota() {
+  const list = document.getElementById('np-notas-list');
+  if (list) list.insertAdjacentHTML('beforeend', _npNotaRow({}, _npNfSeq++));
+}
+function npRemNota(btn) {
+  const row = btn.closest('.np-nf-row');
+  if (row) row.remove();
+}
+// Lê as notas do formulário; descarta linhas totalmente vazias. Nunca bloqueia o salvamento.
+function npLerNotas() {
+  return [...document.querySelectorAll('#np-notas-list .np-nf-row')].map(row => ({
+    tipo:   row.querySelector('.np-nf-tipo')?.value || '',
+    numero: (row.querySelector('.np-nf-num')?.value || '').trim(),
+    data:   _dataISO(row.querySelector('input[type="text"][id^="np-nf-data-"]')?.value || ''),
+  })).filter(nf => nf.tipo || nf.numero || nf.data);
+}
 // Badge "X/4" dos documentos principais recebidos do fornecedor (CI, PL, BL draft, BL original).
 // Neutro (cinza) enquanto não embarcou; só vira pendência (âmbar) após o embarque.
 function npDocsBadge(p) {
@@ -1840,7 +1887,8 @@ function npSalvar() {
       frete_rodoviario: parseFloat(val('np-frete-rodoviario')) || 0
     },
     itens: itensValidos,
-    operacional: npLerOperacional()   // Etapa D — 100% opcional, nunca bloqueia o salvamento
+    operacional: npLerOperacional(),  // Etapa D — 100% opcional, nunca bloqueia o salvamento
+    notasFiscais: npLerNotas()        // Etapa D — lista opcional [{tipo, numero, data}]
   };
 
   // Calcular e persistir resultado
@@ -2032,9 +2080,21 @@ function renderProcessos() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]')
     .slice().reverse(); // mais recentes primeiro
 
-  const linhas = todos.length === 0
-    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--cinza-med)">Nenhum processo cadastrado ainda.</td></tr>`
-    : todos.map(p => {
+  // Filtro de status: padrão 'ativos' (tudo que NÃO está finalizado; 'concluido'
+  // legado e sem-status continuam contando como ativo).
+  const filtrados = todos.filter(p => {
+    const st = p.status || 'ativo';
+    if (_procFiltro === 'ativos')      return st !== 'finalizado';
+    if (_procFiltro === 'finalizados') return st === 'finalizado';
+    return true; // 'todos'
+  });
+  const vazioMsg = _procFiltro === 'finalizados'
+    ? 'Nenhum processo finalizado.'
+    : (todos.length === 0 ? 'Nenhum processo cadastrado ainda.' : 'Nenhum processo ativo.');
+
+  const linhas = filtrados.length === 0
+    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--cinza-med)">${vazioMsg}</td></tr>`
+    : filtrados.map(p => {
         const g    = p.dados_gerais || {};
         const fob  = (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
         const data = g.data_pedido ? g.data_pedido.split('-').reverse().join('/') : '—';
@@ -2069,6 +2129,11 @@ function renderProcessos() {
         <button class="btn btn-s" onclick="wizAbrir()" style="white-space:nowrap">📋 Importar Montagem</button>
       </div>
     </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button class="btn ${_procFiltro==='ativos'?'btn-p':'btn-s'}" onclick="procSetFiltro('ativos')">Ativos</button>
+      <button class="btn ${_procFiltro==='finalizados'?'btn-p':'btn-s'}" onclick="procSetFiltro('finalizados')">Finalizados</button>
+      <button class="btn ${_procFiltro==='todos'?'btn-p':'btn-s'}" onclick="procSetFiltro('todos')">Todos</button>
+    </div>
     <div class="card" style="margin-bottom:0">
       <div style="overflow-x:auto">
         <table class="tbl">
@@ -2080,6 +2145,11 @@ function renderProcessos() {
         </table>
       </div>
     </div>`;
+}
+
+function procSetFiltro(f) {
+  _procFiltro = (f === 'finalizados' || f === 'todos') ? f : 'ativos';
+  renderProcessos();
 }
 
 function procEditar(id) {
@@ -2099,6 +2169,30 @@ function procDeletar(id) {
   fetch('/api/processos/' + encodeURIComponent(id), { method: 'DELETE' })
     .catch(() => {})
     .finally(() => _apiCarregarProcessos().then(renderProcessos));
+}
+
+// ── Finalizar / Reabrir processo (Camada 1) ─────────────────────────────────
+// Status 'finalizado' é valor NOVO; 'concluido' (legado) fica intocado.
+// Como dashboard (painel) e resumo-diário (Astrid) filtram status === 'ativo',
+// um processo finalizado some das contagens de ativos/atrasados automaticamente.
+function procFinalizar(id) {
+  if (!confirm('Finalizar este processo?\n\nEle sairá da lista de Processos Ativos (e do dashboard e do resumo diário da Astrid). Você poderá reabri-lo a qualquer momento.')) return;
+  _procSetStatus(id, 'finalizado');
+}
+function procReabrir(id) {
+  if (!confirm('Reabrir este processo? Ele volta para a lista de ativos.')) return;
+  _procSetStatus(id, 'ativo');
+}
+function _procSetStatus(id, status) {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const idx = todos.findIndex(p => p.id === id);
+  if (idx < 0) return;
+  todos[idx].status = status;
+  todos[idx].atualizado_em = new Date().toISOString();
+  localStorage.setItem('pilar_processos', JSON.stringify(todos)); // cache local
+  _apiSalvarProcessos(todos);                                     // MERGE /api/processos
+  toast(status === 'finalizado' ? '✓ Processo finalizado.' : '↩ Processo reaberto.');
+  renderNovoProcesso(todos[idx]); // re-renderiza o detalhe refletindo o novo status
 }
 
 // ── Precificação — Seção 4 ────────────────────────────────────────────────
@@ -3772,6 +3866,7 @@ function renderRelatorioGeral() {
               <select id="rel-status">
                 <option value="todos">Todos</option>
                 <option value="ativo">Ativo</option>
+                <option value="finalizado">Finalizado</option>
                 <option value="concluido">Concluído</option>
               </select>
             </div>
