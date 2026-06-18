@@ -2236,6 +2236,7 @@ function npCalcResultado(proc) {
   const comissaoPct = proc.custos_defaults?.comissao_pct || 0.015;
   const freteUSD    = proc.frete?.valor_usd  || 0;
   const containers  = proc.frete?.containers || 1;
+  const freteProcUSD = freteUSD * containers; // frete total do processo = por-container × nº containers (= calculadora)
   const d           = proc.custos_defaults   || {};
 
   const fobTotalUSD = itens.reduce((s, it) => s + it.quantidade * it.fob_unit_usd, 0);
@@ -2252,7 +2253,7 @@ function npCalcResultado(proc) {
     const prop = (item.quantidade * item.fob_unit_usd) / fobTotalUSD;
     const ctx  = {
       fobTotalUSD,
-      freteUSD:    freteUSD * prop,         // frete proporcional ao FOB do item
+      freteUSD:    freteProcUSD * prop,     // frete (por-container × containers) rateado por FOB do item
       taxaCalc, taxaCliente, comissaoPct,
       custos: {
         siscomex:    d.siscomex    || 192.79, // calc.js já rateia internamente por prop
@@ -2286,7 +2287,7 @@ function npCalcResultado(proc) {
     totCom       += r.com * r.qtd;
   });
 
-  const cifRS    = fobTotalUSD * taxaCalc + freteUSD * taxaCalc;
+  const cifRS    = fobTotalUSD * taxaCalc + freteProcUSD * taxaCalc;
   const totImpImp = totII + totPIS + totCOF + totIPI + totSisc + totAfrmm + totDifFrete;
   // Soma direta dos custos operacionais dos defaults (despachante fixo + por container)
   const custosOp = (d.despachante          || 2500) +
@@ -3077,7 +3078,7 @@ function fcBuildNumerario() {
   const cd   = calcProc.custos_defaults;
   const cont = calcProc.frete.containers || 1;
   const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
-  const freteBRL = (calcProc.frete.valor_usd || 0) * cambioDI;
+  const freteBRL = (calcProc.frete.valor_usd || 0) * cont * cambioDI; // frete total = por-container × containers
 
   // Data/status consolidados, preservados do que foi salvo
   const saved0 = (proc.numerario_despachante || [])[0] || {};
@@ -3576,7 +3577,7 @@ function rdNumerarioHTML(proc) {
 
   // CIF R$ = CIF USD × câmbio DI do processo
   const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
-  const freteUSD = calcProc.frete.valor_usd || 0;
+  const freteUSD = (calcProc.frete.valor_usd || 0) * cont; // frete total = por-container × containers
   const cifUSD   = (res.fob_total_usd || 0) + freteUSD;
   const cifBRL   = cifUSD * cambioDI;
   const freteBRL = freteUSD * cambioDI;
