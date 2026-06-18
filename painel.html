@@ -1254,13 +1254,16 @@ function renderNovoProcesso(proc, seed) {
               <input type="number" id="np-cambio-cliente" step="0.0001" min="0" placeholder="0,0000"
                 value="${c.cliente?.taxa || ''}" oninput="npRecalcular()"></div>
           </div>
-          <div class="g3" style="max-width:720px">
+          <div class="g4" style="max-width:960px">
             <div class="field"><label>Frete Internacional (USD)</label>
               <input type="number" id="np-frete" step="100" min="0" placeholder="0,00"
                 value="${fr.valor_usd || ''}" oninput="npRecalcular()"></div>
             <div class="field"><label>Número de Containers</label>
               <input type="number" id="np-containers" min="1" step="1"
                 value="${fr.containers || 1}" oninput="npRecalcular()"></div>
+            <div class="field"><label>Comissão de Vendas (%)</label>
+              <input type="number" id="np-comissao" step="0.1" min="0" max="100" placeholder="2"
+                value="${proc?.custos_defaults?.comissao_pct != null ? (proc.custos_defaults.comissao_pct * 100) : 2}" oninput="npRecalcular()"></div>
             <div class="field"><label>Frete Rodoviário (R$/container)</label>
               <input type="number" id="np-frete-rodoviario" step="100" min="0" placeholder="R$/container"
                 value="${proc?.custos_defaults?.frete_rodoviario || ''}" oninput="npRecalcular()"></div>
@@ -1884,6 +1887,7 @@ function npSalvar() {
       containers: parseInt(val('np-containers')) || 1
     },
     custos_defaults: {
+      comissao_pct:     (parseFloat(val('np-comissao')) || 0) / 100,
       frete_rodoviario: parseFloat(val('np-frete-rodoviario')) || 0
     },
     itens: itensValidos,
@@ -2214,11 +2218,11 @@ function npBuildProcessoAtual() {
     custos_defaults: {
       siscomex:           d.siscomex            || 192.79,
       despachante:        d.despachante          || 2500,
-      agente_cargas:      d.agente_cargas        || 1700,
-      armazenagem:        d.armazenagem          || 2500,
+      agente_cargas:      d.agente_cargas        || 1800,
+      armazenagem:        d.armazenagem          || 2600,
       capatazia:          d.capatazia            || 1010,
       operador_logistico: d.operador_logistico   || 1000,
-      comissao_pct:       d.comissao_pct         || 0.015,
+      comissao_pct:       (parseFloat(val('np-comissao')) || 0) / 100,
       frete_rodoviario:   parseFloat(val('np-frete-rodoviario')) || 0
     },
     itens: _itens.filter(it => (it.quantidade||0) > 0 && (it.fob_unit_usd||0) > 0)
@@ -2233,7 +2237,7 @@ function npCalcResultado(proc) {
   const taxaCliente = proc.cambios?.cliente?.taxa || taxaCalc;
   if (!taxaCalc) return null;
 
-  const comissaoPct = proc.custos_defaults?.comissao_pct || 0.015;
+  const comissaoPct = proc.custos_defaults?.comissao_pct ?? 0.02;
   const freteUSD    = proc.frete?.valor_usd  || 0;
   const containers  = proc.frete?.containers || 1;
   const freteProcUSD = freteUSD * containers; // frete total do processo = por-container × nº containers (= calculadora)
@@ -2243,8 +2247,8 @@ function npCalcResultado(proc) {
   if (!fobTotalUSD) return null;
 
   // Custos totais do processo (serão distribuídos proporcionalmente)
-  const agenteT    = (d.agente_cargas      || 1700) * containers;
-  const armazT     = (d.armazenagem        || 2500) * containers;
+  const agenteT    = (d.agente_cargas      || 1800) * containers;
+  const armazT     = (d.armazenagem        || 2600) * containers;
   const capatT     = (d.capatazia          || 1010) * containers;
   const oplogT     = (d.operador_logistico || 1000) * containers;
   const frodT      = (d.frete_rodoviario   || 0)   * containers;
@@ -2291,7 +2295,7 @@ function npCalcResultado(proc) {
   const totImpImp = totII + totPIS + totCOF + totIPI + totSisc + totAfrmm + totDifFrete;
   // Soma direta dos custos operacionais dos defaults (despachante fixo + por container)
   const custosOp = (d.despachante          || 2500) +
-                   (d.agente_cargas        || 1700) * containers +
+                   (d.agente_cargas        || 1800) * containers +
                    (d.armazenagem          || 2600) * containers +
                    (d.capatazia            || 1010) * containers +
                    (d.operador_logistico   || 1000) * containers +
@@ -3550,11 +3554,11 @@ function rdBuildProcParaCalc(proc) {
     custos_defaults: {
       siscomex:           pick(cd.siscomex,           d.siscomex,           192.79),
       despachante:        pick(cd.despachante,        d.despachante,        2500),
-      agente_cargas:      pick(cd.agente_cargas,      d.agente_cargas,      1700),
-      armazenagem:        pick(cd.armazenagem,        d.armazenagem,        2500),
+      agente_cargas:      pick(cd.agente_cargas,      d.agente_cargas,      1800),
+      armazenagem:        pick(cd.armazenagem,        d.armazenagem,        2600),
       capatazia:          pick(cd.capatazia,          d.capatazia,          1010),
       operador_logistico: pick(cd.operador_logistico, d.operador_logistico, 1000),
-      comissao_pct:       pick(cd.comissao_pct,       d.comissao_pct,       0.015),
+      comissao_pct:       pick(cd.comissao_pct,       d.comissao_pct,       0.02),
       frete_rodoviario:   pick(cd.frete_rodoviario,   null,                 0)
     },
     itens: (proc.itens || []).filter(it => (it.quantidade||0) > 0 && (it.fob_unit_usd||0) > 0)
@@ -6895,11 +6899,11 @@ function wizCriarProcesso() {
     custos_defaults: {
       siscomex:           d.siscomex            || 192.79,
       despachante:        d.despachante          || 2500,
-      agente_cargas:      d.agente_cargas        || 1700,
-      armazenagem:        d.armazenagem          || 2500,
+      agente_cargas:      d.agente_cargas        || 1800,
+      armazenagem:        d.armazenagem          || 2600,
       capatazia:          d.capatazia            || 1010,
       operador_logistico: d.operador_logistico   || 1000,
-      comissao_pct:       d.comissao_pct         || 0.015,
+      comissao_pct:       d.comissao_pct         ?? 0.02,
       frete_rodoviario:   0
     },
     itens: _wizItens
