@@ -1046,6 +1046,9 @@ let _npEditId = null; // id do processo em edição; null = criação nova
 let _npSeed   = null; // semente p/ Novo Processo vindo de uma demanda (cliente/itens/PVs/demandaId)
 let _npNfSeq  = 0;    // contador p/ ids únicos das linhas de Nota Fiscal (Etapa D)
 let _procFiltro = 'ativos'; // lista de processos: 'ativos' | 'finalizados' | 'todos' (padrão: ativos)
+// Ordenação client-side da lista (somente exibição; não persiste). coluna:null = ordem padrão
+// (mais recentes primeiro). Colunas: 'numero'|'cliente'|'fornecedor'|'data'|'status'|'docs'|'fob'.
+let _procSort = { coluna: null, dir: 'asc' };
 
 function gerarNumero() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
@@ -2096,9 +2099,46 @@ function renderProcessos() {
     ? 'Nenhum processo finalizado.'
     : (todos.length === 0 ? 'Nenhum processo cadastrado ainda.' : 'Nenhum processo ativo.');
 
-  const linhas = filtrados.length === 0
+  // Ordenação por coluna (só exibição). coluna:null mantém a ordem padrão (filtrados já vem
+  // do .reverse() acima = mais recentes primeiro). Ordena uma cópia para não mexer na base.
+  const fobDe   = p => (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
+  const docsDe  = p => { const r=(p.operacional||{}).recebidos||{};
+                         return ['commercial_invoice','packing_list','bl_draft','bl_original']
+                           .filter(k => r[k] && r[k].ok).length; };
+  const numDe   = p => { const m=/-0*(\d+)-/.exec(p.numero||''); return m ? parseInt(m[1],10) : NaN; };
+  const ordenados = (() => {
+    if (!_procSort.coluna) return filtrados;
+    const col = _procSort.coluna, mul = _procSort.dir === 'desc' ? -1 : 1;
+    // chave por coluna + flag de "vazio" (vazios sempre ao fim, independente da direção)
+    const chave = p => {
+      const g = p.dados_gerais || {};
+      switch (col) {
+        case 'numero':     { const n = numDe(p);  return { vazio: !isFinite(n), v: n }; }
+        case 'cliente':    return { vazio: !g.cliente,    v: g.cliente    || '' };
+        case 'fornecedor': return { vazio: !g.fornecedor, v: g.fornecedor || '' };
+        case 'data':       return { vazio: !g.data_pedido, v: g.data_pedido || '' };
+        case 'status':     return { vazio: false, v: p.status || 'ativo' };
+        case 'docs':       return { vazio: false, v: docsDe(p) };
+        case 'fob':        return { vazio: false, v: fobDe(p) };
+        default:           return { vazio: true, v: null };
+      }
+    };
+    const txtCols = { cliente:1, fornecedor:1, status:1 };
+    return filtrados.slice().sort((a, b) => {
+      const ka = chave(a), kb = chave(b);
+      if (ka.vazio !== kb.vazio) return ka.vazio ? 1 : -1; // vazio sempre ao fim
+      if (ka.vazio) return 0;
+      let cmp;
+      if (txtCols[col]) cmp = String(ka.v).localeCompare(String(kb.v), 'pt-BR', { sensitivity:'base' });
+      else if (col === 'data') cmp = String(ka.v).localeCompare(String(kb.v)); // ISO cru: lexicográfico = cronológico
+      else cmp = (ka.v - kb.v); // numérico (numero, docs, fob)
+      return cmp * mul;
+    });
+  })();
+
+  const linhas = ordenados.length === 0
     ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--cinza-med)">${vazioMsg}</td></tr>`
-    : filtrados.map(p => {
+    : ordenados.map(p => {
         const g    = p.dados_gerais || {};
         const fob  = (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
         const data = g.data_pedido ? g.data_pedido.split('-').reverse().join('/') : '—';
@@ -2142,8 +2182,8 @@ function renderProcessos() {
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr>
-            <th>Número</th><th>Cliente</th><th>Fornecedor</th>
-            <th>Data</th><th>Status</th><th style="text-align:center">Docs</th><th style="text-align:right">FOB Total USD</th><th></th>
+            ${thSort('numero','Número')}${thSort('cliente','Cliente')}${thSort('fornecedor','Fornecedor')}
+            ${thSort('data','Data')}${thSort('status','Status')}${thSort('docs','Docs','center')}${thSort('fob','FOB Total USD','right')}<th></th>
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
@@ -2154,6 +2194,22 @@ function renderProcessos() {
 function procSetFiltro(f) {
   _procFiltro = (f === 'finalizados' || f === 'todos') ? f : 'ativos';
   renderProcessos();
+}
+
+// Ordenação por clique no cabeçalho (só exibição). Mesma coluna alterna asc/desc;
+// coluna nova começa ascendente. Não persiste nada.
+function procSetSort(col) {
+  if (_procSort.coluna === col) _procSort.dir = (_procSort.dir === 'asc') ? 'desc' : 'asc';
+  else _procSort = { coluna: col, dir: 'asc' };
+  renderProcessos();
+}
+// Monta um <th> clicável com indicador ▲/▼ na coluna ativa.
+function thSort(col, label, align) {
+  const ativo = _procSort.coluna === col;
+  const seta  = ativo ? (_procSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const ali   = align ? `text-align:${align};` : '';
+  return `<th onclick="procSetSort('${col}')" style="${ali}cursor:pointer;user-select:none;white-space:nowrap"`
+       + ` title="Ordenar por ${label}">${label}${seta}</th>`;
 }
 
 function procEditar(id) {
