@@ -1284,12 +1284,33 @@ function filterAC(id) {
   if (!matches.length) { list.style.display = 'none'; return; }
 
   list.innerHTML = matches.map((p, i) =>
-    `<div class="ac-item" data-i="${i}" onmousedown="selectProd(${id},${produtos.indexOf(p)})">
-       ${p.produto}<span class="ac-ncm">${p.ncm}</span>
+    `<div class="ac-item" data-i="${i}" onmousedown="selectProd(${id},${produtos.indexOf(p)})"
+          style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.produto}<span class="ac-ncm">${p.ncm}</span></span>
+       <button type="button" title="Excluir do banco" tabindex="-1"
+         onmousedown="event.stopPropagation();event.preventDefault();deleteProdGenerico(${produtos.indexOf(p)},${id})"
+         style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#c62828;font-size:14px;padding:2px 4px">🗑</button>
      </div>`
   ).join('');
   acActive[id] = -1;
   list.style.display = 'block';
+}
+
+// Exclusão explícita de um produto do banco (único caminho que remove do catálogo).
+// Chamado pelo 🗑 do dropdown; pede confirmação e usa DELETE /api/produtos-genericos/:nome.
+function deleteProdGenerico(prodIdx, id) {
+  const p = produtos[prodIdx];
+  if (!p) return;
+  const nome = p.produto || '';
+  if (!confirm(`Excluir "${nome}" do banco de produtos?`)) return;
+  fetch('/api/produtos-genericos/' + encodeURIComponent(nome), { method: 'DELETE' })
+    .then(r => {
+      if (!r.ok) throw new Error();
+      produtos.splice(prodIdx, 1);
+      localStorage.setItem('pilar_produtos_genericos', JSON.stringify(produtos));
+      filterAC(id); // re-renderiza o dropdown sem o item removido
+    })
+    .catch(() => alert('Não foi possível excluir no servidor. Nada foi removido.'));
 }
 
 function acKey(e, id) {

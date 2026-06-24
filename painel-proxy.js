@@ -343,12 +343,57 @@ const server = http.createServer((req, res) => {
     return;
   }
   // ── POST /api/produtos-genericos ───────────────────────────────────────────
+  // MERGE POR NOME (default): upsert por nome de produto (normalizado), NUNCA
+  // remove o que foi omitido. Remoção só pelo DELETE /api/produtos-genericos/:nome.
+  // ?modo=substituir = replace total explícito, COM GUARDA: se a operação removeria
+  // >=20 produtos e não vier ?confirmar_reducao=true → 409 e arquivo intacto.
   if (req.method === 'POST' && url === '/api/produtos-genericos') {
+    const q          = new URLSearchParams(req.url.split('?')[1] || '');
+    const substituir = q.get('modo') === 'substituir';
+    const confirmarReducao = q.get('confirmar_reducao') === 'true';
+    const nomeKey = p => String((p && p.produto) || '').trim().toLowerCase();
     readBody(req).then(data => {
       if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de produtos' });
-      gravarAtomico(PROD_GEN_FILE, data);
-      json(res, 200, { ok: true, total: data.length });
+      const atual = lerJson(PROD_GEN_FILE, []);
+
+      if (substituir) {
+        // Replace total explícito — guarda contra encolhimento brusco.
+        const novosNomes = new Set(data.map(nomeKey));
+        const removeria  = atual.filter(p => !novosNomes.has(nomeKey(p))).length;
+        if (removeria >= 20 && !confirmarReducao) {
+          return json(res, 409, { erro: `Operação removeria ${removeria} produtos do catálogo. `
+            + `Para confirmar a substituição, reenvie com ?confirmar_reducao=true.`, removeria });
+        }
+        gravarAtomico(PROD_GEN_FILE, data);
+        return json(res, 200, { ok: true, modo: 'substituir', total: data.length, removidos: removeria });
+      }
+
+      // Merge por nome: cada produto precisa de nome para servir de chave.
+      for (const p of data) {
+        if (!nomeKey(p)) return json(res, 400, { erro: 'Cada produto precisa do campo "produto" (nome) para o merge' });
+      }
+      const porNome = new Map(atual.map(p => [nomeKey(p), p]));
+      let atualizados = 0, adicionados = 0;
+      for (const p of data) {
+        const k = nomeKey(p);
+        if (porNome.has(k)) atualizados++; else adicionados++;
+        porNome.set(k, p);                        // atualiza no lugar ou adiciona
+      }
+      const merged = [...porNome.values()];        // nenhum nome omitido é removido
+      gravarAtomico(PROD_GEN_FILE, merged);
+      json(res, 200, { ok: true, modo: 'merge', total: merged.length, atualizados, adicionados });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+  // ── DELETE /api/produtos-genericos/:nome ──── remoção explícita de 1 produto ──
+  // Único caminho que remove produtos. Casa por nome normalizado (trim+lowercase).
+  if (req.method === 'DELETE' && url.startsWith('/api/produtos-genericos/')) {
+    const nome  = decodeURIComponent(url.slice('/api/produtos-genericos/'.length)).trim().toLowerCase();
+    const atual = lerJson(PROD_GEN_FILE, []);
+    const antes = atual.length;
+    const restante = atual.filter(p => String((p && p.produto) || '').trim().toLowerCase() !== nome);
+    gravarAtomico(PROD_GEN_FILE, restante);
+    json(res, 200, { ok: true, removidos: antes - restante.length, total: restante.length });
     return;
   }
 
