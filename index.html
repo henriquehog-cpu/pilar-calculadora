@@ -257,6 +257,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <label>Comissão de Vendas (%)</label>
         <input type="number" id="comissao" value="0.5" step="0.1" min="0" max="100" oninput="calcAll()">
       </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="difal_sem_ie" onchange="difalToggle();calcAll()">
+          <span>Cliente sem inscrição estadual</span>
+        </label>
+        <div id="difal_interna_wrap" style="display:none;margin-top:6px">
+          <label style="font-size:11px;color:var(--cinza-med)">Alíquota interna destino (%)</label>
+          <input type="number" id="difal_interna" value="18" step="0.5" min="0" max="99" oninput="calcAll()">
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -380,6 +390,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="sum-item dk"><div class="val" id="s_lucro">—</div><div class="lbl">Lucro Total (R$)</div></div>
       <div class="sum-item dk"><div class="val" id="s_margem">—</div><div class="lbl">Margem Média</div></div>
       <div class="sum-item"><div class="val" id="s_custo_op">—</div><div class="lbl">Custo Total Operação (R$)</div></div>
+      <div class="sum-item" id="s_difal_box" style="display:none"><div class="val" id="s_difal">—</div><div class="lbl">DIFAL repassado (R$)</div></div>
     </div>
     <div style="text-align:center;margin-top:22px">
       <button class="btn btn-p" onclick="showCotacao()" style="font-size:15px;padding:12px 36px">
@@ -933,6 +944,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 16. PV — dois modos:
   //   a) pvManual[id]=true  → usuário fixou PV USD: usar diretamente, só calcular impostos
   //   b) pvManual[id]=false → usar loop iterativo: PV = custo_antes_nota / (1-margem)
+  const difalRate = difalRateAtual();   // 0 quando cliente tem IE (termo some, cálculo idêntico)
   let pv;
   if (pvManual[id]) {
     // Modo manual: PV fixado pelo campo "PV em USD"
@@ -948,7 +960,8 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
       const _pisV   = _bcV * aliq.pis_venda;
       const _cofV   = _bcV * aliq.cof_venda;
-      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] oplog já incluído no custoImpUnit
+      const _difal  = pv * difalRate;                        // DIFAL repassado (0 se cliente tem IE)
+      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV + _difal;  // [B] oplog já incluído no custoImpUnit
       const _o26    = pv - _o24;                             // lucro unitário antes IR
       const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
       const _ir     = Math.max(0, _o26) * 0.15;
@@ -968,9 +981,10 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const bcVenda = Math.max(0, pv - ipiV - icmsEf);
   const pisV    = bcVenda * aliq.pis_venda;
   const cofV    = bcVenda * aliq.cof_venda;
+  const difal   = pv * difalRate;                            // DIFAL repassado (espelho do loop; 0 se cliente tem IE)
 
   // [B] O24 = custo total unitário antes da nota (oplog já dentro do custoImpUnit)
-  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
+  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV + difal;
   // [C] O26 = lucro unitário antes IR; base = o26 × qtd (lucro bruto total do item)
   const o26       = pv - o24;
   const baseTotal = Math.max(0, o26 * qtd);
@@ -993,7 +1007,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     cfRat, frodTotal, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
-    com, ipiV, pisV, cofV, icmsEf, csll, ir, irAdic,
+    com, ipiV, pisV, cofV, icmsEf, csll, ir, irAdic, difal,
     custoOpTotal: custoOpUnitVal * qtd,
     lucroUnit, lucroTotal: lucroUnit * qtd,
     margemReal
@@ -1005,6 +1019,27 @@ function defaultAliq() {
            pis_venda:0.0065, cof_venda:0.03,
            icms_intra:0.18, icms_inter:0.04,
            reg_espec_intra:0.14, reg_espec_inter:0.015 };
+}
+
+// ============================================================
+// DIFAL — Diferencial de Alíquota (cliente sem inscrição estadual)
+// ============================================================
+// Repassado ao cliente (Opção A): termo LINEAR no PV, entra em _o24 igual à
+// comissão. difalRate = (interna_destino − interestadual)/(1 − interna_destino),
+// interestadual FIXA 4%. Sem o checkbox → 0 → resultado idêntico ao de hoje.
+function difalRateAtual() {
+  const chk = document.getElementById('difal_sem_ie');
+  if (!chk || !chk.checked) return 0;
+  const interna = (parseFloat(document.getElementById('difal_interna')?.value) || 0) / 100;
+  const inter   = 0.04;                              // interestadual fixa
+  if (!(1 - interna > 0)) return 0;                  // guarda contra div/0 (interna ≥ 100%)
+  return (interna - inter) / (1 - interna);
+}
+// Mostra/esconde o campo de alíquota interna conforme o checkbox.
+function difalToggle() {
+  const wrap = document.getElementById('difal_interna_wrap');
+  const chk  = document.getElementById('difal_sem_ie');
+  if (wrap) wrap.style.display = (chk && chk.checked) ? 'block' : 'none';
 }
 
 // ============================================================
@@ -1028,7 +1063,7 @@ function calcAll() {
     fobTotal += qtd * fob;
   });
 
-  let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0;
+  let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0, sDifal=0;
 
   itemIds.forEach(id => {
     const r = calcItem(id, fobTotal, freteT, dolar, comPct);
@@ -1041,6 +1076,7 @@ function calcAll() {
       sVenda    += r.pvTotal;
       sLucro    += r.lucroTotal;
       sCustoOp  += r.custoOpTotal;
+      sDifal    += (r.difal || 0) * r.qtd;
     }
   });
 
@@ -1053,6 +1089,12 @@ function calcAll() {
   setEl('s_lucro',    fmtBRL(sLucro));
   setEl('s_margem',   fmtPct(margemMedia));
   setEl('s_custo_op', fmtBRL(sCustoOp));
+  // Linha DIFAL: visível só quando aplicado (cliente sem IE).
+  const difalBox = document.getElementById('s_difal_box');
+  if (difalBox) {
+    difalBox.style.display = sDifal > 0 ? '' : 'none';
+    setEl('s_difal', fmtBRL(sDifal));
+  }
 }
 
 function renderItemResult(id, r) {
