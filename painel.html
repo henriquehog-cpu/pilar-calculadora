@@ -647,6 +647,19 @@ function dashDiasRel(d) {
   return               { txt: `há ${-diff}d`,    cor: '#C62828' };
 }
 
+// Alerta operacional (derivação pura, só exibição): embarcou MAS o pacote de
+// documentos ainda não foi enviado ao despachante.
+//   embarcou = BL emitido → operacional.bl.data preenchida OU recebidos.bl_original.ok
+//   pacote enviado = enviados.ci.ok && pl.ok && bl.ok (Henrique envia tudo de uma vez)
+function procDocsPendentesDespachante(proc) {
+  const op  = proc.operacional || {};
+  const embarcou = !!(op.bl && op.bl.data) || !!(op.recebidos && op.recebidos.bl_original && op.recebidos.bl_original.ok);
+  if (!embarcou) return false;
+  const env = op.enviados || {};
+  const enviouPacote = !!(env.ci && env.ci.ok) && !!(env.pl && env.pl.ok) && !!(env.bl && env.bl.ok);
+  return !enviouPacote;
+}
+
 function dashEventos(ativos) {
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const d30  = new Date(hoje); d30.setDate(hoje.getDate() + 30);
@@ -655,10 +668,11 @@ function dashEventos(ativos) {
 
   ativos.forEach(proc => {
     const g = proc.dados_gerais || {};
+    const alerta = procDocsPendentesDespachante(proc); // estado por-processo (só exibição)
     const add = (dataStr, icone, desc, valor, sinal) => {
       if (!dataStr) return;
       const d = new Date(dataStr + 'T12:00');
-      if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero, valor: valor || 0, sinal: sinal || null });
+      if (d >= d7a && d <= d30) ev.push({ d, icone, desc, numero: proc.numero, cliente: g.cliente || '', alerta, valor: valor || 0, sinal: sinal || null });
     };
     add(g.prev_embarque,        '🚢', 'Embarque');
     add(g.prev_chegada_porto,   '⚓', 'Chegada Porto');
@@ -692,13 +706,20 @@ function dashEventoHTML(e) {
   const destino = e.sinal
     ? `#/processo/${encodeURIComponent(e.numero)}/financeiro`
     : `#/processo/${encodeURIComponent(e.numero)}`;
+  const cliHTML = e.cliente
+    ? ` <span style="font-weight:400;color:var(--cinza-med)">— ${esc(e.cliente)}</span>`
+    : '';
+  const alertaHTML = e.alerta
+    ? `<span title="Embarcou (BL emitido) mas o pacote ainda não foi enviado ao despachante" style="flex-shrink:0;font-size:10px;font-weight:700;white-space:nowrap;background:#FFEBEE;color:#C62828;border:1px solid #EF9A9A;border-radius:4px;padding:2px 6px">⚠ Docs ao despachante</span>`
+    : '';
   return `
     <div onclick="location.hash='${destino}'" title="Abrir ${e.numero}"
          onmouseover="this.style.background='#F0FAFB'" onmouseout="this.style.background=''"
          style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light);cursor:pointer">
       <span style="font-size:15px;width:22px;text-align:center;flex-shrink:0">${e.icone}</span>
-      <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${e.numero}</span>
+      <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${e.numero}${cliHTML}</span>
       <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.desc}</span>
+      ${alertaHTML}
       ${valHTML}
       <span style="font-size:12px;color:var(--cinza-med);white-space:nowrap">${dataBR}</span>
       <span style="font-size:11px;font-weight:700;white-space:nowrap;min-width:52px;text-align:right;color:${rel.cor}">${rel.txt}</span>
@@ -766,9 +787,12 @@ function dashPipelineRow(proc) {
          + `data-data="${dataBR || '—'}" data-status="${st.t}" data-cor="${st.c}">${ic}</span>`;
   };
 
+  const alertaDocs = procDocsPendentesDespachante(proc)
+    ? `<div title="Embarcou (BL emitido) mas o pacote ainda não foi enviado ao despachante" style="display:inline-block;margin-top:3px;font-size:10px;font-weight:700;white-space:nowrap;background:#FFEBEE;color:#C62828;border:1px solid #EF9A9A;border-radius:4px;padding:2px 6px">⚠ Docs ao despachante</div>`
+    : '';
   return `<tr onclick="procEditar(${proc.id})" style="cursor:pointer" onmouseover="this.style.background='#F0FAFB'" onmouseout="this.style.background=''">
     <td style="font-weight:700">${proc.numero||'—'}</td>
-    <td>${g.cliente||'—'}</td>
+    <td>${g.cliente||'—'}${alertaDocs}</td>
     <td>
       <div style="display:flex;align-items:center;gap:2px">
         ${dot('pipe-done','✓','Pedido', g.data_pedido || (proc.criado_em ? proc.criado_em.slice(0,10) : ''))}
