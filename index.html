@@ -944,7 +944,6 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   // 16. PV — dois modos:
   //   a) pvManual[id]=true  → usuário fixou PV USD: usar diretamente, só calcular impostos
   //   b) pvManual[id]=false → usar loop iterativo: PV = custo_antes_nota / (1-margem)
-  const difalRate = difalRateAtual();   // 0 quando cliente tem IE (termo some, cálculo idêntico)
   let pv;
   if (pvManual[id]) {
     // Modo manual: PV fixado pelo campo "PV em USD"
@@ -960,8 +959,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _bcV    = Math.max(0, pv - _ipiV - _icmsEf);    // [A] BC = PV − IPI − icmsEf
       const _pisV   = _bcV * aliq.pis_venda;
       const _cofV   = _bcV * aliq.cof_venda;
-      const _difal  = pv * difalRate;                        // DIFAL repassado (0 se cliente tem IE)
-      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV + _difal;  // [B] oplog já incluído no custoImpUnit
+      const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] oplog já incluído no custoImpUnit
       const _o26    = pv - _o24;                             // lucro unitário antes IR
       const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
       const _ir     = Math.max(0, _o26) * 0.15;
@@ -981,10 +979,9 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const bcVenda = Math.max(0, pv - ipiV - icmsEf);
   const pisV    = bcVenda * aliq.pis_venda;
   const cofV    = bcVenda * aliq.cof_venda;
-  const difal   = pv * difalRate;                            // DIFAL repassado (espelho do loop; 0 se cliente tem IE)
 
   // [B] O24 = custo total unitário antes da nota (oplog já dentro do custoImpUnit)
-  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV + difal;
+  const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
   // [C] O26 = lucro unitário antes IR; base = o26 × qtd (lucro bruto total do item)
   const o26       = pv - o24;
   const baseTotal = Math.max(0, o26 * qtd);
@@ -1007,7 +1004,7 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
     cfRat, frodTotal, credTotal,
     custoImpTotal, custoImpUnit,
     pv, pvUSD: pv / dolar, pvTotal: pv * qtd,
-    com, ipiV, pisV, cofV, icmsEf, csll, ir, irAdic, difal,
+    com, ipiV, pisV, cofV, icmsEf, csll, ir, irAdic,
     custoOpTotal: custoOpUnitVal * qtd,
     lucroUnit, lucroTotal: lucroUnit * qtd,
     margemReal
@@ -1024,8 +1021,10 @@ function defaultAliq() {
 // ============================================================
 // DIFAL — Diferencial de Alíquota (cliente sem inscrição estadual)
 // ============================================================
-// Repassado ao cliente (Opção A): termo LINEAR no PV, entra em _o24 igual à
-// comissão. difalRate = (interna_destino − interestadual)/(1 − interna_destino),
+// Calculado UMA VEZ sobre o TOTAL da venda (em calcAll), NÃO por item nem dentro
+// do loop: descontado cheio do lucro agregado, sem escudo fiscal (não toca CSLL/IR)
+// e sem alterar o PV. difalRate = (interna_destino − interestadual)/(1 − interna_destino),
+// pois DIFAL = base×(interna−inter) e base = venda/(1−interna) ⇒ DIFAL = venda×difalRate.
 // interestadual FIXA 4%. Sem o checkbox → 0 → resultado idêntico ao de hoje.
 function difalRateAtual() {
   const chk = document.getElementById('difal_sem_ie');
@@ -1063,7 +1062,7 @@ function calcAll() {
     fobTotal += qtd * fob;
   });
 
-  let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0, sDifal=0;
+  let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0;
 
   itemIds.forEach(id => {
     const r = calcItem(id, fobTotal, freteT, dolar, comPct);
@@ -1076,24 +1075,28 @@ function calcAll() {
       sVenda    += r.pvTotal;
       sLucro    += r.lucroTotal;
       sCustoOp  += r.custoOpTotal;
-      sDifal    += (r.difal || 0) * r.qtd;
     }
   });
 
-  const margemMedia = sVenda > 0 ? sLucro / sVenda : 0;
+  // DIFAL: calculado UMA VEZ sobre o TOTAL da venda em R$, descontado cheio do
+  // lucro agregado (sem escudo fiscal, sem alterar PV). 0 quando cliente tem IE.
+  const difalTotal = sVenda * difalRateAtual();   // = (sVenda/(1-interna))×(interna-inter)
+  const lucroFinal = sLucro - difalTotal;
+  const margemMedia = sVenda > 0 ? lucroFinal / sVenda : 0;
+
   setEl('s_fob',      fmt(sFob) + ' USD');
   setEl('s_cif',      fmtBRL(sCif));
   setEl('s_impostos', fmtBRL(sImp));
   setEl('s_custo_imp',fmtBRL(sCustoImp));
   setEl('s_venda',    fmtBRL(sVenda));
-  setEl('s_lucro',    fmtBRL(sLucro));
+  setEl('s_lucro',    fmtBRL(lucroFinal));   // lucro APÓS o DIFAL (consistente com a margem)
   setEl('s_margem',   fmtPct(margemMedia));
   setEl('s_custo_op', fmtBRL(sCustoOp));
   // Linha DIFAL: visível só quando aplicado (cliente sem IE).
   const difalBox = document.getElementById('s_difal_box');
   if (difalBox) {
-    difalBox.style.display = sDifal > 0 ? '' : 'none';
-    setEl('s_difal', fmtBRL(sDifal));
+    difalBox.style.display = difalTotal > 0 ? '' : 'none';
+    setEl('s_difal', fmtBRL(difalTotal));
   }
 }
 
