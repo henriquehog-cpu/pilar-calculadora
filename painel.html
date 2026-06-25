@@ -1423,18 +1423,34 @@ function npmInferirDaFamilia(familia) {
   return { tipo, mp, largura, gsm };
 }
 
+// extrai o 4º segmento SÓ se for numérico puro; senão null (ignora código mal formado)
+function _seqNumerico(cod) {
+  const seg = (cod || '').split('.')[3] || '';
+  return /^\d+$/.test(seg) ? parseInt(seg, 10) : null;
+}
+
+// código de produto bem formado: FAMILIA(4 letras).LARGURA(3díg).GRAMATURA(3díg).SEQ(4díg)
+function _codigoProdutoValido(cod) {
+  return /^[A-Z]{4}\.\d{3}\.\d{3}\.\d{4}$/.test(cod || '');
+}
+
 function npmProximoSequencial(familia, tamanho, gramatura) {
   const prefixo = `${familia}.${String(tamanho).padStart(3,'0')}.${String(gramatura).padStart(3,'0')}.`;
   let max = 0;
-  const extrairSeq = cod => parseInt(((cod || '').split('.')[3] || '0'), 10);
 
   JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]').forEach(p => {
-    if ((p.codigo || '').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
+    if ((p.codigo || '').startsWith(prefixo)) {
+      const n = _seqNumerico(p.codigo);
+      if (n !== null) max = Math.max(max, n);
+    }
   });
 
   // também verifica itens novos já adicionados na sessão para não repetir
   _itens.forEach(it => {
-    if (it.is_novo && (it.codigo || '').startsWith(prefixo)) max = Math.max(max, extrairSeq(it.codigo));
+    if (it.is_novo && (it.codigo || '').startsWith(prefixo)) {
+      const n = _seqNumerico(it.codigo);
+      if (n !== null) max = Math.max(max, n);
+    }
   });
 
   return String(max + 1).padStart(4, '0');
@@ -1617,6 +1633,10 @@ function npmConfirmar() {
 
   if (!familia || familia.length < 4) { alert('Selecione ou digite a família/prefixo (4 letras).'); return; }
   if (!tamanho || !gsm) { alert('Preencha Largura e Gramatura para gerar o código.'); return; }
+  if (!_codigoProdutoValido(codigo)) {
+    alert(`Código gerado inválido: "${codigo}".\nEsperado FAMÍLIA.LARGURA.GRAMATURA.NNNN (sufixo só dígitos). Verifique família, largura e gramatura.`);
+    return;
+  }
 
   const novoItem = {
     ...newItemRow(),
@@ -6840,15 +6860,20 @@ function wizParseQtd(str) {
 
 function wizGerarCodigoWiz(familia, largura, gsm, itensAtuais) {
   const prefixo = `${familia}.${String(largura).padStart(3,'0')}.${String(gsm).padStart(3,'0')}.`;
-  const extrairSeq = cod => parseInt(((cod||'').split('.')[3]||'0'),10);
   let max = 0;
   // Verifica produtos já cadastrados
   JSON.parse(localStorage.getItem('pilar_catalogo_omie')||'[]').forEach(p => {
-    if ((p.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(p.codigo));
+    if ((p.codigo||'').startsWith(prefixo)) {
+      const n = _seqNumerico(p.codigo);
+      if (n !== null) max = Math.max(max, n);
+    }
   });
   // Verifica itens já gerados nessa sessão do wizard (para não repetir)
   itensAtuais.forEach(it => {
-    if (it.is_novo && (it.codigo||'').startsWith(prefixo)) max = Math.max(max, extrairSeq(it.codigo));
+    if (it.is_novo && (it.codigo||'').startsWith(prefixo)) {
+      const n = _seqNumerico(it.codigo);
+      if (n !== null) max = Math.max(max, n);
+    }
   });
   // Próximo sequencial = max + 1
   return `${prefixo}${String(max + 1).padStart(4,'0')}`;
@@ -6943,6 +6968,11 @@ function wizColetarFob() {
 // ── Criar processo ──────────────────────────────────────────
 function wizCriarProcesso() {
   if (!_wizItens.length) { alert('Nenhum item para criar o processo.'); return; }
+  const itemInvalido = _wizItens.find(it => !_codigoProdutoValido(it.codigo));
+  if (itemInvalido) {
+    alert(`Item com código inválido: "${itemInvalido.codigo}" (${itemInvalido.descricao || 'sem descrição'}).\nEsperado FAMÍLIA.LARGURA.GRAMATURA.NNNN. Corrija antes de criar o processo.`);
+    return;
+  }
   wizColetarFob(); // sincroniza valores da tabela
 
   const cfg = JSON.parse(localStorage.getItem('pilar_config')||'{}');
