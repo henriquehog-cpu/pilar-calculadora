@@ -130,6 +130,35 @@ function readBody(req) {
 //     array por POST). Deleção pontual continua só pelo DELETE /api/<fatia>/:id.
 //   • Escrita ATÔMICA (salvarDados → .tmp + rename). Payload malformado → 400 SEM
 //     tocar no arquivo (validação antes de qualquer escrita).
+// Validação de código de item de processo — MESMA regra do front (painel.html):
+// FAMILIA(4 letras).LARGURA(3díg).GRAMATURA(3díg).SEQ(4díg numéricos). Código
+// vazio/ausente é ACEITO (a geração do sufixo é uma fatia separada); só rejeita
+// código PRESENTE e mal formado (ex.: nome de cor no lugar do sufixo).
+const RE_CODIGO_PRODUTO = /^[A-Z]{4}\.\d{3}\.\d{3}\.\d{4}$/;
+
+// Varre os processos recebidos; retorna mensagem de erro (string) no 1º item com
+// código presente e inválido, ou null se tudo ok. Não muta nada.
+function validarCodigosProcessos(processos) {
+  if (!Array.isArray(processos)) return null;
+  for (const proc of processos) {
+    if (!proc || typeof proc !== 'object' || !Array.isArray(proc.itens)) continue;
+    for (let i = 0; i < proc.itens.length; i++) {
+      const item = proc.itens[i];
+      if (!item || typeof item !== 'object') continue;
+      const cod = item.codigo;
+      if (cod == null || cod === '') continue;            // vazio/ausente: aceito nesta fatia
+      if (!RE_CODIGO_PRODUTO.test(cod)) {
+        const proref = proc.numero || proc.id || '(sem número)';
+        return `Código inválido no processo ${proref}, item #${i + 1}: "${cod}". `
+             + `O sufixo deve ser sequencial de 4 dígitos numéricos (ex.: 0001), não texto/cor. `
+             + `Use o formato FAMÍLIA.LARGURA.GRAMATURA.NNNN (família 4 letras), `
+             + `ou deixe o código vazio que o servidor irá gerá-lo.`;
+      }
+    }
+  }
+  return null;
+}
+
 function mergeFatiaPorId(req, res, chave, label) {
   const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
   readBody(req).then(body => {
@@ -137,6 +166,12 @@ function mergeFatiaPorId(req, res, chave, label) {
               : (body && Array.isArray(body[chave]) ? body[chave]
               : (body && typeof body === 'object' && !Array.isArray(body) && body.id != null ? [body] : null));
     if (!arr) return json(res, 400, { erro: `Esperado array de ${label}, {${chave}:[...]} ou uma ${label} única com id` });
+    // Validação de código (só processos): rejeita gravação inteira se algum item
+    // tiver código presente e mal formado. Antes dos dois modos → cobre merge e substituir.
+    if (chave === 'pilar_processos') {
+      const erroCod = validarCodigosProcessos(arr);
+      if (erroCod) return json(res, 400, { erro: erroCod });
+    }
     const dados = lerDados();
     if (substituir) {
       dados[chave] = arr;                       // escape hatch explícito
@@ -328,6 +363,11 @@ const server = http.createServer((req, res) => {
         if (k in data && (typeof data[k] !== 'object' || data[k] === null || Array.isArray(data[k]))) {
           return json(res, 400, { erro: `${k} deve ser um objeto` });
         }
+      }
+      // Validação de código dos processos (se presentes): rejeita ANTES de escrever.
+      if ('pilar_processos' in data) {
+        const erroCod = validarCodigosProcessos(data.pilar_processos);
+        if (erroCod) return json(res, 400, { erro: erroCod });
       }
       // Merge defensivo: base = disco; só as chaves enviadas sobrescrevem.
       const merged = Object.assign({}, lerDados(), data);
