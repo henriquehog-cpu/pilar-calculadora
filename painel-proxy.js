@@ -217,6 +217,75 @@ function gerarCodigosFaltantes(processos) {
   return null;
 }
 
+// ── Fatia 3: completar NCM + alíquotas pela família ──────────────────────────
+// Porta a lógica do front (npmNCMdaFamilia + _aliquotasPorNCM). Roda DEPOIS da
+// geração de código (Fatia 2), então todo item já tem código → a família sai do
+// campo familia OU do prefixo do código. NUNCA sobrescreve: só preenche o que
+// falta. NUNCA rejeita: se a família não achar NCM, deixa vazio (completável no
+// painel depois). Diverge do front de propósito: só preenche alíquotas se o
+// bloco estiver AUSENTE ou vazio {} (respeita II=0 legítimo enviado pela Astrid).
+const _soDigitos = s => String(s || '').replace(/\D/g, '');
+
+// Família → NCM mais frequente no catálogo Omie (produtos cujo codigo começa com "FAM.").
+function _ncmDaFamilia(familia, catalogo) {
+  const ncms = {};
+  for (const p of catalogo) {
+    if (p && String(p.codigo || '').startsWith(familia + '.') && p.ncm)
+      ncms[p.ncm] = (ncms[p.ncm] || 0) + 1;
+  }
+  return Object.entries(ncms).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+
+// NCM → 10 alíquotas. Compara NCM só por dígitos; exige ii>0 na FONTE. Ordem:
+// catálogo Omie, depois genérico. Retorna objeto normalizado ou null.
+function _aliquotasPorNCM(ncm, catalogo, genericos) {
+  const alvo = _soDigitos(ncm);
+  if (!alvo) return null;
+  const acha = arr => (Array.isArray(arr) ? arr : []).find(p => p && _soDigitos(p.ncm) === alvo && (p.ii || 0) > 0);
+  const ref = acha(catalogo) || acha(genericos);
+  if (!ref) return null;
+  return {
+    ii:                ref.ii                || 0,
+    ipi:               ref.ipi               || 0,
+    pis_importacao:    ref.pis_importacao    || 0.021,
+    cofins_importacao: ref.cofins_importacao || 0.1065,
+    pis_venda:         ref.pis_venda         || 0.0165,
+    cofins_venda:      ref.cofins_venda      || 0.076,
+    icms_intra:        ref.icms_intra        || 0.14,
+    icms_inter:        ref.icms_inter        || 0.04,
+    reg_espec_intra:   ref.reg_espec_intra   || 0.14,
+    reg_espec_inter:   ref.reg_espec_inter   || 0.015
+  };
+}
+
+// Completa ncm/alíquotas faltantes nos itens. Não rejeita; muta no lugar.
+function completarNcmAliquotas(processos) {
+  if (!Array.isArray(processos)) return;
+  const catalogo  = lerJson(CATALOGO_OMIE_FILE, []) || [];
+  const genericos = lerJson(PROD_GEN_FILE, []) || [];
+  for (const proc of processos) {
+    if (!proc || typeof proc !== 'object' || !Array.isArray(proc.itens)) continue;
+    for (const item of proc.itens) {
+      if (!item || typeof item !== 'object') continue;
+      const famCampo = String(item.familia || '').toUpperCase();
+      const fam = RE_FAMILIA.test(famCampo) ? famCampo
+                : String(item.codigo || '').slice(0, 4).toUpperCase();
+      // NCM: só se ausente/vazio e a família for válida.
+      if ((item.ncm == null || item.ncm === '') && RE_FAMILIA.test(fam)) {
+        const ncm = _ncmDaFamilia(fam, catalogo);
+        if (ncm) item.ncm = ncm;                      // achou → preenche; senão deixa vazio
+      }
+      // Alíquotas: só se o bloco estiver AUSENTE ou vazio {} (respeita II=0 legítimo).
+      const al = item.aliquotas;
+      const blocoVazio = !al || typeof al !== 'object' || Array.isArray(al) || Object.keys(al).length === 0;
+      if (blocoVazio && item.ncm) {
+        const novas = _aliquotasPorNCM(item.ncm, catalogo, genericos);
+        if (novas) item.aliquotas = novas;            // achou → preenche; senão deixa como está
+      }
+    }
+  }
+}
+
 function mergeFatiaPorId(req, res, chave, label) {
   const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
   readBody(req).then(body => {
@@ -231,6 +300,7 @@ function mergeFatiaPorId(req, res, chave, label) {
       if (erroCod) return json(res, 400, { erro: erroCod });
       const erroGen = gerarCodigosFaltantes(arr);    // Fatia 2: gera sufixo p/ itens sem código (muta arr)
       if (erroGen) return json(res, 400, erroGen);
+      completarNcmAliquotas(arr);                    // Fatia 3: completa ncm/alíquotas faltantes (muta arr, nunca rejeita)
     }
     const dados = lerDados();
     if (substituir) {
@@ -430,6 +500,7 @@ const server = http.createServer((req, res) => {
         if (erroCod) return json(res, 400, { erro: erroCod });
         const erroGen = gerarCodigosFaltantes(data.pilar_processos);  // Fatia 2 (muta data.pilar_processos)
         if (erroGen) return json(res, 400, erroGen);
+        completarNcmAliquotas(data.pilar_processos);                  // Fatia 3 (muta, nunca rejeita)
       }
       // Merge defensivo: base = disco; só as chaves enviadas sobrescrevem.
       const merged = Object.assign({}, lerDados(), data);
