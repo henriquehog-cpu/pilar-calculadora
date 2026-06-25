@@ -159,6 +159,64 @@ function validarCodigosProcessos(processos) {
   return null;
 }
 
+// ── Fatia 2: geração de sufixo sequencial para item SEM código ───────────────
+// Porta a regra do front (npmProximoSequencial): código = FAMILIA.LARGURA.
+// GRAMATURA.NNNN, com NNNN = maior sequencial NUMÉRICO existente do mesmo prefixo
+// + 1. Numeração GLOBAL: varre catalogo_omie.json + dados.json (todos os
+// processos). Sufixos não-numéricos são ignorados no cálculo (proteção isNaN).
+const RE_FAMILIA = /^[A-Z]{4}$/;
+const _seg3 = v => String(parseInt(v, 10)).padStart(3, '0');   // 80 → "080"
+
+// Índice prefixo("FAM.LAR.GSM.") → maior sufixo numérico, do disco + catálogo.
+function _maxSeqPorPrefixo() {
+  const map = new Map();
+  const considerar = cod => {
+    const partes = String(cod || '').split('.');
+    if (partes.length < 4) return;
+    if (!/^\d+$/.test(partes[3])) return;            // ignora sufixo não-numérico
+    const prefixo = partes.slice(0, 3).join('.') + '.';
+    const n = parseInt(partes[3], 10);
+    if (n > (map.get(prefixo) || 0)) map.set(prefixo, n);
+  };
+  (lerJson(CATALOGO_OMIE_FILE, []) || []).forEach(p => considerar(p && p.codigo));
+  lerDados().pilar_processos.forEach(pr => {
+    if (pr && Array.isArray(pr.itens)) pr.itens.forEach(it => considerar(it && it.codigo));
+  });
+  return map;
+}
+
+// Muta os itens SEM código, preenchendo item.codigo. Retorna {erro} se algum item
+// sem código não tiver dados para gerar (familia 4L / largura_cm / gsm), ou null.
+function gerarCodigosFaltantes(processos) {
+  if (!Array.isArray(processos)) return null;
+  const map = _maxSeqPorPrefixo();                   // base global (disco + catálogo)
+  const ehNum = v => v != null && v !== '' && /^\d+$/.test(String(v).trim());
+  for (const proc of processos) {
+    if (!proc || typeof proc !== 'object' || !Array.isArray(proc.itens)) continue;
+    const proref = proc.numero || proc.id || '(sem número)';
+    for (let i = 0; i < proc.itens.length; i++) {
+      const item = proc.itens[i];
+      if (!item || typeof item !== 'object') continue;
+      if (item.codigo != null && item.codigo !== '') continue;   // já tem código (Fatia 1 validou)
+      const familia = String(item.familia || '').toUpperCase();
+      const faltam = [];
+      if (!RE_FAMILIA.test(familia))   faltam.push('familia (4 letras)');
+      if (!ehNum(item.largura_cm))     faltam.push('largura_cm (número)');
+      if (!ehNum(item.gsm))            faltam.push('gsm (número)');
+      if (faltam.length) {
+        return { erro: `Item sem código no processo ${proref}, item #${i + 1}: faltam ${faltam.join(', ')}. `
+                     + `Para o servidor gerar o código, envie familia (4 letras), largura_cm e gsm, `
+                     + `ou mande o código pronto no formato FAMÍLIA.LARGURA.GRAMATURA.NNNN.` };
+      }
+      const prefixo = `${familia}.${_seg3(item.largura_cm)}.${_seg3(item.gsm)}.`;
+      const prox = (map.get(prefixo) || 0) + 1;
+      map.set(prefixo, prox);                         // reserva p/ não colidir no mesmo POST
+      item.codigo = `${prefixo}${String(prox).padStart(4, '0')}`;
+    }
+  }
+  return null;
+}
+
 function mergeFatiaPorId(req, res, chave, label) {
   const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
   readBody(req).then(body => {
@@ -171,6 +229,8 @@ function mergeFatiaPorId(req, res, chave, label) {
     if (chave === 'pilar_processos') {
       const erroCod = validarCodigosProcessos(arr);
       if (erroCod) return json(res, 400, { erro: erroCod });
+      const erroGen = gerarCodigosFaltantes(arr);    // Fatia 2: gera sufixo p/ itens sem código (muta arr)
+      if (erroGen) return json(res, 400, erroGen);
     }
     const dados = lerDados();
     if (substituir) {
@@ -368,6 +428,8 @@ const server = http.createServer((req, res) => {
       if ('pilar_processos' in data) {
         const erroCod = validarCodigosProcessos(data.pilar_processos);
         if (erroCod) return json(res, 400, { erro: erroCod });
+        const erroGen = gerarCodigosFaltantes(data.pilar_processos);  // Fatia 2 (muta data.pilar_processos)
+        if (erroGen) return json(res, 400, erroGen);
       }
       // Merge defensivo: base = disco; só as chaves enviadas sobrescrevem.
       const merged = Object.assign({}, lerDados(), data);
