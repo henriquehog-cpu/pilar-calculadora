@@ -337,6 +337,49 @@ function lerPromptFluxo(fluxo) {
   catch { return null; }
 }
 
+// Visão: media types de imagem aceitos pela Messages API.
+const IA_MEDIA_OK = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+// Teto de base64 por request (margem do limite de 32MB da API). ~20MB de base64 ≈ ~15MB de arquivo.
+const IA_TETO_BASE64 = 20 * 1024 * 1024;
+
+// Valida o content de uma mensagem: STRING (texto puro) OU ARRAY de blocos
+// {type:"text"} / {type:"image", source:{type:"base64", media_type, data}}.
+// Retorna null se ok, ou uma string de erro clara.
+function validarConteudoMensagem(content) {
+  if (typeof content === 'string') return content.length ? null : 'content não pode ser string vazia';
+  if (!Array.isArray(content) || content.length === 0)
+    return 'content deve ser string ou array de blocos não-vazio';
+  for (const b of content) {
+    if (!b || typeof b !== 'object') return 'bloco de content inválido';
+    if (b.type === 'text') {
+      if (typeof b.text !== 'string' || !b.text) return 'bloco "text" exige campo "text" string não-vazio';
+    } else if (b.type === 'image') {
+      const s = b.source;
+      if (!s || typeof s !== 'object' || s.type !== 'base64')
+        return 'bloco "image" exige source.type "base64"';
+      if (!IA_MEDIA_OK.includes(s.media_type))
+        return `media_type inválido (use: ${IA_MEDIA_OK.join(', ')})`;
+      if (typeof s.data !== 'string' || !s.data)
+        return 'bloco "image" exige source.data (base64) não-vazio';
+    } else {
+      return `bloco type inválido: "${b.type}" (use "text" ou "image")`;
+    }
+  }
+  return null;
+}
+
+// Soma o tamanho do base64 de todas as imagens das mensagens (para o teto).
+function tamanhoBase64Total(mensagens) {
+  let total = 0;
+  for (const m of mensagens) {
+    if (!Array.isArray(m.content)) continue;
+    for (const b of m.content)
+      if (b && b.type === 'image' && b.source && typeof b.source.data === 'string')
+        total += b.source.data.length;
+  }
+  return total;
+}
+
 // Rate limit simples em memória (por processo): IA_RATE_LIMIT por IA_RATE_WINDOW.
 const _iaReqTimes = [];
 function iaRateLimited() {
@@ -879,11 +922,17 @@ const server = http.createServer((req, res) => {
       if (!Array.isArray(mensagens) || mensagens.length === 0)
         return json(res, 400, { erro: 'mensagens deve ser um array não vazio' });
       for (const m of mensagens) {
-        if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string')
-          return json(res, 400, { erro: 'cada mensagem precisa de role (user|assistant) e content string' });
+        if (!m || (m.role !== 'user' && m.role !== 'assistant'))
+          return json(res, 400, { erro: 'cada mensagem precisa de role (user|assistant)' });
+        const erroC = validarConteudoMensagem(m.content);
+        if (erroC) return json(res, 400, { erro: erroC });
       }
       if (mensagens[0].role !== 'user')
         return json(res, 400, { erro: 'a primeira mensagem deve ser do usuário' });
+
+      // Teto de tamanho: imagens base64 não podem estourar a margem da API (32MB).
+      if (tamanhoBase64Total(mensagens) > IA_TETO_BASE64)
+        return json(res, 413, { erro: 'Imagem muito grande. Envie uma imagem menor (até ~14MB de arquivo).' });
 
       if (iaRateLimited())
         return json(res, 429, { erro: 'Limite de requisições atingido (20/min). Aguarde um instante.' });
