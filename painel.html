@@ -1138,6 +1138,8 @@ function renderNovoProcesso(proc, seed) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
         <h2 style="font-size:18px;font-weight:700">${titulo}</h2>
         <div style="display:flex;gap:8px;align-items:center">
+          ${proc ? `<button class="btn btn-s" onclick="npDerivarDatas('vazios')" title="Preenche as datas vazias (operacionais e de caixa) a partir do pedido">📅 Preencher vazios</button>
+          <button class="btn btn-s" onclick="npDerivarDatas('tudo')" title="Recalcula as datas derivadas a partir do pedido/embarque (mantém pedido e embarque)">🔄 Recalcular tudo</button>` : ''}
           ${proc ? (proc.status === 'finalizado'
             ? `<button class="btn btn-s" onclick="procReabrir(${proc.id})">↩ Reabrir processo</button>`
             : `<button class="btn btn-s" onclick="procFinalizar(${proc.id})">✓ Finalizar processo</button>`) : ''}
@@ -1977,12 +1979,15 @@ function npSalvar() {
       todos[idx] = { ...todos[idx], ...dadosForm, atualizado_em: new Date().toISOString() };
     }
   } else {
-    todos.push({
+    const novo = {
       id: Date.now(),
       status: 'ativo',
       criado_em: new Date().toISOString(),
       ...dadosForm
-    });
+    };
+    // Automático na criação: deriva só as datas OPERACIONAIS vazias (caixa é lazy).
+    if (novo.dados_gerais?.data_pedido) derivarDatasProcesso(novo, 'vazios');
+    todos.push(novo);
   }
 
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
@@ -2006,6 +2011,28 @@ function npSalvar() {
     .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
   if (link) navTo(link, renderProcessos);
   else renderProcessos();
+}
+
+// Derivação completa de datas (operacional + caixa) na tela de Processo.
+// Opera sobre o PROCESSO SALVO (não sobre o formulário), persiste e re-renderiza.
+// modo 'vazios' (só completa vazias) ou 'tudo' (re-deriva derivadas, com confirmação).
+// Âncoras (data_pedido, prev_embarque preenchido) nunca mudam; data_realizada nunca é tocada.
+function npDerivarDatas(modo) {
+  modo = modo === 'tudo' ? 'tudo' : 'vazios';
+  if (!_npEditId) { alert('Salve o processo primeiro para derivar as datas.'); return; }
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const idx   = todos.findIndex(p => p.id === _npEditId);
+  if (idx < 0) { alert('Processo não encontrado. Salve antes de derivar.'); return; }
+  const proc = todos[idx];
+  if (!proc.dados_gerais?.data_pedido) { alert('Preencha a Data do Pedido e salve antes de derivar as datas.'); return; }
+  if (modo === 'tudo' && !confirm('Isso vai recalcular as datas derivadas a partir do pedido/embarque, sobrescrevendo ajustes manuais nas datas derivadas. As datas de pedido e embarque preenchidas serão mantidas. Continuar?')) return;
+
+  derivarDatasProcesso(proc, modo);
+  proc.atualizado_em = new Date().toISOString();
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));
+  _apiSalvarProcessos(todos);
+  renderNovoProcesso(proc);   // re-render: datas operacionais ficam visíveis atualizadas
+  toast('Datas derivadas sobre o processo salvo. Se você tinha edições não salvas no formulário, salve antes de derivar.');
 }
 
 // ── Modal de cadastro de alíquotas ─────────────────────────────────────────
@@ -3425,37 +3452,65 @@ function addDias(dataISO, n) {
   return `${y}-${m}-${dia}`;
 }
 
-// Preenche as data_prevista VAZIAS a partir de dados_gerais.data_pedido (D+0),
-// régua à vista e conservadora. Nunca sobrescreve datas já preenchidas nem
-// data_realizada. Só altera estado em memória + re-render; salvar é manual.
+const _fcVazia = v => v === '' || v == null;
+
+// Régua OPERACIONAL (muta dados_gerais g): embarque é ÂNCORA se preenchido
+// (nunca sobrescrito, nem em 'tudo'); se vazio → d0+50. porto = embarque+40;
+// cliente = porto+15. 'vazios' só completa vazias; 'tudo' re-deriva porto/cliente.
+// Nunca toca data_pedido nem prev_embarque preenchido.
+function _derivarOperacional(g, d0, modo) {
+  if (!g || !d0) return;
+  const tudo = modo === 'tudo';
+  if (_fcVazia(g.prev_embarque)) g.prev_embarque = addDias(d0, 50);   // âncora se já tinha
+  const emb = g.prev_embarque;
+  if (tudo || _fcVazia(g.prev_chegada_porto))   g.prev_chegada_porto   = addDias(emb, 40);
+  if (tudo || _fcVazia(g.prev_chegada_cliente)) g.prev_chegada_cliente = addDias(g.prev_chegada_porto, 15);
+}
+
+// Régua de CAIXA (muta arrays). Pagamentos por ordem: última D+60, anteriores D+2.
+// Recebimentos por ordem: última D+70, anteriores D+10. Nunca toca data_realizada.
+// 'vazios' só completa vazias; 'tudo' re-deriva todas as data_prevista derivadas.
+function _derivarCaixa(pags, recs, d0, modo) {
+  if (!d0) return;
+  const tudo = modo === 'tudo';
+  const np = (pags || []).length;
+  (pags || []).forEach((p, i) => { if (tudo || _fcVazia(p.data_prevista)) p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2); });
+  const nr = (recs || []).length;
+  (recs || []).forEach((r, i) => { if (tudo || _fcVazia(r.data_prevista)) r.data_prevista = addDias(d0, i === nr - 1 ? 70 : 10); });
+}
+
+// Orquestra a derivação completa sobre um OBJETO processo (operacionais + caixa).
+// Numerário: data D+86 em cada item (fcSalvar replica). Retorna false se sem data_pedido.
+function derivarDatasProcesso(proc, modo) {
+  const g = proc && proc.dados_gerais;
+  const d0 = g && g.data_pedido;
+  if (!d0) return false;
+  _derivarOperacional(g, d0, modo);
+  _derivarCaixa(proc.pagamentos_fornecedor, proc.recebimentos_cliente, d0, modo);
+  const tudo = modo === 'tudo';
+  (proc.numerario_despachante || []).forEach(n => {
+    if (tudo || _fcVazia(n.data_prevista)) n.data_prevista = addDias(d0, 86);
+  });
+  return true;
+}
+
+// Botão da aba FC (Editar processo): preenche só as datas de CAIXA VAZIAS, a
+// partir de data_pedido. Opera no estado em memória (_fcPagamentos/_fcRecebimentos/
+// _fcNumPag); persistir é pelo "Salvar Fluxo". Não toca operacionais (isso é na
+// tela de Processo) nem data_realizada. A derivação completa (operacional+caixa,
+// 2 modos) vive em npDerivarDatas, na tela de Processo.
 function fcPreencherDatas() {
   if (!_fcProcesso) return;
   const d0 = _fcProcesso.dados_gerais?.data_pedido;
   if (!d0) { alert('Preencha a Data do Pedido no Processo antes de derivar as datas do fluxo.'); return; }
 
-  const vazia = v => v === '' || v == null;
-
-  // Pagamentos ao fornecedor (por ordem): última (saldo) D+60; anteriores D+2; 1 só → D+60.
-  const np = _fcPagamentos.length;
-  _fcPagamentos.forEach((p, i) => {
-    if (!vazia(p.data_prevista)) return;
-    p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2);
-  });
-
-  // Recebimentos do cliente (por ordem): última (saldo) D+70; anteriores D+10; 1 só → D+70.
-  const nr = _fcRecebimentos.length;
-  _fcRecebimentos.forEach((r, i) => {
-    if (!vazia(r.data_prevista)) return;
-    r.data_prevista = addDias(d0, i === nr - 1 ? 70 : 10);
-  });
-
-  // Numerário ao despachante (data consolidada): D+86.
-  if (vazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
+  _derivarCaixa(_fcPagamentos, _fcRecebimentos, d0, 'vazios');
+  if (_fcVazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
 
   fcRenderPagamentos();
   fcRenderRecebimentos();
   fcRenderNumerario();
-  toast('Datas preenchidas (à vista, estimadas). Revise e clique Salvar Fluxo.');
+  toast('Datas de caixa preenchidas (estimadas). Revise e clique Salvar Fluxo.');
 }
 
 function fcSalvar() {
