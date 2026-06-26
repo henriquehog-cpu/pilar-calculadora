@@ -2666,14 +2666,34 @@ function renderFluxoCaixa() {
 
   document.getElementById('vc').innerHTML = `
     <div style="max-width:1100px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <h2 style="font-size:18px;font-weight:700">Fluxo de Caixa</h2>
-        <div style="display:flex;gap:10px">
-          <button class="btn btn-s" id="btn-fc-datas" onclick="fcPreencherDatas()" disabled
-            style="opacity:.45;cursor:not-allowed">📅 Preencher datas automaticamente</button>
-          <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
-            style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-s" id="fc-tab-consol" onclick="fcTab('consol')">Consolidado</button>
+          <button class="btn btn-s" id="fc-tab-edit" onclick="fcTab('edit')">Editar processo</button>
         </div>
+      </div>
+
+      <!-- ── Sub-aba: VISÃO CONSOLIDADA (todos os processos, somente leitura) ── -->
+      <div id="fc-consol-view">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-hd">Resumo por mês — entradas, saídas e saldo (todos os processos)</div>
+          <div style="overflow-x:auto" id="fcc-mes"></div>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-hd tq">Linha do tempo — parcelas previstas e realizadas</div>
+          <div id="fcc-timeline"></div>
+        </div>
+      </div>
+
+      <!-- ── Sub-aba: EDITAR PROCESSO (conteúdo original, intacto) ── -->
+      <div id="fc-edit-view" style="display:none">
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px">
+        <button class="btn btn-s" id="btn-fc-datas" onclick="fcPreencherDatas()" disabled
+          style="opacity:.45;cursor:not-allowed">📅 Preencher datas automaticamente</button>
+        <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
+          style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
       </div>
 
       <div class="card" style="margin-bottom:20px">
@@ -2766,7 +2786,128 @@ function renderFluxoCaixa() {
         </div>
 
       </div>
+      </div>
     </div>`;
+
+  fcTab('consol');
+}
+
+// ── Visão consolidada (todos os processos, SOMENTE LEITURA) ──────────────────
+// Alterna entre as sub-abas Consolidado e Editar processo.
+function fcTab(which) {
+  const cv = document.getElementById('fc-consol-view');
+  const ev = document.getElementById('fc-edit-view');
+  const tc = document.getElementById('fc-tab-consol');
+  const te = document.getElementById('fc-tab-edit');
+  if (!cv || !ev) return;
+  const consol = which !== 'edit';
+  cv.style.display = consol ? 'block' : 'none';
+  ev.style.display = consol ? 'none'  : 'block';
+  // realce da aba ativa (btn-p = ativa, btn-s = inativa)
+  if (tc) tc.className = consol ? 'btn btn-p' : 'btn btn-s';
+  if (te) te.className = consol ? 'btn btn-s' : 'btn btn-p';
+  if (consol) fcRenderConsolidado();
+}
+
+// Varre TODOS os processos → eventos de caixa (parcela = 1 evento;
+// numerário = 1 consolidado por processo). Usa data_realizada se houver,
+// senão data_prevista. Sem data → fora da timeline. valor ausente → 0.
+function fcConsolidadoEventos() {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const ev = [];
+  const add = (data, numero, nome, desc, sinal, valor, realizado) => {
+    if (!data) return;
+    ev.push({ data, ts: new Date(data + 'T12:00').getTime(), numero: numero || '—',
+              nome: nome || '', desc, sinal, valor: valor || 0, realizado: !!realizado });
+  };
+  todos.forEach(proc => {
+    const g = proc.dados_gerais || {};
+    const nome = g.cliente || g.fornecedor || '';
+    (proc.pagamentos_fornecedor || []).forEach(p =>
+      add(p.data_realizada || p.data_prevista, proc.numero, nome,
+          `Pgto ${p.descricao || 'fornecedor'}`, 'saida', p.valor_reais,
+          !!p.data_realizada || p.status === 'pago'));
+    (proc.recebimentos_cliente || []).forEach(r =>
+      add(r.data_realizada || r.data_prevista, proc.numero, nome,
+          `Receb. ${r.descricao || 'cliente'}`, 'entrada', r.valor_reais,
+          !!r.data_realizada || r.status === 'recebido'));
+    const nums = proc.numerario_despachante || [];
+    if (nums.length) {
+      const n0 = nums[0] || {};
+      add(n0.data_realizada || n0.data_prevista, proc.numero, nome,
+          'Numerário Despachante', 'saida',
+          nums.reduce((s, n) => s + (n.valor_reais || 0), 0),
+          !!n0.data_realizada || n0.status === 'pago');
+    }
+  });
+  return ev.sort((a, b) => a.ts - b.ts);
+}
+
+// Agrupa eventos por mês (YYYY-MM): entra / sai / saldo do mês / saldo acumulado.
+function fcConsolidadoPorMes(eventos) {
+  const map = new Map();
+  eventos.forEach(e => {
+    const mes = e.data.slice(0, 7);
+    const m = map.get(mes) || { entra: 0, sai: 0 };
+    if (e.sinal === 'entrada') m.entra += e.valor; else m.sai += e.valor;
+    map.set(mes, m);
+  });
+  let acum = 0;
+  return [...map.keys()].sort().map(mes => {
+    const { entra, sai } = map.get(mes);
+    const saldo = entra - sai; acum += saldo;
+    return { mes, entra, sai, saldo, acum };
+  });
+}
+
+function fcRenderConsolidado() {
+  const elMes = document.getElementById('fcc-mes');
+  const elTl  = document.getElementById('fcc-timeline');
+  if (!elMes || !elTl) return;
+  const eventos = fcConsolidadoEventos();
+  const meses   = fcConsolidadoPorMes(eventos);
+  const neg = v => v < 0 ? 'color:#C62828;font-weight:700' : '';
+  const mesBR = m => { const [a, b] = m.split('-'); return `${b}/${a}`; };
+
+  // Resumo por mês
+  elMes.innerHTML = meses.length === 0
+    ? '<div style="padding:20px;text-align:center;color:var(--cinza-med);font-size:13px">Nenhuma parcela com data — preencha datas no Fluxo de Caixa dos processos.</div>'
+    : `<table class="items-tbl" style="font-size:13px;width:100%">
+        <thead><tr>
+          <th>Mês</th>
+          <th style="text-align:right">Entra</th>
+          <th style="text-align:right">Sai</th>
+          <th style="text-align:right">Saldo do mês</th>
+          <th style="text-align:right">Saldo acumulado</th>
+        </tr></thead>
+        <tbody>${meses.map(m => `<tr>
+          <td style="font-weight:600">${mesBR(m.mes)}</td>
+          <td style="text-align:right;color:#2E7D32">R$ ${fmtN(m.entra)}</td>
+          <td style="text-align:right;color:#C62828">R$ ${fmtN(m.sai)}</td>
+          <td style="text-align:right;${neg(m.saldo)}">R$ ${fmtN(m.saldo)}</td>
+          <td style="text-align:right;${neg(m.acum)}">R$ ${fmtN(m.acum)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+  // Linha do tempo
+  elTl.innerHTML = eventos.length === 0
+    ? '<div style="padding:20px;text-align:center;color:var(--cinza-med);font-size:13px">Sem eventos de caixa com data.</div>'
+    : eventos.map(e => {
+        const dataBR = new Date(e.data + 'T12:00').toLocaleDateString('pt-BR');
+        const cor = e.sinal === 'entrada' ? '#2E7D32' : '#C62828';
+        const sinal = e.sinal === 'entrada' ? '+' : '−';
+        const tag = e.realizado
+          ? '<span style="font-size:10px;font-weight:700;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:2px 6px">✓ realizado</span>'
+          : '<span style="font-size:10px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:4px;padding:2px 6px">previsto</span>';
+        const cli = e.nome ? ` <span style="font-weight:400;color:var(--cinza-med)">— ${esc(e.nome)}</span>` : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--cinza-light)">
+            <span style="font-size:12px;color:var(--cinza-med);white-space:nowrap;min-width:78px">${dataBR}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap;min-width:88px">${esc(e.numero)}${cli}</span>
+            <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.desc)}</span>
+            ${tag}
+            <span style="font-size:13px;font-weight:700;white-space:nowrap;min-width:110px;text-align:right;color:${cor}">${sinal} R$ ${fmtN(e.valor)}</span>
+          </div>`;
+      }).join('');
 }
 
 function fcFobTotal() {
