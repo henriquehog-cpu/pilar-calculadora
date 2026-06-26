@@ -2668,8 +2668,12 @@ function renderFluxoCaixa() {
     <div style="max-width:1100px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
         <h2 style="font-size:18px;font-weight:700">Fluxo de Caixa</h2>
-        <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
-          style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-s" id="btn-fc-datas" onclick="fcPreencherDatas()" disabled
+            style="opacity:.45;cursor:not-allowed">📅 Preencher datas automaticamente</button>
+          <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
+            style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
+        </div>
       </div>
 
       <div class="card" style="margin-bottom:20px">
@@ -2774,16 +2778,18 @@ function fcFobTotal() {
 function fcSelecionarProcesso(id) {
   const corpo = document.getElementById('fc-corpo');
   const btn   = document.getElementById('btn-fc-salvar');
+  const btnD  = document.getElementById('btn-fc-datas');
+  const setBtn = (b, on) => { if (!b) return; b.disabled = !on; b.style.opacity = on ? '1' : '.45'; b.style.cursor = on ? 'pointer' : 'not-allowed'; };
   if (!id) {
     _fcProcesso = null; _fcNumerario = [];
     corpo.style.display = 'none';
-    btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed';
+    setBtn(btn, false); setBtn(btnD, false);
     return;
   }
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   _fcProcesso = todos.find(p => p.id == id) || null;
   if (!_fcProcesso) return;
-  btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+  setBtn(btn, true); setBtn(btnD, true);
   corpo.style.display = 'block';
 
   const fobTotal  = fcFobTotal();
@@ -3265,6 +3271,50 @@ function fcNumPago() {
   _fcNumPag.status = 'pago';
   _fcNumPag.data_realizada = today();
   fcAtualizarFootNum();
+}
+
+// Soma n dias a uma data ISO (YYYY-MM-DD) e devolve YYYY-MM-DD.
+// Usa T12:00 para não escorregar de fuso; formata manual (evita toISOString).
+function addDias(dataISO, n) {
+  const d = new Date(dataISO + 'T12:00');
+  d.setDate(d.getDate() + n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+
+// Preenche as data_prevista VAZIAS a partir de dados_gerais.data_pedido (D+0),
+// régua à vista e conservadora. Nunca sobrescreve datas já preenchidas nem
+// data_realizada. Só altera estado em memória + re-render; salvar é manual.
+function fcPreencherDatas() {
+  if (!_fcProcesso) return;
+  const d0 = _fcProcesso.dados_gerais?.data_pedido;
+  if (!d0) { alert('Preencha a Data do Pedido no Processo antes de derivar as datas do fluxo.'); return; }
+
+  const vazia = v => v === '' || v == null;
+
+  // Pagamentos ao fornecedor (por ordem): última (saldo) D+60; anteriores D+2; 1 só → D+60.
+  const np = _fcPagamentos.length;
+  _fcPagamentos.forEach((p, i) => {
+    if (!vazia(p.data_prevista)) return;
+    p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2);
+  });
+
+  // Recebimentos do cliente (por ordem): última (saldo) D+70; anteriores D+10; 1 só → D+70.
+  const nr = _fcRecebimentos.length;
+  _fcRecebimentos.forEach((r, i) => {
+    if (!vazia(r.data_prevista)) return;
+    r.data_prevista = addDias(d0, i === nr - 1 ? 70 : 10);
+  });
+
+  // Numerário ao despachante (data consolidada): D+86.
+  if (vazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
+
+  fcRenderPagamentos();
+  fcRenderRecebimentos();
+  fcRenderNumerario();
+  toast('Datas preenchidas (à vista, estimadas). Revise e clique Salvar Fluxo.');
 }
 
 function fcSalvar() {
