@@ -505,14 +505,11 @@ function _despacharHash() {
   if (partes[0] === 'processo' && partes[1]) {
     const proc = _procPorNumero(decodeURIComponent(partes[1]));
     if (!proc) { _setActiveNav('renderDashboard'); renderDashboard(); return; }
+    _setActiveNav('renderNovoProcesso');
+    renderNovoProcesso(proc);
     if (partes[2] === 'financeiro') {
-      _setActiveNav('renderFluxoCaixa');
-      renderFluxoCaixa();
-      const sel = document.getElementById('fc-select');
-      if (sel) { sel.value = String(proc.id); fcSelecionarProcesso(String(proc.id)); }
-    } else {
-      _setActiveNav('renderNovoProcesso');
-      renderNovoProcesso(proc);
+      // abre a tela de Processo e rola até a seção de caixa
+      setTimeout(() => document.getElementById('np-caixa-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
     }
     return;
   }
@@ -1354,12 +1351,81 @@ function renderNovoProcesso(proc, seed) {
 
       <div id="s5-resumo-fiscal"></div>
 
+      <!-- ── Fluxo de Caixa do Processo (editável; deriva dos itens/câmbios acima) ── -->
+      <div id="np-caixa-sec">
+        <div class="card">
+          <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+            <span>5 — Pagamentos ao Fornecedor</span>
+            <button onclick="fcAddPagamento()"
+              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+              + Parcela
+            </button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Parcela</th><th>%</th>
+                <th style="text-align:right">Valor USD</th>
+                <th>Data Prevista</th><th>Câmbio</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Status</th><th>Ações</th>
+              </tr></thead>
+              <tbody id="fc-pag-tbody"></tbody>
+              <tfoot id="fc-pag-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">
+            <span>6 — Recebimentos do Cliente</span>
+            <span id="fc-rec-nf-label" style="font-size:11px;opacity:.75;font-weight:400"></span>
+            <button onclick="fcAddRecebimento()"
+              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+              + Recebimento
+            </button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Descrição</th><th>%</th>
+                <th style="text-align:right">Valor USD</th>
+                <th>Câmbio Spot</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Data Prevista</th>
+                <th>Status</th><th>Ações</th>
+              </tr></thead>
+              <tbody id="fc-rec-tbody"></tbody>
+              <tfoot id="fc-rec-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd tq">7 — Numerário ao Despachante</div>
+          <div style="overflow-x:auto">
+            <table class="items-tbl" style="font-size:13px">
+              <thead><tr>
+                <th>Descrição</th>
+                <th style="text-align:right">Valor R$</th>
+                <th>Data Prevista</th>
+                <th>Status</th>
+              </tr></thead>
+              <tbody id="fc-num-tbody"></tbody>
+              <tfoot id="fc-num-tfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div style="text-align:right;margin-top:20px;padding-bottom:40px">
         <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="npSalvar()">${btnLabel}</button>
       </div>
     </div>`;
   npRenderItens();
   npRecalcular();
+  // Caixa: edição (3 tabelas) carregada do processo salvo (edição) ou vazia (novo).
+  fcCarregarEstado(proc || npBuildProcessoAtual());
 }
 
 function npAddItem() {
@@ -1941,7 +2007,13 @@ function npSalvar() {
     },
     itens: itensValidos,
     operacional: npLerOperacional(),  // Etapa D — 100% opcional, nunca bloqueia o salvamento
-    notasFiscais: npLerNotas()        // Etapa D — lista opcional [{tipo, numero, data}]
+    notasFiscais: npLerNotas(),       // Etapa D — lista opcional [{tipo, numero, data}]
+    // Caixa (Fase 3): persistido junto com o processo (estado em memória _fc*).
+    // Anti-clobber: como estão no dadosForm, o spread em todos[idx] os grava sem
+    // perder o resto. Parcelas/datas/data_realizada vêm verbatim do estado.
+    pagamentos_fornecedor: _fcPagamentos,
+    recebimentos_cliente:  _fcRecebimentos,
+    numerario_despachante: fcNumerarioParaSalvar()
   };
 
   // Calcular e persistir resultado
@@ -2013,26 +2085,35 @@ function npSalvar() {
   else renderProcessos();
 }
 
-// Derivação completa de datas (operacional + caixa) na tela de Processo.
-// Opera sobre o PROCESSO SALVO (não sobre o formulário), persiste e re-renderiza.
-// modo 'vazios' (só completa vazias) ou 'tudo' (re-deriva derivadas, com confirmação).
+// Derivação completa de datas (operacional + caixa) na tela de Processo — IN-MEMORY.
+// Operacionais → inputs (np-embarque/np-porto/np-chegada); caixa → _fcPagamentos/
+// _fcRecebimentos + _fcNumPag. NÃO persiste — o usuário clica "Salvar Alterações".
+// modo 'vazios' (só completa vazias) ou 'tudo' (re-deriva, com confirmação).
 // Âncoras (data_pedido, prev_embarque preenchido) nunca mudam; data_realizada nunca é tocada.
 function npDerivarDatas(modo) {
   modo = modo === 'tudo' ? 'tudo' : 'vazios';
-  if (!_npEditId) { alert('Salve o processo primeiro para derivar as datas.'); return; }
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  const idx   = todos.findIndex(p => p.id === _npEditId);
-  if (idx < 0) { alert('Processo não encontrado. Salve antes de derivar.'); return; }
-  const proc = todos[idx];
-  if (!proc.dados_gerais?.data_pedido) { alert('Preencha a Data do Pedido e salve antes de derivar as datas.'); return; }
+  const d0 = val('np-data');
+  if (!d0) { alert('Preencha a Data do Pedido antes de derivar as datas.'); return; }
   if (modo === 'tudo' && !confirm('Isso vai recalcular as datas derivadas a partir do pedido/embarque, sobrescrevendo ajustes manuais nas datas derivadas. As datas de pedido e embarque preenchidas serão mantidas. Continuar?')) return;
 
-  derivarDatasProcesso(proc, modo);
-  proc.atualizado_em = new Date().toISOString();
-  localStorage.setItem('pilar_processos', JSON.stringify(todos));
-  _apiSalvarProcessos(todos);
-  renderNovoProcesso(proc);   // re-render: datas operacionais ficam visíveis atualizadas
-  toast('Datas derivadas sobre o processo salvo. Se você tinha edições não salvas no formulário, salve antes de derivar.');
+  // Operacionais: deriva sobre um objeto temporário lido dos inputs e devolve aos inputs.
+  const g = { prev_embarque: val('np-embarque'), prev_chegada_porto: val('np-porto'), prev_chegada_cliente: val('np-chegada') };
+  _derivarOperacional(g, d0, modo);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('np-embarque', g.prev_embarque);
+  set('np-porto',    g.prev_chegada_porto);
+  set('np-chegada',  g.prev_chegada_cliente);
+
+  // Caixa: parcelas + numerário (data_realizada nunca tocado).
+  _derivarCaixa(_fcPagamentos, _fcRecebimentos, d0, modo);
+  if (modo === 'tudo' || _fcVazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
+  fcRenderPagamentos();
+  fcRenderRecebimentos();
+  fcRenderNumerario();
+
+  toast(modo === 'tudo'
+    ? 'Datas recalculadas (estimadas). Revise e clique Salvar Alterações.'
+    : 'Datas vazias preenchidas (estimadas). Revise e clique Salvar Alterações.');
 }
 
 // ── Modal de cadastro de alíquotas ─────────────────────────────────────────
@@ -2476,6 +2557,7 @@ function npRecalcular() {
     if (s4r) s4r.innerHTML = '';
     const s5 = document.getElementById('s5-resumo-fiscal');
     if (s5) s5.innerHTML = '';
+    fcAtualizarNumerario();   // sem cálculo → numerário vazio
     return;
   }
 
@@ -2575,6 +2657,9 @@ function npRecalcular() {
 
   // ── Seção 5 — Resumo Fiscal (extrato) ────────────────────────────────────
   npRenderResumoFiscal(proc, res);
+
+  // Numerário do caixa reflete câmbios/itens atuais (não toca data/status).
+  fcAtualizarNumerario();
 }
 
 // Resumo Fiscal estilo extrato — usa os valores já calculados pelo calc.js
@@ -2679,161 +2764,26 @@ let _fcRecebimentos = [];
 let _fcNumerario    = [];
 let _fcNumPag       = { data_prevista:'', status:'previsto', data_realizada:null };
 
+// Aba Fluxo de Caixa = VISÃO CONSOLIDADA (todos os processos, somente leitura).
+// A edição de caixa por processo vive na tela de Processo (renderNovoProcesso).
 function renderFluxoCaixa() {
-  _fcProcesso = null; _fcPagamentos = []; _fcRecebimentos = []; _fcNumerario = [];
-  _fcNumPag = { data_prevista:'', status:'previsto', data_realizada:null };
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
-  const opts  = todos.length === 0
-    ? '<option value="">— nenhum processo salvo —</option>'
-    : '<option value="">— selecione —</option>' +
-      todos.map(p => {
-        const g = p.dados_gerais || {};
-        return `<option value="${p.id}">${p.numero} — ${g.cliente||g.fornecedor||'sem nome'}</option>`;
-      }).join('');
-
   document.getElementById('vc').innerHTML = `
     <div style="max-width:1100px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-        <h2 style="font-size:18px;font-weight:700">Fluxo de Caixa</h2>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-s" id="fc-tab-consol" onclick="fcTab('consol')">Consolidado</button>
-          <button class="btn btn-s" id="fc-tab-edit" onclick="fcTab('edit')">Editar processo</button>
-        </div>
-      </div>
-
-      <!-- ── Sub-aba: VISÃO CONSOLIDADA (todos os processos, somente leitura) ── -->
-      <div id="fc-consol-view">
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-hd">Resumo por mês — entradas, saídas e saldo (todos os processos)</div>
-          <div style="overflow-x:auto" id="fcc-mes"></div>
-        </div>
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-hd tq">Linha do tempo — parcelas previstas e realizadas</div>
-          <div id="fcc-timeline"></div>
-        </div>
-      </div>
-
-      <!-- ── Sub-aba: EDITAR PROCESSO (conteúdo original, intacto) ── -->
-      <div id="fc-edit-view" style="display:none">
-
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px">
-        <button class="btn btn-s" id="btn-fc-datas" onclick="fcPreencherDatas()" disabled
-          style="opacity:.45;cursor:not-allowed">📅 Preencher datas automaticamente</button>
-        <button class="btn btn-p" id="btn-fc-salvar" onclick="fcSalvar()" disabled
-          style="opacity:.45;cursor:not-allowed">Salvar Fluxo</button>
+        <h2 style="font-size:18px;font-weight:700">Fluxo de Caixa — Consolidado</h2>
       </div>
 
       <div class="card" style="margin-bottom:20px">
-        <div class="card-bd">
-          <div class="field" style="margin-bottom:0;max-width:520px">
-            <label>Processo</label>
-            <select id="fc-select" onchange="fcSelecionarProcesso(this.value)">${opts}</select>
-          </div>
-        </div>
+        <div class="card-hd">Resumo por mês — entradas, saídas e saldo (todos os processos)</div>
+        <div style="overflow-x:auto" id="fcc-mes"></div>
       </div>
-
-      <div id="fc-corpo" style="display:none">
-
-        <div class="card">
-          <div class="card-hd">1 — Câmbios do Processo</div>
-          <div class="card-bd" id="fc-cambios"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
-            <span>2 — Pagamentos ao Fornecedor</span>
-            <button onclick="fcAddPagamento()"
-              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
-              + Parcela
-            </button>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="items-tbl" style="font-size:13px">
-              <thead><tr>
-                <th>Parcela</th><th>%</th>
-                <th style="text-align:right">Valor USD</th>
-                <th>Data Prevista</th><th>Câmbio</th>
-                <th style="text-align:right">Valor R$</th>
-                <th>Status</th><th>Ações</th>
-              </tr></thead>
-              <tbody id="fc-pag-tbody"></tbody>
-              <tfoot id="fc-pag-tfoot"></tfoot>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">
-            <span>3 — Recebimentos do Cliente</span>
-            <span id="fc-rec-nf-label" style="font-size:11px;opacity:.75;font-weight:400"></span>
-            <button onclick="fcAddRecebimento()"
-              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
-              + Recebimento
-            </button>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="items-tbl" style="font-size:13px">
-              <thead><tr>
-                <th>Descrição</th><th>%</th>
-                <th style="text-align:right">Valor USD</th>
-                <th>Câmbio Spot</th>
-                <th style="text-align:right">Valor R$</th>
-                <th>Data Prevista</th>
-                <th>Status</th><th>Ações</th>
-              </tr></thead>
-              <tbody id="fc-rec-tbody"></tbody>
-              <tfoot id="fc-rec-tfoot"></tfoot>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-hd tq">5 — Numerário ao Despachante</div>
-          <div style="overflow-x:auto">
-            <table class="items-tbl" style="font-size:13px">
-              <thead><tr>
-                <th>Descrição</th>
-                <th style="text-align:right">Valor R$</th>
-                <th>Data Prevista</th>
-                <th>Status</th>
-              </tr></thead>
-              <tbody id="fc-num-tbody"></tbody>
-              <tfoot id="fc-num-tfoot"></tfoot>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-hd">4 — Resumo Financeiro</div>
-          <div class="card-bd" id="fc-resumo"></div>
-        </div>
-
-        <div style="text-align:right;margin-top:4px;padding-bottom:40px">
-          <button class="btn btn-p" style="font-size:15px;padding:11px 30px" onclick="fcSalvar()">Salvar Fluxo</button>
-        </div>
-
-      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-hd tq">Linha do tempo — parcelas previstas e realizadas</div>
+        <div id="fcc-timeline"></div>
       </div>
     </div>`;
 
-  fcTab('consol');
-}
-
-// ── Visão consolidada (todos os processos, SOMENTE LEITURA) ──────────────────
-// Alterna entre as sub-abas Consolidado e Editar processo.
-function fcTab(which) {
-  const cv = document.getElementById('fc-consol-view');
-  const ev = document.getElementById('fc-edit-view');
-  const tc = document.getElementById('fc-tab-consol');
-  const te = document.getElementById('fc-tab-edit');
-  if (!cv || !ev) return;
-  const consol = which !== 'edit';
-  cv.style.display = consol ? 'block' : 'none';
-  ev.style.display = consol ? 'none'  : 'block';
-  // realce da aba ativa (btn-p = ativa, btn-s = inativa)
-  if (tc) tc.className = consol ? 'btn btn-p' : 'btn btn-s';
-  if (te) te.className = consol ? 'btn btn-s' : 'btn btn-p';
-  if (consol) fcRenderConsolidado();
+  fcRenderConsolidado();
 }
 
 // Varre TODOS os processos → eventos de caixa (parcela = 1 evento;
@@ -2943,83 +2893,18 @@ function fcFobTotal() {
   return (_fcProcesso.itens||[]).reduce((s,it) => s+(it.quantidade||0)*(it.fob_unit_usd||0), 0);
 }
 
-function fcSelecionarProcesso(id) {
-  const corpo = document.getElementById('fc-corpo');
-  const btn   = document.getElementById('btn-fc-salvar');
-  const btnD  = document.getElementById('btn-fc-datas');
-  const setBtn = (b, on) => { if (!b) return; b.disabled = !on; b.style.opacity = on ? '1' : '.45'; b.style.cursor = on ? 'pointer' : 'not-allowed'; };
-  if (!id) {
-    _fcProcesso = null; _fcNumerario = [];
-    corpo.style.display = 'none';
-    setBtn(btn, false); setBtn(btnD, false);
-    return;
-  }
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  _fcProcesso = todos.find(p => p.id == id) || null;
-  if (!_fcProcesso) return;
-  setBtn(btn, true); setBtn(btnD, true);
-  corpo.style.display = 'block';
-
-  const fobTotal  = fcFobTotal();
-  const camFiscal = _fcProcesso.cambios?.fiscal?.taxa || _fcProcesso.cambios?.di?.taxa || 0;
-
-  // Pagamentos
-  if (_fcProcesso.pagamentos_fornecedor?.length) {
-    _fcPagamentos = JSON.parse(JSON.stringify(_fcProcesso.pagamentos_fornecedor));
-  } else {
-    _fcPagamentos = [
-      { id:Date.now(),   descricao:'Sinal', percentual:0.20, valor_usd:fobTotal*0.20,
-        data_prevista:'', data_realizada:null, cambio:camFiscal,
-        valor_reais:fobTotal*0.20*camFiscal, status:'previsto' },
-      { id:Date.now()+1, descricao:'Saldo', percentual:0.80, valor_usd:fobTotal*0.80,
-        data_prevista:'', data_realizada:null, cambio:camFiscal,
-        valor_reais:fobTotal*0.80*camFiscal, status:'previsto' }
-    ];
-  }
-
-  // Recebimentos
-  if (_fcProcesso.recebimentos_cliente?.length) {
-    _fcRecebimentos = JSON.parse(JSON.stringify(_fcProcesso.recebimentos_cliente));
-  } else {
-    const camCliente = _fcProcesso.cambios?.cliente?.taxa || camFiscal;
-    const nfBRL = _fcProcesso.resultado?.nf_total_brl || 0;
-    const nfUSD = camCliente > 0 ? nfBRL / camCliente : 0;
-    _fcRecebimentos = [{
-      id:Date.now()+2, descricao:'Pagamento', percentual:1.0, valor_usd:nfUSD,
-      cambio:camCliente, valor_reais:nfBRL,
-      data_prevista:'', data_realizada:null, status:'previsto'
-    }];
-  }
-
-  // Numerário ao Despachante (calculado do processo; preserva datas/status salvos)
-  _fcNumerario = fcBuildNumerario();
-
-  fcRenderCambios();
+// Inicializa o estado de caixa (_fc*) a partir de um objeto processo (salvo, na
+// edição; ou snapshot do form, no novo). SEM auto-gerar parcelas: processo sem
+// caixa salvo → tabelas vazias (o usuário adiciona via "+ Parcela"/"+ Recebimento").
+// data_realizada das parcelas é preservado (cópia verbatim). Renderiza as 3 tabelas.
+function fcCarregarEstado(proc) {
+  _fcProcesso     = proc || {};
+  _fcPagamentos   = Array.isArray(proc && proc.pagamentos_fornecedor) ? JSON.parse(JSON.stringify(proc.pagamentos_fornecedor)) : [];
+  _fcRecebimentos = Array.isArray(proc && proc.recebimentos_cliente)  ? JSON.parse(JSON.stringify(proc.recebimentos_cliente))  : [];
+  _fcNumerario    = fcBuildNumerario();   // calcula itens + inicializa _fcNumPag do salvo
   fcRenderPagamentos();
   fcRenderRecebimentos();
-  fcRenderResumo();
   fcRenderNumerario();
-}
-
-function fcRenderCambios() {
-  const el = document.getElementById('fc-cambios');
-  if (!el || !_fcProcesso) return;
-  const c = _fcProcesso.cambios || {};
-  el.innerHTML = `
-    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-      <div class="sum-item" style="min-width:120px">
-        <div class="val">${fmtN(c.di?.taxa||0,4)}</div><div class="lbl">Câmbio DI</div>
-      </div>
-      <div class="sum-item" style="min-width:120px">
-        <div class="val">${fmtN(c.fiscal?.taxa||0,4)}</div><div class="lbl">Câmbio Fiscal</div>
-      </div>
-      <div class="sum-item" style="min-width:120px">
-        <div class="val">${fmtN(c.cliente?.taxa||0,4)}</div><div class="lbl">Câmbio Cliente</div>
-      </div>
-      <div style="margin-left:auto">
-        <button class="btn btn-s" onclick="fcEditarProcesso()">✎ Editar no Processo</button>
-      </div>
-    </div>`;
 }
 
 function fcRenderPagamentos() {
@@ -3334,19 +3219,12 @@ function fcRenderResumo() {
     </div>`;
 }
 
-function fcEditarProcesso() {
-  if (!_fcProcesso) return;
-  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
-  document.querySelector('.nav-link[onclick*=renderNovoProcesso]')?.classList.add('active');
-  renderNovoProcesso(_fcProcesso);
-}
-
 // ── Bloco 5 — Numerário ao Despachante ──────────────────────────────────────
 // Itens calculados do processo (mesma base da Simulação de Numerário do Resumo
 // Despachante). Pagamento consolidado: uma única data/status no rodapé.
-function fcBuildNumerario() {
-  const proc = _fcProcesso;
-  _fcNumPag = { data_prevista:'', status:'previsto', data_realizada:null };
+// Calcula os ITENS do numerário (custos reais de importação) a partir de um
+// objeto processo. PURO: não toca _fcNumPag. Retorna [] sem Calc/itens.
+function fcCalcNumerarioItens(proc) {
   if (!proc || typeof Calc === 'undefined') return [];
   const calcProc = rdBuildProcParaCalc(proc);
   const res = npCalcResultado(calcProc);
@@ -3357,14 +3235,6 @@ function fcBuildNumerario() {
   const cont = calcProc.frete.containers || 1;
   const cambioDI = proc.cambios?.di?.taxa || proc.cambios?.fiscal?.taxa || 0;
   const freteBRL = (calcProc.frete.valor_usd || 0) * cont * cambioDI; // frete total = por-container × containers
-
-  // Data/status consolidados, preservados do que foi salvo
-  const saved0 = (proc.numerario_despachante || [])[0] || {};
-  _fcNumPag = {
-    data_prevista:  saved0.data_prevista  || '',
-    status:         saved0.status         || 'previsto',
-    data_realizada: saved0.data_realizada || null
-  };
 
   return [
     { descricao: 'Frete Internacional', valor_reais: freteBRL },
@@ -3382,6 +3252,27 @@ function fcBuildNumerario() {
     { descricao: 'Operador Logístico',  valor_reais: cd.operador_logistico * cont },
     { descricao: 'Frete Rodoviário',    valor_reais: (cd.frete_rodoviario || 0) * cont }
   ];
+}
+
+// Para o carregamento: inicializa _fcNumPag (data/status do que foi salvo) e
+// devolve os itens calculados do _fcProcesso atual.
+function fcBuildNumerario() {
+  const proc = _fcProcesso;
+  const saved0 = (proc && proc.numerario_despachante || [])[0] || {};
+  _fcNumPag = {
+    data_prevista:  saved0.data_prevista  || '',
+    status:         saved0.status         || 'previsto',
+    data_realizada: saved0.data_realizada || null
+  };
+  return fcCalcNumerarioItens(proc);
+}
+
+// Recalcula só os VALORES do numerário a partir do formulário atual (tela de
+// Processo), sem tocar _fcNumPag (data/status). Chamado pelo npRecalcular.
+function fcAtualizarNumerario() {
+  if (!document.getElementById('fc-num-tbody')) return;
+  _fcNumerario = fcCalcNumerarioItens(npBuildProcessoAtual());
+  fcRenderNumerario();
 }
 
 function fcRenderNumerario() {
@@ -3480,7 +3371,7 @@ function _derivarCaixa(pags, recs, d0, modo) {
 }
 
 // Orquestra a derivação completa sobre um OBJETO processo (operacionais + caixa).
-// Numerário: data D+86 em cada item (fcSalvar replica). Retorna false se sem data_pedido.
+// Numerário: data D+86 em cada item. Retorna false se sem data_pedido.
 function derivarDatasProcesso(proc, modo) {
   const g = proc && proc.dados_gerais;
   const d0 = g && g.data_pedido;
@@ -3494,44 +3385,15 @@ function derivarDatasProcesso(proc, modo) {
   return true;
 }
 
-// Botão da aba FC (Editar processo): preenche só as datas de CAIXA VAZIAS, a
-// partir de data_pedido. Opera no estado em memória (_fcPagamentos/_fcRecebimentos/
-// _fcNumPag); persistir é pelo "Salvar Fluxo". Não toca operacionais (isso é na
-// tela de Processo) nem data_realizada. A derivação completa (operacional+caixa,
-// 2 modos) vive em npDerivarDatas, na tela de Processo.
-function fcPreencherDatas() {
-  if (!_fcProcesso) return;
-  const d0 = _fcProcesso.dados_gerais?.data_pedido;
-  if (!d0) { alert('Preencha a Data do Pedido no Processo antes de derivar as datas do fluxo.'); return; }
-
-  _derivarCaixa(_fcPagamentos, _fcRecebimentos, d0, 'vazios');
-  if (_fcVazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
-
-  fcRenderPagamentos();
-  fcRenderRecebimentos();
-  fcRenderNumerario();
-  toast('Datas de caixa preenchidas (estimadas). Revise e clique Salvar Fluxo.');
-}
-
-function fcSalvar() {
-  if (!_fcProcesso) return;
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
-  const idx   = todos.findIndex(p => p.id === _fcProcesso.id);
-  if (idx >= 0) {
-    todos[idx].pagamentos_fornecedor = _fcPagamentos;
-    todos[idx].recebimentos_cliente  = _fcRecebimentos;
-    // Numerário: data/status consolidados (replicados em cada item)
-    todos[idx].numerario_despachante = _fcNumerario.map(n => ({
-      ...n,
-      data_prevista:  _fcNumPag.data_prevista  || '',
-      status:         _fcNumPag.status         || 'previsto',
-      data_realizada: _fcNumPag.data_realizada || null
-    }));
-    todos[idx].atualizado_em = new Date().toISOString();
-    localStorage.setItem('pilar_processos', JSON.stringify(todos));
-    _apiSalvarProcessos(todos);
-    toast('✓ Fluxo de caixa salvo');
-  }
+// Helper: monta o objeto numerario_despachante (itens + data/status consolidados
+// de _fcNumPag) para persistir no save do Processo. Preserva data_realizada.
+function fcNumerarioParaSalvar() {
+  return _fcNumerario.map(n => ({
+    ...n,
+    data_prevista:  _fcNumPag.data_prevista  || '',
+    status:         _fcNumPag.status         || 'previsto',
+    data_realizada: _fcNumPag.data_realizada || null
+  }));
 }
 
 // ── Resumo Despachante ─────────────────────────────────────────────────────
