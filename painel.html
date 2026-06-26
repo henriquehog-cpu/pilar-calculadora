@@ -2798,6 +2798,8 @@ function fcConsolidadoEventos() {
               nome: nome || '', desc, sinal, valor: valor || 0, realizado: !!realizado });
   };
   todos.forEach(proc => {
+    const st = (proc && proc.status) || 'ativo';
+    if (st === 'finalizado' || st === 'concluido') return;   // exclui encerrados (e legado)
     const g = proc.dados_gerais || {};
     const nome = g.cliente || g.fornecedor || '';
     (proc.pagamentos_fornecedor || []).forEach(p =>
