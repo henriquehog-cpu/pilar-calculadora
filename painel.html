@@ -1351,6 +1351,8 @@ function renderNovoProcesso(proc, seed) {
 
       <div id="s5-resumo-fiscal"></div>
 
+      <div id="s5b-impostos-posvenda"></div>
+
       <!-- ── Fluxo de Caixa do Processo (editável; deriva dos itens/câmbios acima) ── -->
       <div id="np-caixa-sec">
         <div class="card">
@@ -2486,7 +2488,7 @@ function npCalcResultado(proc) {
   // Agregar totais
   let totII=0, totPIS=0, totCOF=0, totIPI=0, totSisc=0, totAfrmm=0, totDifFrete=0;
   let totCustoFinal=0, totPVBRL=0, totLucro=0;
-  let totIcmsEf=0, totPisV=0, totCofV=0, totCSLL=0, totIR=0, totIRAdic=0, totCom=0;
+  let totIcmsEf=0, totPisV=0, totCofV=0, totCSLL=0, totIR=0, totIRAdic=0, totCom=0, totIpiV=0;
 
   rItens.filter(Boolean).forEach(r => {
     totII        += r.ii;          totPIS      += r.pisImp;  totCOF      += r.cofImp;
@@ -2495,6 +2497,7 @@ function npCalcResultado(proc) {
     totCustoFinal+= r.custoImpTotal;
     totPVBRL     += r.pvTotal;     totLucro    += r.lucroLiqTotal;
     totIcmsEf    += r.icmsEf * r.qtd; totPisV += r.pisV * r.qtd; totCofV += r.cofV * r.qtd;
+    totIpiV      += r.ipiV * r.qtd;
     totCSLL      += r.csll;        totIR       += r.ir;    totIRAdic += r.irAdic;
     totCom       += r.com * r.qtd;
   });
@@ -2520,10 +2523,89 @@ function npCalcResultado(proc) {
     nf_total_brl:  totPVBRL,
     lucro_brl:     totLucro,
     margem_pct:    margem,
-    imp_venda:     { icms: totIcmsEf, pis: totPisV, cofins: totCofV,
+    imp_venda:     { icms: totIcmsEf, ipi: totIpiV, pis: totPisV, cofins: totCofV,
                      csll: totCSLL, ir: totIR, ir_adicional: totIRAdic, comissao: totCom },
     itens_resultado: rItens
   };
+}
+
+// ── Impostos Pós-Venda (calculado, read-only — NÃO persistido no dados.json) ──
+// Vencimento = mês SEGUINTE ao mês da entrega (prev_chegada_cliente). String-math
+// para evitar fuso. Dias 8/26 nunca estouram o mês. Dez (12) → Jan do ano seguinte.
+function vencMesSeguinte(dataISO, dia) {
+  if (!dataISO) return '';
+  const [y, m] = String(dataISO).split('-').map(Number);
+  if (!y || !m) return '';
+  const yN = m === 12 ? y + 1 : y;
+  const mN = m === 12 ? 1 : m + 1;
+  return `${yN}-${String(mN).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+// Cache por assinatura dos inputs do cálculo: muda item/câmbio/frete/entrega → recalcula.
+const _impPosVendaCache = new Map();
+// Retorna [{imposto,label,valor,data,estimativa}] dos impostos pós-venda a recolher.
+// Líquido por processo: débito de venda − crédito de importação; ≤0 → omite (virou crédito).
+// ICMS efetivo 1,5% sempre (sem crédito). IRPJ/CSLL marcados estimativa. NUNCA grava nada.
+function impostosPosVenda(proc) {
+  if (!proc) return [];
+  const entrega = proc.dados_gerais?.prev_chegada_cliente || '';
+  const chave = (proc.numero || '?') + '|' + JSON.stringify({
+    i: proc.itens, c: proc.cambios, d: proc.custos_defaults, f: proc.frete, e: entrega
+  });
+  if (_impPosVendaCache.has(chave)) return _impPosVendaCache.get(chave);
+
+  const res = (typeof Calc !== 'undefined') ? npCalcResultado(proc) : null;
+  const out = [];
+  if (res) {
+    const fi = res.imp_imp || {}, v = res.imp_venda || {};
+    const dICMS = vencMesSeguinte(entrega, 8);   // ICMS dia 8 do mês seguinte
+    const dFed  = vencMesSeguinte(entrega, 26);  // federais dia 26 do mês seguinte
+    const pisLiq = (v.pis    || 0) - (fi.pis    || 0);
+    const cofLiq = (v.cofins || 0) - (fi.cofins || 0);
+    const ipiLiq = (v.ipi    || 0) - (fi.ipi    || 0);
+    const irpj   = (v.ir     || 0) + (v.ir_adicional || 0);
+    // ICMS sempre (1,5%, sem crédito)
+    out.push({ imposto: 'ICMS', label: 'ICMS (1,5%)', valor: (v.icms || 0), data: dICMS, estimativa: false });
+    if (pisLiq > 0) out.push({ imposto: 'PIS',    label: 'PIS',    valor: pisLiq, data: dFed, estimativa: false });
+    if (cofLiq > 0) out.push({ imposto: 'COFINS', label: 'COFINS', valor: cofLiq, data: dFed, estimativa: false });
+    if (ipiLiq > 0) out.push({ imposto: 'IPI',    label: 'IPI',    valor: ipiLiq, data: dFed, estimativa: false });
+    if (irpj      > 0) out.push({ imposto: 'IRPJ', label: 'IRPJ (estimativa)', valor: irpj,        data: dFed, estimativa: true });
+    if ((v.csll || 0) > 0) out.push({ imposto: 'CSLL', label: 'CSLL (estimativa)', valor: (v.csll || 0), data: dFed, estimativa: true });
+  }
+  _impPosVendaCache.set(chave, out);
+  return out;
+}
+
+// Card read-only na tela de Processo — distinto das parcelas editáveis.
+function npRenderImpostosPosVenda(proc) {
+  const el = document.getElementById('s5b-impostos-posvenda');
+  if (!el) return;
+  const lista = impostosPosVenda(proc);
+  if (!lista.length) { el.innerHTML = ''; return; }
+  const R = v => 'R$ ' + fmtN(v || 0, 2);
+  const dataBR = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('pt-BR') : '—';
+  const semData = !(proc.dados_gerais?.prev_chegada_cliente);
+  const total = lista.reduce((s, t) => s + t.valor, 0);
+  const rows = lista.map(t => `
+    <div class="rf-row">
+      <span class="rf-lbl">${t.label}</span>
+      <span class="rf-val">${R(t.valor)}<span style="color:var(--cinza-med);font-size:11px;margin-left:10px">venc. ${dataBR(t.data)}</span></span>
+    </div>`).join('');
+  const aviso = semData
+    ? '<div style="font-size:11px;color:#E65100;padding:4px 0 8px">⚠ Sem "chegada ao cliente" preenchida — impostos sem data até informar a entrega.</div>'
+    : '';
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-hd" style="background:#6A1B9A;color:#fff">🧾 Impostos Pós-Venda
+        <span style="font-weight:400;font-size:11px;opacity:.85">· calculado · não editável</span></div>
+      <div class="card-bd">
+        ${aviso}
+        ${rows}
+        <div class="rf-sep"></div>
+        <div class="rf-row rf-bold"><span class="rf-lbl">Total a recolher</span><span class="rf-val">${R(total)}</span></div>
+        <div style="font-size:10px;color:var(--cinza-med);margin-top:8px">Líquido por processo (débito de venda − crédito de importação). Vencimento no mês seguinte à entrega · ICMS dia 8 · federais dia 26. Não vira parcela editável nem é gravado.</div>
+      </div>
+    </div>`;
 }
 
 // Atualiza apenas o modelo (sem re-renderizar) — usado no oninput para não perder o foco
@@ -2657,6 +2739,9 @@ function npRecalcular() {
 
   // ── Seção 5 — Resumo Fiscal (extrato) ────────────────────────────────────
   npRenderResumoFiscal(proc, res);
+
+  // ── Seção 5b — Impostos Pós-Venda (calculado, read-only) ─────────────────
+  npRenderImpostosPosVenda(proc);
 
   // Numerário do caixa reflete câmbios/itens atuais (não toca data/status).
   fcAtualizarNumerario();
@@ -2818,6 +2903,15 @@ function fcConsolidadoEventos() {
           nums.reduce((s, n) => s + (n.valor_reais || 0), 0),
           !!n0.data_realizada || n0.status === 'pago');
     }
+    // Impostos pós-venda (calculado, read-only): saídas previstas na data de vencimento.
+    // Sem data (entrega não preenchida) → fora da timeline. Marcados imposto:true.
+    impostosPosVenda(proc).forEach(t => {
+      if (!t.data) return;
+      ev.push({ data: t.data, ts: new Date(t.data + 'T12:00').getTime(),
+                numero: proc.numero || '—', nome: nome || '',
+                desc: `Imposto ${t.label}`, sinal: 'saida', valor: t.valor || 0,
+                realizado: false, imposto: true });
+    });
   });
   return ev.sort((a, b) => a.ts - b.ts);
 }
@@ -2875,7 +2969,9 @@ function fcRenderConsolidado() {
         const dataBR = new Date(e.data + 'T12:00').toLocaleDateString('pt-BR');
         const cor = e.sinal === 'entrada' ? '#2E7D32' : '#C62828';
         const sinal = e.sinal === 'entrada' ? '+' : '−';
-        const tag = e.realizado
+        const tag = e.imposto
+          ? '<span style="font-size:10px;font-weight:700;background:#F3E5F5;color:#6A1B9A;border-radius:4px;padding:2px 6px">🧾 imposto</span>'
+          : e.realizado
           ? '<span style="font-size:10px;font-weight:700;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:2px 6px">✓ realizado</span>'
           : '<span style="font-size:10px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:4px;padding:2px 6px">previsto</span>';
         const cli = e.nome ? ` <span style="font-weight:400;color:var(--cinza-med)">— ${esc(e.nome)}</span>` : '';
