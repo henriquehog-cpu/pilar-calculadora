@@ -251,7 +251,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="field">
         <label>Frete por Container (USD)</label>
-        <input type="number" id="frete_total" value="3500" step="100" min="0" oninput="onFreteChange()">
+        <input type="number" id="frete_total" value="3500" step="100" min="0" oninput="onFreteChange(); document.getElementById('frete-ref-nota')?.remove()">
       </div>
       <div class="field">
         <label>Comissão de Vendas (%)</label>
@@ -439,7 +439,46 @@ function init() {
   if (!loadFromURL() && !loadSeedFromURL()) {
     addItem();
     addItem();
+    aplicarFreteReferencia();   // sugere o frete de referência (só na calculadora fresca)
   }
+}
+
+// ============================================================
+// FRETE DE REFERÊNCIA (sugestão; não toca fórmula/motor)
+// ============================================================
+// Decisão pura: só sugere quando o campo ainda é o default intocado '3500'.
+// Sem referência (ou valor 0) → não aplica → 3500 preservado.
+function freteRefSugestao(valorCampoAtual, freteRefAtual) {
+  const ref = (freteRefAtual && freteRefAtual.valor_usd > 0) ? freteRefAtual : null;
+  if (!ref) return { aplicar: false };
+  if (valorCampoAtual !== '3500') return { aplicar: false };
+  const d = ref.data || '';
+  const dataBR = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.slice(8, 10) + '/' + d.slice(5, 7) : '';
+  return { aplicar: true, valor: ref.valor_usd, dataBR };
+}
+
+// Lê pilar_config.frete_referencia.atual do servidor e, se aplicável, pré-preenche
+// o campo de frete (editável) com uma nota. Falha de fetch (standalone) → mantém 3500.
+function aplicarFreteReferencia() {
+  fetch('/api/dados')
+    .then(r => r.json())
+    .then(d => {
+      const ref = d?.pilar_config?.frete_referencia?.atual;
+      const el  = document.getElementById('frete_total');
+      if (!el) return;
+      const s = freteRefSugestao(el.value, ref);
+      if (!s.aplicar) return;                 // sem ref / campo já mexido → mantém 3500
+      el.value = s.valor;
+      if (!document.getElementById('frete-ref-nota')) {
+        const nota = document.createElement('div');
+        nota.id = 'frete-ref-nota';
+        nota.style.cssText = 'font-size:11px;color:var(--turquesa);margin-top:3px';
+        nota.textContent = '💡 sugerido pela referência' + (s.dataBR ? ' de ' + s.dataBR : '') + ' — editável';
+        el.parentNode.appendChild(nota);
+      }
+      onFreteChange();                        // recalcula com o frete sugerido
+    })
+    .catch(() => {});                         // sem servidor → 3500 preservado
 }
 
 // ============================================================
