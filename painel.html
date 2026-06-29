@@ -6087,7 +6087,8 @@ function iaCopiar(btn) {
 }
 
 // ── Nova Demanda (fluxo qualificação) ────────────────────────────────────────
-let _ndMensagens = [];   // conversa pura (formato da API): [{role, content}]
+let _ndMensagens = [];   // conversa pura (formato da API): [{role, content}]; imagem em m._img
+let _ndAnexo = null;     // imagem pendente { media_type, data } (limpa após enviar)
 let _ndErro = null;      // erro transitório (não entra na conversa)
 let _ndEnviando = false;
 let _ndEditId = null;    // id da demanda em edição (null = nova); preenchido ao "Reabrir conversa"
@@ -6110,6 +6111,11 @@ function renderNovaDemanda() {
           <textarea id="nd-input" rows="2" placeholder="Descreva a demanda do cliente…  (Enter envia, Shift+Enter quebra linha)" onkeydown="ndTecla(event)"></textarea>
           <button class="btn btn-p" id="nd-enviar" onclick="ndEnviar()">Enviar</button>
         </div>
+        <div style="padding:8px 4px 0">
+          <input type="file" id="nd-file" accept="image/*" style="display:none" onchange="ndArquivoSelecionado(this)">
+          <button class="btn btn-s" onclick="document.getElementById('nd-file').click()">📎 Anexar imagem</button>
+          <div id="nd-anexo-preview"></div>
+        </div>
       </div>
       <div id="nd-save-form"></div>
       <div id="nd-lista" style="margin-top:24px"></div>
@@ -6131,7 +6137,10 @@ function _ndRepaint(carregando) {
     const cls = m.role === 'user' ? 'user' : 'assistant';
     const copia = m.role === 'assistant'
       ? '<button class="ia-copy" onclick="iaCopiar(this)">Copiar</button>' : '';
-    html += `<div class="ia-row ${cls}"><div class="ia-stack"><div class="ia-bubble">${_cmdEsc(m.content)}</div>${copia}</div></div>`;
+    const imgHtml = (m.role === 'user' && m._img)
+      ? `<img src="data:${m._img.media_type};base64,${m._img.data}" style="max-width:180px;max-height:180px;border-radius:8px;display:block;margin-bottom:6px">`
+      : '';
+    html += `<div class="ia-row ${cls}"><div class="ia-stack"><div class="ia-bubble">${imgHtml}${_cmdEsc(m.content)}</div>${copia}</div></div>`;
   });
   if (carregando)
     html += '<div class="ia-row assistant"><div class="ia-stack"><div class="ia-bubble ia-loading">Pensando…</div></div></div>';
@@ -6153,7 +6162,7 @@ async function _ndChamar() {
   _ndSetEnviando(true);
   _ndRepaint(true);
   try {
-    const data = await iaChat('qualificacao', _ndMensagens.map(m => ({ role: m.role, content: m.content })));
+    const data = await iaChat('qualificacao', _ndMensagens.map(m => ({ role: m.role, content: _ndConteudoAPI(m) })));
     _ndMensagens.push({ role: 'assistant', content: data.texto || '(resposta vazia)' });
   } catch (e) {
     _ndErro = e.message || 'Falha na chamada';
@@ -6166,19 +6175,92 @@ function ndEnviar() {
   if (_ndEnviando) return;
   const inp = document.getElementById('nd-input');
   const texto = (inp.value || '').trim();
-  if (!texto) return;
-  _ndMensagens.push({ role: 'user', content: texto });
+  if (!texto && !_ndAnexo) return;
+  if (_ndAnexo) {
+    // content fica string (display/persistência/extração); imagem em _img p/ a API
+    _ndMensagens.push({ role: 'user', content: texto || '(imagem enviada)',
+                        _img: { media_type: _ndAnexo.media_type, data: _ndAnexo.data } });
+    _ndAnexo = null;
+    _ndRenderAnexo();
+  } else {
+    _ndMensagens.push({ role: 'user', content: texto });
+  }
   inp.value = '';
   _ndChamar();
 }
 
 function ndReenviar() { if (!_ndEnviando) _ndChamar(); }
 
-function ndLimpar() { _ndMensagens = []; _ndErro = null; _ndEditId = null; renderNovaDemanda(); }
+function ndLimpar() { _ndMensagens = []; _ndAnexo = null; _ndErro = null; _ndEditId = null; renderNovaDemanda(); }
 
 function ndTecla(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ndEnviar(); }
 }
+
+// ── Nova Demanda: anexo de imagem (multimodal) ───────────────────────────────
+// Monta o content no formato da API: com imagem → [bloco image, bloco text];
+// sem imagem → string (idêntico ao comportamento atual). Puro/testável.
+function _ndConteudoAPI(m) {
+  if (m && m.role === 'user' && m._img) {
+    return [
+      { type: 'image', source: { type: 'base64', media_type: m._img.media_type, data: m._img.data } },
+      { type: 'text', text: m.content }
+    ];
+  }
+  return m.content;
+}
+
+// FileReader → Image → canvas (máx 1568px no maior lado, mantém proporção) →
+// JPEG q0.9 → base64 sem o prefixo "data:". Resolve { media_type, data }.
+function _ndProcessarImagem(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1568;
+        let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+          else        { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const media_type = 'image/jpeg';
+        const data = (canvas.toDataURL(media_type, 0.9).split(',')[1]) || '';
+        resolve({ media_type, data });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function ndArquivoSelecionado(input) {
+  const file = input.files && input.files[0];
+  input.value = '';   // permite reanexar o mesmo arquivo
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) { toast('Selecione um arquivo de imagem.'); return; }
+  try {
+    _ndAnexo = await _ndProcessarImagem(file);
+    _ndRenderAnexo();
+  } catch { toast('Não foi possível processar a imagem.'); }
+}
+
+function _ndRenderAnexo() {
+  const el = document.getElementById('nd-anexo-preview');
+  if (!el) return;
+  if (!_ndAnexo) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:8px">
+      <img src="data:${_ndAnexo.media_type};base64,${_ndAnexo.data}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--cinza-light)">
+      <button class="btn btn-s" onclick="ndRemoverAnexo()" title="Remover imagem">✕ Remover</button>
+    </div>`;
+}
+
+function ndRemoverAnexo() { _ndAnexo = null; _ndRenderAnexo(); }
 
 // ── Nova Demanda: persistência (salvar / listar / status / reabrir / excluir) ─
 const _ND_STATUS = ['aberta', 'cotando', 'calculada', 'proposta_enviada', 'fechada', 'perdida'];
