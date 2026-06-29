@@ -349,7 +349,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
   <button class="btn btn-p" onclick="addItemUI()">+ Adicionar Item</button>
-  <button class="btn btn-s" onclick="saveSimulacao()">💾 Salvar Simulação</button>
+  <button class="btn btn-s" id="btn-salvar-sim" onclick="saveSimulacao()">💾 Salvar Simulação</button>
+  <button class="btn btn-s" onclick="_salvarComoNova()">💾 Salvar como nova</button>
   <button class="btn btn-s" onclick="toggleSimulacoes()">📋 Simulações Salvas</button>
   <button class="btn btn-s" onclick="copySimUrl()">🔗 Copiar Link</button>
 </div>
@@ -530,6 +531,8 @@ function tryPTAX(datas, idx) {
 // ============================================================
 // SALVAR / RESTAURAR SIMULAÇÕES (localStorage)
 // ============================================================
+let _simAtualId = null;   // id da simulação carregada (null = cotação nova → "Salvar" cria)
+
 function getSimState() {
   return {
     v: 1, ts: Date.now(),
@@ -650,7 +653,40 @@ async function _simInit() {
   if (document.getElementById('sim-panel')?.style.display === 'block') renderSimList();
 }
 
+// Atualiza o rótulo do botão "Salvar" conforme há (ou não) uma sim carregada.
+function _atualizarBotaoSalvar() {
+  const b = document.getElementById('btn-salvar-sim');
+  if (!b) return;
+  const existe = _simAtualId != null && _simGet().some(x => String(x.id) === String(_simAtualId));
+  b.textContent = existe ? '💾 Salvar (atualizar)' : '💾 Salvar Simulação';
+}
+
+// Feedback discreto (estilo Ctrl+S) no overwrite — sem modal.
+function _flashBotaoSalvar(txt) {
+  const b = document.getElementById('btn-salvar-sim');
+  if (!b) return;
+  b.textContent = txt;
+  b.disabled = true;
+  setTimeout(() => { b.disabled = false; _atualizarBotaoSalvar(); }, 1500);
+}
+
+// "Salvar": sim carregada → SOBRESCREVE (sem prompt, Ctrl+S); cotação nova → cria.
 function saveSimulacao() {
+  const sims  = _simGet();
+  const atual = _simAtualId != null ? sims.find(x => String(x.id) === String(_simAtualId)) : null;
+  if (!atual) { _salvarComoNova(); return; }
+  Object.assign(atual, getSimState(), { id: atual.id, nome: atual.nome });   // mantém id/nome/demandaId
+  _simSalvarServidor(sims);
+  if (atual.demandaId != null) {
+    const { pvItens, pvFinal, pvFinalUSD } = _coletarPVs();
+    _vincularDemanda(atual.id, atual.demandaId, pvItens, pvFinal, pvFinalUSD);
+  }
+  renderSimList();
+  _flashBotaoSalvar('✓ Atualizado');
+}
+
+// "Salvar como nova": sempre cria uma nova entrada (vira a atual → próximo Salvar sobrescreve).
+function _salvarComoNova() {
   const state = getSimState();
   const def   = state.cliente || `Simulação ${new Date().toLocaleDateString('pt-BR')}`;
   const nome  = prompt('Nome para esta simulação:', def);
@@ -668,8 +704,10 @@ function saveSimulacao() {
     const { pvItens, pvFinal, pvFinalUSD } = _coletarPVs();
     _vincularDemanda(state.id, vinc.demandaId, pvItens, pvFinal, pvFinalUSD);
   }
+  _simAtualId = state.id;   // a nova passa a ser a "atual"
   alert(`✅ Salvo: "${state.nome}"`);
   renderSimList();
+  _atualizarBotaoSalvar();
 }
 
 function toggleSimulacoes() {
@@ -708,6 +746,8 @@ function loadSim(id) {
   // Preserva (ou limpa) o vínculo com a demanda conforme a simulação carregada
   window._demandaVinculo = s.demandaId != null ? { demandaId: s.demandaId } : null;
   applySimState(s);
+  _simAtualId = s.id;             // passa a "editar" esta sim → "Salvar" sobrescreve
+  _atualizarBotaoSalvar();
   document.getElementById('sim-panel').style.display = 'none';
 }
 
@@ -719,6 +759,7 @@ function deleteSim(id) {
   const novo = sims.filter(x => String(x.id) !== String(id));
   _simSalvarServidor(novo);
   fetch('/api/simulacoes/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+  if (String(_simAtualId) === String(id)) { _simAtualId = null; _atualizarBotaoSalvar(); }
   renderSimList();
 }
 
