@@ -22,6 +22,18 @@ const Calc = (() => {
     };
   }
 
+  // DIFAL — Diferencial de Alíquota (cliente sem inscrição estadual). Réplica exata
+  // de difalRateAtual() do index.html (fonte de verdade). interna em % (default 18),
+  // interestadual FIXA 4%. Sem IE marcada → 0. Aplicado sobre a venda total, fora do
+  // loop, descontado do lucro (não altera PV nem escudo fiscal IR/CSLL).
+  function difalRate(clienteSemIE, aliqInternaDestinoPct) {
+    if (!clienteSemIE) return 0;
+    const interna = (Number(aliqInternaDestinoPct) || 0) / 100;
+    const inter   = 0.04;
+    if (!(1 - interna > 0)) return 0;            // guarda div/0 (interna ≥ 100%)
+    return (interna - inter) / (1 - interna);
+  }
+
   /**
    * Calcula um único item dentro do contexto do processo.
    * Retorna o objeto de resultado ou null se dados insuficientes.
@@ -191,7 +203,7 @@ const Calc = (() => {
    * Retorna o objeto resultado completo (seção 5.7 do AGENTS.md).
    */
   function calcProcesso(processo) {
-    const { cambios = {}, frete = {}, custos_defaults = {}, itens = [] } = processo;
+    const { cambios = {}, frete = {}, custos_defaults = {}, itens = [], dados_gerais = {} } = processo;
 
     const taxaCalc    = Number(cambios.fiscal?.taxa) || Number(cambios.di?.taxa) || 5.80;
     const taxaCliente = Number(cambios.cliente?.taxa) || taxaCalc;
@@ -259,7 +271,11 @@ const Calc = (() => {
     const custoUnitarioBRL = totalQtd > 0 ? custoFinalTotal / totalQtd : 0;
     const custoUnitarioUSD = taxaCalc > 0 ? custoUnitarioBRL / taxaCalc : 0;
     const pvMedioUSD       = totalQtd > 0 && taxaCliente > 0 ? totalPVBRL / totalQtd / taxaCliente : 0;
-    const margemMedia      = totalPVBRL > 0 ? totalLucro / totalPVBRL : 0;
+    // DIFAL: sobre a venda total, descontado do lucro (Opção B, espelho do index.html).
+    const _difalRate       = difalRate(dados_gerais.cliente_sem_ie, dados_gerais.aliq_interna_destino);
+    const difalTotal       = totalPVBRL * _difalRate;
+    const lucroFinal       = totalLucro - difalTotal;
+    const margemMedia      = totalPVBRL > 0 ? lucroFinal / totalPVBRL : 0;
 
     // AFRMM e DifFrete globais (processo)
     const afrmmTotal   = freteRS * 0.08 + 20;
@@ -304,7 +320,8 @@ const Calc = (() => {
 
       nf_total_brl:          totalPVBRL,
       custo_processo_total:  custoDesembTotal,
-      lucro_brl:             totalLucro,
+      difal:                 difalTotal,
+      lucro_brl:             lucroFinal,
       margem_pct:            margemMedia,
 
       pv_medio_brl: totalQtd > 0 ? totalPVBRL / totalQtd : 0,
@@ -312,9 +329,9 @@ const Calc = (() => {
       total_unidades: totalQtd,
 
       // espelho AGENTS.md 5.7
-      saldo_caixa: totalLucro
+      saldo_caixa: lucroFinal
     };
   }
 
-  return { calcProcesso, calcItem, defaultAliq };
+  return { calcProcesso, calcItem, defaultAliq, difalRate };
 })();

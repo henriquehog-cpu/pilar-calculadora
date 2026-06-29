@@ -1189,6 +1189,13 @@ function freteInicialNovoProcesso(isNovo, freteSalvoUSD, freteRefAtual) {
              : { valor: '', sugerido: false };
 }
 
+// Mostra/esconde o campo de alíquota interna conforme o checkbox de DIFAL.
+function npDifalToggle() {
+  const wrap = document.getElementById('np-aliq-interna-wrap');
+  const chk  = document.getElementById('np-cliente-sem-ie');
+  if (wrap) wrap.style.display = (chk && chk.checked) ? 'block' : 'none';
+}
+
 function renderNovoProcesso(proc, seed) {
   _npEditId = proc ? proc.id : null;
   _npSeed   = (!proc && seed) ? seed : null;   // semente só vale na criação nova
@@ -1267,6 +1274,16 @@ function renderNovoProcesso(proc, seed) {
           <div style="max-width:320px">
             <div class="field"><label>Prev. Chegada Cliente</label>
               <input id="np-chegada" type="date" value="${g.prev_chegada_cliente||''}"></div>
+          </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--cinza-light)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="np-cliente-sem-ie" ${g.cliente_sem_ie ? 'checked' : ''} onchange="npDifalToggle(); npRecalcular()">
+              Cliente sem inscrição estadual (DIFAL)
+            </label>
+            <div id="np-aliq-interna-wrap" style="display:${g.cliente_sem_ie ? 'block' : 'none'};margin-top:8px;max-width:260px">
+              <div class="field"><label>Alíquota interna destino (%)</label>
+                <input type="number" id="np-aliq-interna" value="${g.aliq_interna_destino != null ? g.aliq_interna_destino : 18}" step="0.5" min="0" max="99" oninput="npRecalcular()"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2081,7 +2098,9 @@ function npSalvar() {
       numero_proforma:      val('np-proforma'),
       prev_embarque:        val('np-embarque'),
       prev_chegada_porto:   val('np-porto'),
-      prev_chegada_cliente: val('np-chegada')
+      prev_chegada_cliente: val('np-chegada'),
+      cliente_sem_ie:       !!document.getElementById('np-cliente-sem-ie')?.checked,
+      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18
     },
     cambios: {
       di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
@@ -2529,6 +2548,10 @@ function npBuildProcessoAtual() {
   const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
   const d   = cfg.defaults || {};
   return {
+    dados_gerais: {
+      cliente_sem_ie:       !!document.getElementById('np-cliente-sem-ie')?.checked,
+      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18
+    },
     cambios: {
       di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
       fiscal:  { taxa: parseFloat(val('np-cambio-fiscal'))  || 0 },
@@ -2625,7 +2648,13 @@ function npCalcResultado(proc) {
                    (d.capatazia            || 1010) * containers +
                    (d.operador_logistico   || 1000) * containers +
                    (d.frete_rodoviario     || 0);
-  const margem    = totPVBRL > 0 ? totLucro / totPVBRL : 0;
+  // DIFAL: sobre a venda total, descontado do lucro (Opção B). Mesma fórmula do
+  // calc.js/index.html. Sem checkbox → 0 → resultado idêntico ao atual.
+  const _dg = proc.dados_gerais || {};
+  const difalTotal = totPVBRL * ((typeof Calc !== 'undefined' && Calc.difalRate)
+    ? Calc.difalRate(_dg.cliente_sem_ie, _dg.aliq_interna_destino) : 0);
+  const lucroFinal = totLucro - difalTotal;
+  const margem    = totPVBRL > 0 ? lucroFinal / totPVBRL : 0;
 
   return {
     fob_total_usd: fobTotalUSD,
@@ -2635,7 +2664,8 @@ function npCalcResultado(proc) {
     custos_op_total:   custosOp,
     custo_final_total: totCustoFinal,
     nf_total_brl:  totPVBRL,
-    lucro_brl:     totLucro,
+    difal:         difalTotal,
+    lucro_brl:     lucroFinal,
     margem_pct:    margem,
     imp_venda:     { icms: totIcmsEf, ipi: totIpiV, pis: totPisV, cofins: totCofV,
                      csll: totCSLL, ir: totIR, ir_adicional: totIRAdic, comissao: totCom },
@@ -2949,6 +2979,7 @@ function npRenderResumoFiscal(proc, res) {
         ${titl('Resultado')}
         ${row('Receita Total R$',  R(res.nf_total_brl))}
         ${row('Custo Final Total', R(custoFinal))}
+        ${(res.difal > 0) ? row('DIFAL repassado', '− ' + R(res.difal), 'rf-credit') : ''}
         ${sep}
         ${row('Lucro R$',  R(lucro),  'rf-bold ' + sinalCls)}
         ${row('Margem %',  P(margem), 'rf-bold ' + sinalCls)}
