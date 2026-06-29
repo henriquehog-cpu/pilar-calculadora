@@ -1130,6 +1130,7 @@ function fmtN(v, d=2) { return (parseFloat(v)||0).toLocaleString('pt-BR',{minimu
 let _itens = [];
 let _npEditId = null; // id do processo em edição; null = criação nova
 let _npSeed   = null; // semente p/ Novo Processo vindo de uma demanda (cliente/itens/PVs/demandaId)
+let _npItensCopiadosSeed = null; // one-shot: itens copiados de outro processo ("Copiar pedido")
 let _npNfSeq  = 0;    // contador p/ ids únicos das linhas de Nota Fiscal (Etapa D)
 let _procFiltro = 'ativos'; // lista de processos: 'ativos' | 'finalizados' | 'todos' (padrão: ativos)
 // Ordenação client-side da lista (somente exibição; não persiste). coluna:null = ordem padrão
@@ -1192,7 +1193,12 @@ function renderNovoProcesso(proc, seed) {
   _npEditId = proc ? proc.id : null;
   _npSeed   = (!proc && seed) ? seed : null;   // semente só vale na criação nova
   const base = proc || _npSeed || null;        // fonte de pré-preenchimento
-  _itens    = base?.itens?.length ? base.itens.map(it => ({...it})) : [newItemRow()];
+  if (!proc && _npItensCopiadosSeed && _npItensCopiadosSeed.length) {
+    _itens = _npItensCopiadosSeed.map(it => ({ ...it }));  // "Copiar pedido": itens pré-populados
+    _npItensCopiadosSeed = null;                           // one-shot: só o próximo Novo Processo
+  } else {
+    _itens = base?.itens?.length ? base.itens.map(it => ({...it})) : [newItemRow()];
+  }
   { const _pls = JSON.parse(localStorage.getItem('pilar_catalogo_omie') || '[]');
     _itens.forEach(it => { it.is_novo = !!(it.codigo) && !_pls.some(p => (p.codigo||'').toLowerCase() === (it.codigo||'').toLowerCase()); }); }
 
@@ -1218,6 +1224,7 @@ function renderNovoProcesso(proc, seed) {
         <div style="display:flex;gap:8px;align-items:center">
           ${proc ? `<button class="btn btn-s" onclick="npDerivarDatas('vazios')" title="Preenche as datas vazias (operacionais e de caixa) a partir do pedido">📅 Preencher vazios</button>
           <button class="btn btn-s" onclick="npDerivarDatas('tudo')" title="Recalcula as datas derivadas a partir do pedido/embarque (mantém pedido e embarque)">🔄 Recalcular tudo</button>` : ''}
+          ${proc ? `<button class="btn btn-s" onclick="procCopiarPedido(${proc.id})" title="Abre um Novo Processo com os mesmos itens (sem quantidades/FOB)">📋 Copiar pedido</button>` : ''}
           ${proc ? (proc.status === 'finalizado'
             ? `<button class="btn btn-s" onclick="procReabrir(${proc.id})">↩ Reabrir processo</button>`
             : `<button class="btn btn-s" onclick="procFinalizar(${proc.id})">✓ Finalizar processo</button>`) : ''}
@@ -2489,6 +2496,31 @@ function _procSetStatus(id, status) {
   _apiSalvarProcessos(todos);                                     // MERGE /api/processos
   toast(status === 'finalizado' ? '✓ Processo finalizado.' : '↩ Processo reaberto.');
   renderNovoProcesso(todos[idx]); // re-renderiza o detalhe refletindo o novo status
+}
+
+// ── Copiar pedido: duplica os itens de um processo p/ um Novo Processo ────────
+// PURA: copia só os campos de produto (sem qtd/FOB, que nascem 0 via newItemRow);
+// aliquotas é clonado para não referenciar o original. Não muta a origem.
+function _npItensParaCopia(itens) {
+  const COPIAR = ['codigo', 'descricao', 'ncm', 'aliquotas', 'familia', 'largura_cm', 'gsm', 'cor'];
+  return (Array.isArray(itens) ? itens : []).map(it => {
+    const novo = newItemRow();   // quantidade:0, fob_unit_usd:0, etc.
+    COPIAR.forEach(k => {
+      if (it && it[k] !== undefined && it[k] !== null) {
+        novo[k] = (k === 'aliquotas' && typeof it[k] === 'object') ? { ...it[k] } : it[k];
+      }
+    });
+    return novo;
+  });
+}
+
+function procCopiarPedido(id) {
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const proc  = todos.find(p => p.id === id);
+  if (!proc) { toast('Processo não encontrado.'); return; }
+  _npItensCopiadosSeed = _npItensParaCopia(proc.itens);   // one-shot p/ o próximo Novo Processo
+  toast('📋 Itens copiados — preencha cliente, quantidades e FOB.');
+  location.hash = '#/novo-processo';                       // mesma entrada do "+ Novo Processo"
 }
 
 // ── Precificação — Seção 4 ────────────────────────────────────────────────
