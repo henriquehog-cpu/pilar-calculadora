@@ -1112,6 +1112,17 @@ async function fetchPTAX(inputId) {
   el.placeholder = 'indisponível';
 }
 
+// Frete de referência (40'HC, China): só SUGERE no Novo Processo quando o campo
+// nasceria vazio. Edição → mantém o salvo. Seed com frete > 0 → respeita o seed.
+// Sem referência → vazio (como hoje). Puro: não escreve nada.
+function freteInicialNovoProcesso(isNovo, freteSalvoUSD, freteRefAtual) {
+  if (!isNovo)           return { valor: freteSalvoUSD || '', sugerido: false };
+  if (freteSalvoUSD > 0) return { valor: freteSalvoUSD, sugerido: false };
+  const ref = (freteRefAtual && freteRefAtual.valor_usd > 0) ? freteRefAtual : null;
+  return ref ? { valor: ref.valor_usd, sugerido: true, data: ref.data }
+             : { valor: '', sugerido: false };
+}
+
 function renderNovoProcesso(proc, seed) {
   _npEditId = proc ? proc.id : null;
   _npSeed   = (!proc && seed) ? seed : null;   // semente só vale na criação nova
@@ -1124,6 +1135,11 @@ function renderNovoProcesso(proc, seed) {
   const c    = base?.cambios      || {};
   const fr   = base?.frete        || {};
   const op   = base?.operacional  || {};
+
+  // Sugestão de frete (só processo novo; lê a referência global de pilar_config)
+  const _isNovo   = !proc;
+  const _fref     = JSON.parse(localStorage.getItem('pilar_config') || '{}').frete_referencia?.atual || null;
+  const _freteIni = freteInicialNovoProcesso(_isNovo, fr.valor_usd, _fref);
   _npNfSeq   = (base?.notasFiscais || []).length; // ids das linhas novas começam após as existentes
   const inco = g.incoterm || 'FOB';
   const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
@@ -1283,7 +1299,8 @@ function renderNovoProcesso(proc, seed) {
           <div class="g4" style="max-width:960px">
             <div class="field"><label>Frete Internacional (USD)</label>
               <input type="number" id="np-frete" step="100" min="0" placeholder="0,00"
-                value="${fr.valor_usd || ''}" oninput="npRecalcular()"></div>
+                value="${_freteIni.valor}" oninput="npRecalcular(); document.getElementById('np-frete-sugestao')?.remove()">
+              ${_freteIni.sugerido ? `<span id="np-frete-sugestao" style="font-size:11px;color:var(--turquesa);display:block;margin-top:3px">💡 sugerido pela referência de ${_freteIni.data.slice(8,10)}/${_freteIni.data.slice(5,7)} — editável</span>` : ''}</div>
             <div class="field"><label>Número de Containers</label>
               <input type="number" id="np-containers" min="1" step="1"
                 value="${fr.containers || 1}" oninput="npRecalcular()"></div>
