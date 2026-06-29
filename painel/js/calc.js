@@ -210,8 +210,9 @@ const Calc = (() => {
     const comissaoPct = Number(custos_defaults.comissao_pct) || 0.015;
 
     const freteUSD = Number(frete.valor_usd) || 0;
-    const freteRS  = freteUSD * taxaCalc;
     const containers = Number(frete.containers) || 1;
+    const freteProcUSD = freteUSD * containers;   // frete total = por-container × nº containers (= npCalcResultado)
+    const freteRS  = freteProcUSD * taxaCalc;
 
     const custos = {
       siscomex:   Number(custos_defaults.siscomex)          || 192.79,
@@ -228,13 +229,31 @@ const Calc = (() => {
       s + (Number(it.quantidade) || 0) * (Number(it.fob_unit_usd) || 0), 0);
     const fobTotalBRL = fobTotalUSD * taxaCalc;
 
-    const cifTotalUSD = fobTotalUSD + freteUSD;
+    const cifTotalUSD = fobTotalUSD + freteProcUSD;
     const cifTotalBRL = cifTotalUSD * taxaCalc;
 
-    const ctx = { fobTotalUSD, freteUSD, taxaCalc, taxaCliente, comissaoPct, custos };
-
-    // Calcular cada item
-    const resultadosItens = itens.map(it => calcItem(it, ctx));
+    // Pré-rateio por item (espelho do npCalcResultado): frete e custos por-container
+    // são distribuídos por prop (FOB do item / FOB total), e containers é forçado a 1
+    // por item — o rateio já absorve a proporção. Siscomex/despachante vão cheios:
+    // calcItem os rateia internamente por prop. Sem isto, cada item receberia o custo
+    // por-container INTEIRO e a base inflaria com o nº de itens.
+    const agenteT = custos.agente * containers, armazT = custos.armazenagem * containers,
+          capatT  = custos.capatazia * containers, oplogT = custos.oplog * containers,
+          frodT   = custos.frodRodov * containers;
+    const resultadosItens = itens.map(it => {
+      const fobItem = (Number(it.quantidade) || 0) * (Number(it.fob_unit_usd) || 0);
+      const prop = fobTotalUSD > 0 ? fobItem / fobTotalUSD : 0;
+      const ctxItem = {
+        fobTotalUSD, taxaCalc, taxaCliente, comissaoPct,
+        freteUSD: freteProcUSD * prop,
+        custos: {
+          siscomex: custos.siscomex, despachante: custos.despachante,  // cheios (rateados por prop no calcItem)
+          agente: agenteT * prop, armazenagem: armazT * prop, capatazia: capatT * prop,
+          oplog: oplogT * prop, frodRodov: frodT * prop
+        }
+      };
+      return calcItem({ ...it, containers: 1 }, ctxItem);
+    });
     const validos = resultadosItens.filter(Boolean);
 
     // Agregar impostos de importação
