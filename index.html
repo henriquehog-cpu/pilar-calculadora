@@ -254,6 +254,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <input type="number" id="frete_total" value="3500" step="100" min="0" oninput="onFreteChange(); document.getElementById('frete-ref-nota')?.remove()">
       </div>
       <div class="field">
+        <label>Nº de Containers</label>
+        <input type="number" id="n_containers" value="1" min="1" step="1" oninput="onContainersChange()">
+        <span class="note">soma das frações por item deve bater</span>
+      </div>
+      <div class="field">
         <label>Comissão de Vendas (%)</label>
         <input type="number" id="comissao" value="0.5" step="0.1" min="0" max="100" oninput="calcAll()">
       </div>
@@ -348,6 +353,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="btn btn-s" onclick="toggleSimulacoes()">📋 Simulações Salvas</button>
   <button class="btn btn-s" onclick="copySimUrl()">🔗 Copiar Link</button>
 </div>
+<div id="cont-erro" style="display:none;margin-bottom:20px;background:#FDECEA;border:1px solid #E57373;color:#C62828;border-radius:8px;padding:12px 16px;font-size:13px;font-weight:600"></div>
 <div id="sim-panel" style="display:none;margin-bottom:20px">
   <div class="card">
     <div class="card-hd">📋 Simulações Salvas</div>
@@ -531,6 +537,7 @@ function getSimState() {
     data_proc:     document.getElementById('data_proc')?.value || '',
     dolar:         n('dolar'),
     frete_total:   n('frete_total'),
+    n_containers:  n('n_containers'),
     comissao:      n('comissao'),
     c_siscomex:    n('c_siscomex'),
     c_despachante: n('c_despachante'),
@@ -559,6 +566,10 @@ function applySimState(state) {
   set('data_proc',      state.data_proc || today());
   set('dolar',          state.dolar);
   set('frete_total',    state.frete_total);
+  // Nº de containers: usa o salvo; sim legada (sem o campo) → deriva da soma das frações.
+  set('n_containers',   state.n_containers != null && state.n_containers !== ''
+                          ? state.n_containers
+                          : ((state.items || []).reduce((s, it) => s + (parseFloat(it.cont) || 0), 0) || 1));
   set('comissao',       state.comissao);
   set('c_siscomex',     state.c_siscomex);
   set('c_despachante',  state.c_despachante);
@@ -874,14 +885,17 @@ function onPvUsdChange(id) {
 }
 
 function updateAFRMM() {
-  // Só conta containers de itens com qtd > 0 e fob > 0 (preenchidos)
-  let totalContainers = 0;
-  itemIds.forEach(id => {
-    const qtd  = parseFloat(document.getElementById('qtd_'  + id)?.value) || 0;
-    const fob  = parseFloat(document.getElementById('fob_'  + id)?.value) || 0;
-    const cont = parseInt(  document.getElementById('cont_' + id)?.value) || 0;
-    if (qtd > 0 && fob > 0) totalContainers += cont;
-  });
+  // Nº de containers é a fonte de verdade (campo global). Fallback (sim legada sem
+  // o campo): soma das frações dos itens preenchidos (qtd > 0 e fob > 0).
+  let totalContainers = parseFloat(document.getElementById('n_containers')?.value) || 0;
+  if (!totalContainers) {
+    itemIds.forEach(id => {
+      const qtd  = parseFloat(document.getElementById('qtd_'  + id)?.value) || 0;
+      const fob  = parseFloat(document.getElementById('fob_'  + id)?.value) || 0;
+      const cont = parseFloat(document.getElementById('cont_' + id)?.value) || 0;
+      if (qtd > 0 && fob > 0) totalContainers += cont;
+    });
+  }
   if (totalContainers === 0) totalContainers = 1; // padrão de exibição
 
   const freteRS = n('frete_total') * totalContainers * n('dolar');
@@ -1083,6 +1097,46 @@ function difalToggle() {
 // ============================================================
 // CALC ALL
 // ============================================================
+// ── Opção 4: fração de container por item (soma deve bater com o Nº de containers) ──
+// Valida só itens preenchidos (qtd>0 && fob>0). Retorna null se ok, ou {soma,n} se diverge.
+function _validarFracoesContainer() {
+  const n = parseFloat(document.getElementById('n_containers')?.value) || 0;
+  let soma = 0, preenchidos = 0;
+  itemIds.forEach(id => {
+    const qtd = parseFloat(document.getElementById('qtd_' + id)?.value) || 0;
+    const fob = parseFloat(document.getElementById('fob_' + id)?.value) || 0;
+    if (qtd > 0 && fob > 0) {
+      soma += parseFloat(document.getElementById('cont_' + id)?.value) || 0;
+      preenchidos++;
+    }
+  });
+  if (preenchidos === 0) return null;                  // nada preenchido → não trava
+  if (Math.abs(soma - n) > 0.001) return { soma, n };
+  return null;
+}
+
+function _mostrarErroContainer(err) {
+  const el = document.getElementById('cont-erro');
+  if (!el) return;
+  if (!err) { el.style.display = 'none'; el.textContent = ''; return; }
+  const f = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  el.textContent = `⚠ A soma das frações de container (${f(err.soma)}) não confere com o Nº de containers (${f(err.n)}). Ajuste para liberar o cálculo.`;
+  el.style.display = '';
+}
+
+// Item único: a fração nasce/atualiza igual ao Nº de containers (editável).
+function _preencherFracaoItemUnico() {
+  if (itemIds.length !== 1) return;
+  const el = document.getElementById('cont_' + itemIds[0]);
+  const n  = document.getElementById('n_containers')?.value;
+  if (el && n != null && n !== '') el.value = n;
+}
+
+function onContainersChange() {
+  _preencherFracaoItemUnico();
+  calcAll();
+}
+
 function calcAll() {
   updateAFRMM();    // recalcula quando containers ou dólar mudam
   updateDifFrete(); // idem
@@ -1100,6 +1154,18 @@ function calcAll() {
     const fob = parseFloat(document.getElementById('fob_' + id)?.value) || 0;
     fobTotal += qtd * fob;
   });
+
+  // ── Trava (Opção 4): soma das frações de container deve bater com o Nº de containers ──
+  const _contErr = _validarFracoesContainer();
+  _mostrarErroContainer(_contErr);
+  if (_contErr) {
+    itemIds.forEach(id => renderItemResult(id, null));   // zera resultados por item
+    ['s_fob','s_cif','s_impostos','s_custo_imp','s_venda','s_lucro','s_margem','s_custo_op']
+      .forEach(k => setEl(k, '—'));
+    const _db = document.getElementById('s_difal_box');
+    if (_db) _db.style.display = 'none';
+    return;                                              // trava o cálculo
+  }
 
   let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0;
 
@@ -1217,6 +1283,7 @@ function addItem() {
     const _fe = document.getElementById('frod_' + id);
     if (_fe) _fe.value = _cf;
   }
+  _preencherFracaoItemUnico();   // item único → fração = Nº de containers
   calcAll();
   return id;
 }
@@ -1265,7 +1332,7 @@ function removeItem(id) {
   delete pvManual[id];
   const el = document.getElementById('item_' + id);
   if (el) el.remove();
-  if (!window._applyingState) calcAll();
+  if (!window._applyingState) { _preencherFracaoItemUnico(); calcAll(); }
 }
 
 function itemHTML(id) {
@@ -1301,8 +1368,8 @@ function itemHTML(id) {
           <input type="text" id="ncm_${id}" placeholder="0000.00.00" oninput="calcAll()">
         </div>
         <div class="field">
-          <label>Qtd. Containers</label>
-          <input type="number" id="cont_${id}" value="1" min="1" oninput="calcAll()">
+          <label>Fração de container</label>
+          <input type="number" id="cont_${id}" value="1" min="0" step="0.1" oninput="calcAll()">
         </div>
         <!-- Frete rodoviário agora é único no processo (Custos Fixos). O input por
              item permanece oculto, alimentando o motor; é propagado por propagarFrod(). -->
