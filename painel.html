@@ -887,6 +887,13 @@ function renderConfig() {
         </div>
       </div>
 
+      <div class="card" id="cfg-frete-ref">
+        <div class="card-hd tq">Frete de Referência 40'HC</div>
+        <div class="card-bd">
+          <div id="cfg-frete-ref-body">${freteRefBodyHTML()}</div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-hd">Backup e Restauração</div>
         <div class="card-bd" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
@@ -915,6 +922,64 @@ function salvarConfig() {
   btn.textContent = '✓ Salvo!';
   btn.disabled = true;
   setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1800);
+}
+
+// ── Frete de Referência 40'HC (read-only + apagar; a Astrid alimenta) ────────
+// Remoção PURA: faz splice do índice e re-deriva atual = historico[0] (Opção B —
+// apagar o atual promove o próximo; não perde a rastreabilidade). Índice inválido → no-op.
+function freteRefRemover(fr, indice) {
+  const hist = Array.isArray(fr && fr.historico) ? fr.historico.slice() : [];
+  if (indice < 0 || indice >= hist.length) return { atual: (fr && fr.atual) || hist[0] || {}, historico: hist };
+  hist.splice(indice, 1);
+  return { atual: hist[0] || {}, historico: hist };
+}
+
+// Monta o corpo da seção (card de destaque + tabela do histórico). Lê pilar_config
+// já em memória (sem fetch extra). Histórico em ordem do array (índice 0 = mais recente).
+function freteRefBodyHTML() {
+  const cfg  = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const fr   = cfg.frete_referencia || {};
+  const hist = Array.isArray(fr.historico) ? fr.historico : [];
+  const atual = (fr.atual && fr.atual.valor_usd > 0) ? fr.atual : (hist[0] || null);
+  const dBR = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('pt-BR') : '—';
+  const U   = v => 'USD ' + fmtN(v || 0, 2);
+
+  if (!hist.length && !(atual && atual.valor_usd > 0)) {
+    return '<div style="font-size:13px;color:var(--cinza-med);padding:8px 0">Nenhum frete cadastrado ainda.</div>';
+  }
+  const destaque = (atual && atual.valor_usd > 0)
+    ? `<div style="background:#E0F2F1;border:1px solid var(--turquesa);border-radius:6px;padding:12px 16px;margin-bottom:14px">
+         <span style="font-size:18px;font-weight:700;color:var(--turquesa-dark)">${U(atual.valor_usd)}</span>
+         <span style="font-size:12px;color:var(--cinza-med);margin-left:8px">atualizado em ${dBR(atual.data)}</span>
+       </div>` : '';
+  const linhas = hist.map((h, i) => `
+        <tr>
+          <td>${dBR(h.data)}</td>
+          <td style="text-align:right">${U(h.valor_usd)}</td>
+          <td style="text-align:center"><button class="btn btn-s" onclick="freteRefApagar(${i})">🗑 Apagar</button></td>
+        </tr>`).join('');
+  const tabela = hist.length
+    ? `<div style="overflow-x:auto"><table class="items-tbl" style="font-size:13px;width:100%">
+        <thead><tr><th>Data</th><th style="text-align:right">Valor USD</th><th style="text-align:center">Ação</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table></div>` : '';
+  return destaque + tabela;
+}
+
+// Apaga uma entrada do histórico (confirma antes). Persiste via setItem('pilar_config')
+// → hook de auto-sync → POST /api/dados (merge defensivo no servidor). Re-renderiza só a seção.
+function freteRefApagar(indice) {
+  const cfg  = JSON.parse(localStorage.getItem('pilar_config') || '{}');
+  const fr   = cfg.frete_referencia || {};
+  const hist = Array.isArray(fr.historico) ? fr.historico : [];
+  const alvo = hist[indice];
+  if (!alvo) return;
+  const dBR = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('pt-BR') : '—';
+  if (!confirm(`Apagar frete de USD ${fmtN(alvo.valor_usd || 0, 2)} de ${dBR(alvo.data)}?`)) return;
+  cfg.frete_referencia = freteRefRemover(fr, indice);
+  localStorage.setItem('pilar_config', JSON.stringify(cfg));   // dispara auto-sync → POST /api/dados (merge)
+  const body = document.getElementById('cfg-frete-ref-body');
+  if (body) body.innerHTML = freteRefBodyHTML();
 }
 
 async function testarOmie() {
