@@ -2726,6 +2726,26 @@ function impostosPosVenda(proc) {
   return out;
 }
 
+// Cache próprio (mesmo padrão de impostosPosVenda) — não reaproveita o res por opção.
+const _comissaoCache = new Map();
+// Comissão do representante como evento de SAÍDA pós-venda. Usa imp_venda.comissao já
+// calculado por npCalcResultado (NÃO recalcula nada). Vencimento = entrega + 7 dias.
+// Sem entrega → sem data. comissao ≤ 0 → null. NUNCA grava.
+function comissaoPosVenda(proc) {
+  if (!proc) return null;
+  const entrega = proc.dados_gerais?.prev_chegada_cliente || '';
+  const chave = (proc.numero || '?') + '|' + JSON.stringify({
+    i: proc.itens, c: proc.cambios, d: proc.custos_defaults, f: proc.frete, e: entrega
+  });
+  if (_comissaoCache.has(chave)) return _comissaoCache.get(chave);
+
+  const res = (typeof Calc !== 'undefined') ? npCalcResultado(proc) : null;
+  const valor = res?.imp_venda?.comissao || 0;
+  const out = valor > 0 ? { valor, data: entrega ? addDias(entrega, 7) : '' } : null;
+  _comissaoCache.set(chave, out);
+  return out;
+}
+
 // Card read-only na tela de Processo — distinto das parcelas editáveis.
 function npRenderImpostosPosVenda(proc) {
   const el = document.getElementById('s5b-impostos-posvenda');
@@ -3063,6 +3083,14 @@ function fcConsolidadoEventos() {
                 desc: `Imposto ${t.label}`, sinal: 'saida', valor: t.valor || 0,
                 realizado: false, imposto: true });
     });
+    // Comissão pós-venda (calculado, read-only): saída na data entrega+7. Sem data → fora.
+    const com = comissaoPosVenda(proc);
+    if (com && com.data) {
+      ev.push({ data: com.data, ts: new Date(com.data + 'T12:00').getTime(),
+                numero: proc.numero || '—', nome: nome || '',
+                desc: 'Comissão', sinal: 'saida', valor: com.valor || 0,
+                realizado: false, comissao: true });
+    }
   });
   return ev.sort((a, b) => a.ts - b.ts);
 }
@@ -3120,7 +3148,9 @@ function fcRenderConsolidado() {
         const dataBR = new Date(e.data + 'T12:00').toLocaleDateString('pt-BR');
         const cor = e.sinal === 'entrada' ? '#2E7D32' : '#C62828';
         const sinal = e.sinal === 'entrada' ? '+' : '−';
-        const tag = e.imposto
+        const tag = e.comissao
+          ? '<span style="font-size:10px;font-weight:700;background:#E0F2F1;color:#00695C;border-radius:4px;padding:2px 6px">🤝 comissão</span>'
+          : e.imposto
           ? '<span style="font-size:10px;font-weight:700;background:#F3E5F5;color:#6A1B9A;border-radius:4px;padding:2px 6px">🧾 imposto</span>'
           : e.realizado
           ? '<span style="font-size:10px;font-weight:700;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:2px 6px">✓ realizado</span>'
