@@ -1232,6 +1232,8 @@ function renderNovoProcesso(proc, seed) {
           ${proc ? `<button class="btn btn-s" onclick="npDerivarDatas('vazios')" title="Preenche as datas vazias (operacionais e de caixa) a partir do pedido">📅 Preencher vazios</button>
           <button class="btn btn-s" onclick="npDerivarDatas('tudo')" title="Recalcula as datas derivadas a partir do pedido/embarque (mantém pedido e embarque)">🔄 Recalcular tudo</button>` : ''}
           ${proc ? `<button class="btn btn-s" onclick="procCopiarPedido(${proc.id})" title="Abre um Novo Processo com os mesmos itens (sem quantidades/FOB)">📋 Copiar pedido</button>` : ''}
+          ${(proc && (proc.status === 'finalizado' || proc.status === 'concluido') && proc.finalizado_em)
+            ? `<span style="font-size:12px;color:var(--cinza-med);white-space:nowrap">Finalizado em: ${new Date(proc.finalizado_em).toLocaleDateString('pt-BR')}</span>` : ''}
           ${proc ? (proc.status === 'finalizado'
             ? `<button class="btn btn-s" onclick="procReabrir(${proc.id})">↩ Reabrir processo</button>`
             : `<button class="btn btn-s" onclick="procFinalizar(${proc.id})">✓ Finalizar processo</button>`) : ''}
@@ -2399,7 +2401,7 @@ function renderProcessos() {
   })();
 
   const linhas = ordenados.length === 0
-    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--cinza-med)">${vazioMsg}</td></tr>`
+    ? `<tr><td colspan="${_procFiltro === 'finalizados' ? 9 : 8}" style="text-align:center;padding:40px;color:var(--cinza-med)">${vazioMsg}</td></tr>`
     : ordenados.map(p => {
         const g    = p.dados_gerais || {};
         const fob  = (p.itens||[]).reduce((s,it)=>s+(it.quantidade||0)*(it.fob_unit_usd||0),0);
@@ -2415,6 +2417,7 @@ function renderProcessos() {
           <td>${g.fornecedor||'—'}</td>
           <td>${data}</td>
           <td>${badge}</td>
+          ${_procFiltro === 'finalizados' ? `<td>${p.finalizado_em ? new Date(p.finalizado_em).toLocaleDateString('pt-BR') : '—'}</td>` : ''}
           <td style="text-align:center">${npDocsBadge(p)}</td>
           <td style="text-align:right;font-variant-numeric:tabular-nums">USD ${fmtN(fob)}</td>
           <td style="text-align:right;white-space:nowrap">
@@ -2445,7 +2448,7 @@ function renderProcessos() {
         <table class="tbl">
           <thead><tr>
             ${thSort('numero','Número')}${thSort('cliente','Cliente')}${thSort('fornecedor','Fornecedor')}
-            ${thSort('data','Data')}${thSort('status','Status')}${thSort('docs','Docs','center')}${thSort('fob','FOB Total USD','right')}<th></th>
+            ${thSort('data','Data')}${thSort('status','Status')}${_procFiltro === 'finalizados' ? '<th>Finalizado em</th>' : ''}${thSort('docs','Docs','center')}${thSort('fob','FOB Total USD','right')}<th></th>
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
@@ -2511,6 +2514,9 @@ function _procSetStatus(id, status) {
   if (idx < 0) return;
   todos[idx].status = status;
   todos[idx].atualizado_em = new Date().toISOString();
+  // Carimbo imutável: grava só na 1ª finalização (reaberturas posteriores não sobrescrevem).
+  if (status === 'finalizado' && !todos[idx].finalizado_em)
+    todos[idx].finalizado_em = new Date().toISOString();
   localStorage.setItem('pilar_processos', JSON.stringify(todos)); // cache local
   _apiSalvarProcessos(todos);                                     // MERGE /api/processos
   toast(status === 'finalizado' ? '✓ Processo finalizado.' : '↩ Processo reaberto.');
@@ -3162,7 +3168,7 @@ function fcRenderPagamentos() {
       <td><input value="${esc(p.descricao)}" style="width:80px"
         oninput="fcChangePagamento(${i},'descricao',this.value)"></td>
       <td style="white-space:nowrap">
-        <input type="number" value="${fmtN(p.percentual*100,1)}" min="0" max="100" step="1" style="width:52px"
+        <input type="number" id="fc-pag-pct-${i}" value="${fmtN(p.percentual*100,1)}" min="0" max="100" step="1" style="width:52px"
           oninput="fcChangePagamento(${i},'percentual',this.value/100)">%
       </td>
       <td style="text-align:right;padding:5px 8px;white-space:nowrap">
@@ -3231,12 +3237,17 @@ function fcChangePagamento(i, campo, valor) {
     if (bEl) bEl.textContent = 'R$ '  + fmtN(p.valor_reais);
     fcAtualizarFootPag(); fcRenderResumo();
   } else if (campo === 'valor_usd') {
+    // Vínculo bidirecional: digitar o USD recalcula o % sobre o FOB (base dos pagamentos ao fornecedor).
+    const fobTotal = fcFobTotal();
     p.valor_usd   = parseFloat(valor) || 0;
     p.usd_manual  = true;
+    p.percentual  = fobTotal > 0 ? p.valor_usd / fobTotal : 0;
     p.valor_reais = p.valor_usd * (p.cambio||0);
     const uEl = document.getElementById(`fc-pag-usd-${i}`);
+    const pEl = document.getElementById(`fc-pag-pct-${i}`);
     const bEl = document.getElementById(`fc-pag-brl-${i}`);
     if (uEl) uEl.style.border = '1.5px solid var(--turquesa)';
+    if (pEl) pEl.value = (p.percentual * 100).toFixed(1);  // atualiza % na tela sem re-render (não rouba foco)
     if (bEl) bEl.textContent = 'R$ ' + fmtN(p.valor_reais);
     fcAtualizarFootPag(); fcRenderResumo();
   } else if (campo === 'cambio') {
@@ -3270,11 +3281,13 @@ function fcMarcarPago(i) {
 }
 
 function fcNfTotalUSD() {
-  const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
-  const nfBRL      = _fcProcesso?.resultado?.nf_total_brl || 0;
-  if (camCliente > 0 && nfBRL > 0) return nfBRL / camCliente;
-  // Fallback: soma dos recebimentos já existentes
-  return _fcRecebimentos.reduce((s, r) => s + (r.valor_usd || 0), 0);
+  // TOTAL NF em USD = valor da mercadoria = soma dos itens (qtd × PV unitário USD).
+  // Fixo, vem dos ITENS — NÃO de nf_total_brl ÷ câmbio cliente (conceito errado).
+  // Precedência de PV idêntica à da pré-visualização do Pedido de Embarque (peCompute),
+  // para que o documento e a tela de recebimentos nunca divirjam.
+  return (_fcProcesso?.itens || []).reduce((s, it) =>
+    s + (parseFloat(it.quantidade) || 0) *
+        (parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || 0), 0);
 }
 
 function fcRenderRecebimentos() {
@@ -3294,7 +3307,7 @@ function fcRenderRecebimentos() {
       <td><input value="${esc(r.descricao)}" style="width:110px"
         oninput="fcChangeRecebimento(${i},'descricao',this.value)"></td>
       <td style="white-space:nowrap">
-        <input type="number" value="${pct}" min="0" max="100" step="1" style="width:52px"
+        <input type="number" id="fc-rec-pct-${i}" value="${pct}" min="0" max="100" step="1" style="width:52px"
           oninput="fcChangeRecebimento(${i},'percentual',this.value)">%
       </td>
       <td style="text-align:right;padding:5px 8px;white-space:nowrap">
@@ -3361,12 +3374,17 @@ function fcChangeRecebimento(i, campo, valor) {
     if (bEl) bEl.textContent = 'R$ '  + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
   } else if (campo === 'valor_usd') {
+    // Vínculo bidirecional: digitar o USD recalcula o % sobre o TOTAL NF (mercadoria).
+    const nfTotalUSD = fcNfTotalUSD();
     r.valor_usd   = parseFloat(valor) || 0;
     r.usd_manual  = true;
+    r.percentual  = nfTotalUSD > 0 ? r.valor_usd / nfTotalUSD : 0;
     r.valor_reais = parseFloat((r.valor_usd * (r.cambio||0)).toFixed(2));
     const uEl = document.getElementById(`fc-rec-usd-${i}`);
+    const pEl = document.getElementById(`fc-rec-pct-${i}`);
     const bEl = document.getElementById(`fc-rec-brl-${i}`);
     if (uEl) uEl.style.border = '1.5px solid var(--turquesa)';
+    if (pEl) pEl.value = (r.percentual * 100).toFixed(1);  // atualiza % na tela sem re-render (não rouba foco)
     if (bEl) bEl.textContent = 'R$ ' + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
   } else if (campo === 'cambio') {
