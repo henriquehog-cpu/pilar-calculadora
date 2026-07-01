@@ -354,3 +354,7 @@ const Calc = (() => {
 
   return { calcProcesso, calcItem, defaultAliq, difalRate };
 })();
+
+// Node (backend): expõe o mesmo Calc via require. Browser: ignora (module indefinido)
+// e mantém o `const Calc` global. Nenhuma mudança de lógica.
+if (typeof module !== 'undefined' && module.exports) module.exports = Calc;
