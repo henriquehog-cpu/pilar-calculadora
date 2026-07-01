@@ -4,6 +4,9 @@ const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
 const { spawn } = require('child_process');
+// Régua fiscal ÚNICA (mesma que o painel usa na tela) — para o endpoint de impostos
+// pós-venda ler o LÍQUIDO já calculado, sem recalcular/duplicar.
+const posvenda = require('./painel/js/calc-processo.js');
 
 const PORT        = process.env.PORT || 8080;
 const ROOT        = __dirname;
@@ -906,6 +909,43 @@ const server = http.createServer((req, res) => {
         aPagar:   Math.round(aPagar   * 100) / 100,
       },
     });
+    return;
+  }
+
+  // ── GET /api/impostos-posvenda ───────────────────────────────────────────────
+  // Read-only. Impostos pós-venda LÍQUIDOS por processo ATIVO, calculados pela régua
+  // única (calc-processo.js — a MESMA da tela). Astrid só lê; nunca recalcula.
+  // Proteção opcional: se PAINEL_INTERNAL_TOKEN existir, exige header X-Painel-Token.
+  if (req.method === 'GET' && url === '/api/impostos-posvenda') {
+    const tokenEsperado = process.env.PAINEL_INTERNAL_TOKEN;
+    if (tokenEsperado && req.headers['x-painel-token'] !== tokenEsperado) {
+      return json(res, 401, { erro: 'Token inválido ou ausente' });
+    }
+
+    const ativos = lerDados().pilar_processos.filter(
+      p => p.status !== 'finalizado' && p.status !== 'concluido');
+
+    const saida = ativos.map(proc => {
+      const lista = posvenda.impostosPosVenda(proc);  // régua única — só lê (omite ≤0, venc null)
+      const res2  = posvenda.npCalcResultado(proc);    // p/ nf_total_brl
+      const impostos = {};
+      lista.forEach(t => {
+        impostos[t.imposto.toLowerCase()] = {
+          valor: t.valor,
+          vencimento: t.data || null,
+          ...(t.estimativa ? { estimativa: true } : {}),
+        };
+      });
+      return {
+        processo: proc.numero,
+        cliente: proc.dados_gerais?.cliente || '',
+        nf_total_brl: res2?.nf_total_brl || 0,
+        impostos,
+        total_a_recolher: lista.reduce((s, t) => s + (t.valor || 0), 0),  // inclui estimativas (= tela)
+      };
+    });
+
+    json(res, 200, saida);
     return;
   }
 
