@@ -1427,7 +1427,7 @@ function itemHTML(id) {
     <td class="num"><input type="number" id="fob_${id}" step="0.01" min="0" placeholder="0,00" oninput="calcAll()"></td>
     <td class="num"><input type="number" id="pvusd_${id}" step="0.01" min="0" placeholder="0,00" class="bi" oninput="onPvUsdChange(${id})"></td>
     <td class="calc" id="r_pvU_${id}">—</td>
-    <td class="num"><input type="number" id="margem_${id}" value="20" step="1" min="0" max="99" oninput="onMargemChange(${id})"><span class="mrg-badge" id="mrgbadge_${id}"></span></td>
+    <td class="num"><input type="number" id="margem_${id}" value="6" step="1" min="0" max="99" oninput="onMargemChange(${id})"><span class="mrg-badge" id="mrgbadge_${id}"></span></td>
     <td class="calc" id="r_luc_${id}">—</td>
     <td style="text-align:center;white-space:nowrap;padding-top:8px">
       <button class="chev" id="chev_${id}" title="Expandir detalhamento" onclick="toggleAcc(${id})">▶</button>
