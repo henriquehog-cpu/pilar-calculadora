@@ -2900,8 +2900,11 @@ function renderFluxoCaixa() {
       <div class="card" style="margin-bottom:20px">
         <div class="card-hd tq" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <span>Linha do tempo — parcelas previstas e realizadas</span>
-          <select id="fcc-filtro-proc" onchange="fcSetFiltroProc(this.value)"
-            style="font-size:12px;font-weight:400;padding:4px 8px;max-width:280px"></select>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <select id="fcc-filtro-proc" onchange="fcSetFiltroProc(this.value)"
+              style="font-size:12px;font-weight:400;padding:4px 8px;max-width:280px"></select>
+            <button class="btn btn-s btn-sm" onclick="fcExportarExcel()" title="Exporta a linha do tempo (respeita o filtro) para .xlsx">📊 Exportar Excel</button>
+          </div>
         </div>
         <div id="fcc-timeline"></div>
       </div>
@@ -2914,6 +2917,92 @@ function renderFluxoCaixa() {
 function fcSetFiltroProc(v) {
   _fccFiltroProc = v || null;
   fcRenderConsolidado();
+}
+
+// Exporta a linha do tempo do Consolidado para .xlsx (xlsx-js-style, já carregado).
+// Só LEITURA: usa os MESMOS eventos da tela (fcConsolidadoEventos) e respeita o filtro
+// _fccFiltroProc. Espelha o padrão do export "Resumo Despachante". Não grava nada.
+function fcExportarExcel() {
+  if (typeof XLSX === 'undefined') { toast('Planilha (SheetJS) não carregada.'); return; }
+  const eventos  = fcConsolidadoEventos();
+  const evExport = _fccFiltroProc ? eventos.filter(e => e.numero === _fccFiltroProc) : eventos;
+  if (!evExport.length) { toast('Nada para exportar.'); return; }
+
+  // Valor: entrada positiva, saída negativa (número real, p/ somar/filtrar no Excel).
+  const valOf = e => e.sinal === 'entrada' ? (e.valor || 0) : -(e.valor || 0);
+  // Data → serial do Excel (t:'n' + formato de data = data real, ordenável/filtrável;
+  // evita as quirks de célula t:'d' desta build). TZ-safe via UTC das partes locais.
+  const serialData = iso => {
+    const d = new Date(iso + 'T12:00');
+    return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000);
+  };
+
+  // AOA: cabeçalho + eventos (Data como serial do Excel) + linha TOTAL.
+  const aoa = [['Data', 'Processo', 'Cliente', 'Tipo', 'Status', 'Valor']];
+  evExport.forEach(e => aoa.push([
+    serialData(e.data), e.numero || '', e.nome || '', e.desc || '',
+    e.realizado ? 'realizado' : 'previsto', valOf(e)
+  ]));
+  const total       = evExport.reduce((s, e) => s + valOf(e), 0);
+  const totalRow    = aoa.length;           // índice 0-based da linha TOTAL
+  aoa.push(['TOTAL', '', '', '', '', total]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 12 }, { wch: 15 }, { wch: 28 }, { wch: 30 }, { wch: 12 }, { wch: 16 }];
+
+  const NCOLS = 6;
+  const thin  = { style: 'thin',   color: { rgb: 'BFBFBF' } };
+  const med   = { style: 'medium', color: { rgb: '1F3864' } };
+  const bThin = { top: thin, bottom: thin, left: thin, right: thin };
+  const bMed  = { top: med,  bottom: med,  left: med,  right: med };
+  const cell  = (r, c) => { const a = XLSX.utils.encode_cell({ r, c }); if (!ws[a]) ws[a] = { t: 's', v: '' }; return ws[a]; };
+  const Z_VAL = 'R$ #,##0.00;-R$ #,##0.00';
+  // Cor da linha por tipo/status: imposto=vermelho, comissão=roxo, realizado=verde, previsto=amarelo.
+  const bgOf = e => e.imposto ? 'FDE0E0' : e.comissao ? 'EDE0F5' : e.realizado ? 'E8F5E9' : 'FFF9C4';
+
+  // Cabeçalho — turquesa Pilar, branco, negrito.
+  for (let c = 0; c < NCOLS; c++) cell(0, c).s = {
+    font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { patternType: 'solid', fgColor: { rgb: '00B0C8' } },
+    alignment: { horizontal: c === 5 ? 'right' : 'left', vertical: 'center' }, border: bThin
+  };
+
+  // Linhas de dados — cor por tipo/status; Data e Valor formatados.
+  evExport.forEach((e, i) => {
+    const r = i + 1, bg = bgOf(e);
+    for (let c = 0; c < NCOLS; c++) {
+      const cc = cell(r, c);
+      cc.s = {
+        font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+        fill: { patternType: 'solid', fgColor: { rgb: bg } },
+        alignment: { horizontal: c === 0 ? 'center' : c === 5 ? 'right' : 'left', vertical: 'center' },
+        border: bThin
+      };
+    }
+    cell(r, 0).z = 'dd/mm/yyyy';
+    cell(r, 5).z = Z_VAL;
+  });
+
+  // Linha TOTAL — azul claro, negrito, borda média.
+  for (let c = 0; c < NCOLS; c++) {
+    const cc = cell(totalRow, c);
+    cc.s = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'BDD7EE' } },
+      alignment: { horizontal: c === 5 ? 'right' : 'left', vertical: 'center' }, border: bMed
+    };
+  }
+  cell(totalRow, 5).z = Z_VAL;
+
+  // Autofilter no cabeçalho + dados (exclui a linha TOTAL).
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRow - 1, c: NCOLS - 1 } }) };
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const nome = `FluxoCaixa_${_fccFiltroProc ? _fccFiltroProc : 'Consolidado'}_${hoje}.xlsx`;
+  XLSX.utils.book_append_sheet(wb, ws, 'Fluxo de Caixa');
+  XLSX.writeFile(wb, nome);
+  toast(`✓ Excel gerado: ${nome}`);
 }
 
 // Varre TODOS os processos → eventos de caixa (parcela = 1 evento;
