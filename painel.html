@@ -2882,6 +2882,7 @@ let _fcPagamentos   = [];
 let _fcRecebimentos = [];
 let _fcNumerario    = [];
 let _fcNumPag       = { data_prevista:'', status:'previsto', data_realizada:null };
+let _fccFiltroProc  = null;   // Consolidado: filtro da timeline por numero (null = todos)
 
 // Aba Fluxo de Caixa = VISÃO CONSOLIDADA (todos os processos, somente leitura).
 // A edição de caixa por processo vive na tela de Processo (renderNovoProcesso).
@@ -2897,11 +2898,21 @@ function renderFluxoCaixa() {
         <div style="overflow-x:auto" id="fcc-mes"></div>
       </div>
       <div class="card" style="margin-bottom:20px">
-        <div class="card-hd tq">Linha do tempo — parcelas previstas e realizadas</div>
+        <div class="card-hd tq" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <span>Linha do tempo — parcelas previstas e realizadas</span>
+          <select id="fcc-filtro-proc" onchange="fcSetFiltroProc(this.value)"
+            style="font-size:12px;font-weight:400;padding:4px 8px;max-width:280px"></select>
+        </div>
         <div id="fcc-timeline"></div>
       </div>
     </div>`;
 
+  fcRenderConsolidado();
+}
+
+// Filtro da timeline por processo (só exibição). '' = todos.
+function fcSetFiltroProc(v) {
+  _fccFiltroProc = v || null;
   fcRenderConsolidado();
 }
 
@@ -2980,9 +2991,25 @@ function fcRenderConsolidado() {
   const elTl  = document.getElementById('fcc-timeline');
   if (!elMes || !elTl) return;
   const eventos = fcConsolidadoEventos();
-  const meses   = fcConsolidadoPorMes(eventos);
+  const meses   = fcConsolidadoPorMes(eventos);   // SEMPRE geral (não responde ao filtro)
   const neg = v => v < 0 ? 'color:#C62828;font-weight:700' : '';
   const mesBR = m => { const [a, b] = m.split('-'); return `${b}/${a}`; };
+
+  // Dropdown de filtro: processos DISTINTOS que têm eventos na timeline (numero — cliente).
+  const selEl = document.getElementById('fcc-filtro-proc');
+  if (selEl) {
+    const vistos = new Map();  // numero -> nome (cliente)
+    eventos.forEach(e => { if (e.numero && e.numero !== '—' && !vistos.has(e.numero)) vistos.set(e.numero, e.nome || ''); });
+    const ordenados = [...vistos].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'pt-BR'));
+    if (_fccFiltroProc && !vistos.has(_fccFiltroProc)) _fccFiltroProc = null;  // filtro sumiu → volta a Todos
+    selEl.innerHTML = ['<option value="">Todos os processos</option>']
+      .concat(ordenados.map(([num, nm]) =>
+        `<option value="${esc(num)}"${_fccFiltroProc === num ? ' selected' : ''}>${esc(num)}${nm ? ' — ' + esc(nm) : ''}</option>`))
+      .join('');
+  }
+
+  // Filtro aplicado SÓ à linha do tempo; mantém a ordem por data (eventos já vem ordenado).
+  const evTimeline = _fccFiltroProc ? eventos.filter(e => e.numero === _fccFiltroProc) : eventos;
 
   // Resumo por mês
   elMes.innerHTML = meses.length === 0
@@ -3004,10 +3031,13 @@ function fcRenderConsolidado() {
         </tr>`).join('')}</tbody>
       </table>`;
 
-  // Linha do tempo
-  elTl.innerHTML = eventos.length === 0
+  // Linha do tempo (filtrada). Nota: o filtro afeta só a timeline — o resumo por mês é geral.
+  const notaFiltro = _fccFiltroProc
+    ? `<div style="padding:6px 16px;font-size:11px;color:var(--cinza-med);background:var(--cinza-light)">Mostrando só <strong>${esc(_fccFiltroProc)}</strong> · o resumo por mês acima continua geral (todos os processos).</div>`
+    : '';
+  elTl.innerHTML = notaFiltro + (evTimeline.length === 0
     ? '<div style="padding:20px;text-align:center;color:var(--cinza-med);font-size:13px">Sem eventos de caixa com data.</div>'
-    : eventos.map(e => {
+    : evTimeline.map(e => {
         const dataBR = new Date(e.data + 'T12:00').toLocaleDateString('pt-BR');
         const cor = e.sinal === 'entrada' ? '#2E7D32' : '#C62828';
         const sinal = e.sinal === 'entrada' ? '+' : '−';
@@ -3030,7 +3060,7 @@ function fcRenderConsolidado() {
             ${tag}
             <span style="font-size:13px;font-weight:700;white-space:nowrap;min-width:110px;text-align:right;color:${cor}">${sinal} R$ ${fmtN(e.valor)}</span>
           </div>`;
-      }).join('');
+      }).join(''));
 }
 
 function fcFobTotal() {
