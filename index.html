@@ -260,7 +260,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="field">
         <label>Comissão de Vendas (%)</label>
-        <input type="number" id="comissao" value="0.5" step="0.1" min="0" max="100" oninput="calcAll()">
+        <input type="number" id="comissao" value="2" step="0.1" min="0" max="100" oninput="calcAll()">
       </div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
@@ -278,8 +278,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <!-- Custos Fixos -->
 <div class="card">
-  <div class="card-hd">Custos Fixos do Processo</div>
-  <div class="card-bd">
+  <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <span>Custos Fixos do Processo</span>
+    <button type="button" class="btn btn-s" id="btn-toggle-cf" onclick="toggleCustosFixos()"
+      style="font-weight:400" title="Ocultar/mostrar os custos fixos (só visual — não altera o cálculo)">🔽 Ocultar custos</button>
+  </div>
+  <div class="card-bd" id="cf-body">
     <div class="g4">
       <div class="field">
         <label>Siscomex (R$)</label>
@@ -322,7 +326,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="field">
         <label>Frete Rodoviário (R$/container)</label>
-        <input type="number" id="c_frod" value="0" step="100" min="0" oninput="propagarFrod()">
+        <input type="number" id="c_frod" value="13000" step="100" min="0" oninput="propagarFrod()">
         <span class="note">×containers/item</span>
       </div>
       <div class="field">
@@ -448,6 +452,34 @@ function init() {
     addItem();
     aplicarFreteReferencia();   // sugere o frete de referência (só na calculadora fresca)
   }
+  aplicarEstadoCustosFixos();   // restaura o estado oculto/visível dos Custos Fixos
+}
+
+// ============================================================
+// TOGGLE "Custos Fixos" — só VISUAL (não altera o cálculo; os campos ocultos
+// continuam no DOM e são lidos por calcAll normalmente). Estado lembrado em
+// localStorage (try/catch: sem suporte → default visível).
+// ============================================================
+const _CF_KEY = 'pilar_calc_cf_ocultos';
+function _cfSetLabel(oculto) {
+  const b = document.getElementById('btn-toggle-cf');
+  if (b) b.textContent = oculto ? '▶ Mostrar custos' : '🔽 Ocultar custos';
+}
+function _cfAplicar(oculto) {
+  const body = document.getElementById('cf-body');
+  if (body) body.style.display = oculto ? 'none' : '';
+  _cfSetLabel(oculto);
+}
+function aplicarEstadoCustosFixos() {
+  let oculto = false;
+  try { oculto = localStorage.getItem(_CF_KEY) === '1'; } catch {}
+  _cfAplicar(oculto);
+}
+function toggleCustosFixos() {
+  const body = document.getElementById('cf-body');
+  const oculto = !(body && body.style.display === 'none');  // estado ALVO (inverte o atual)
+  _cfAplicar(oculto);
+  try { localStorage.setItem(_CF_KEY, oculto ? '1' : '0'); } catch {}
 }
 
 // ============================================================
