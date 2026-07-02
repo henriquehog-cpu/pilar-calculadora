@@ -282,6 +282,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   #pe-doc thead th{white-space:normal;word-wrap:break-word;text-align:center;font-size:8pt}
   #pe-doc col.col-desc{width:32%}
   #pe-doc col.col-num{width:10%;white-space:nowrap}
+
+  /* Memorando de Câmbio — impressão A4 */
+  .mc-doc{max-width:100%;font-size:9.5pt}
+  .mc-doc table{width:100%}
+  .mc-doc .mc-cambio{font-size:8.5pt}
+  .mc-doc .mc-cambio th,.mc-doc .mc-cambio td{padding:3px 5px}
+  .mc-doc thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 
 /* ── Order Request — abas ── */
@@ -1472,10 +1479,17 @@ function renderNovoProcesso(proc, seed) {
         <div class="card">
           <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
             <span>5 — Pagamentos ao Fornecedor</span>
-            <button onclick="fcAddPagamento()"
-              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
-              + Parcela
-            </button>
+            <div style="display:flex;gap:8px">
+              <button onclick="mcAbrir(mcColetarProcesso())"
+                style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600"
+                title="Gera o DRAFT p/ fechamento de câmbio (PDF) — puxa do processo + cadastro de fornecedores">
+                🏦 Gerar Memorando de Câmbio
+              </button>
+              <button onclick="fcAddPagamento()"
+                style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+                + Parcela
+              </button>
+            </div>
           </div>
           <div style="overflow-x:auto">
             <table class="items-tbl" style="font-size:13px">
@@ -5213,6 +5227,351 @@ function peRefreshNumbers() {
 function pePrint() {
   if (!_peProcesso) { toast('Selecione um processo.'); return; }
   document.getElementById('or-print-area').innerHTML = peDocHTML(true);
+  window.print();
+  toast('✓ Diálogo de impressão aberto');
+}
+
+// ── Memorando de Fechamento de Câmbio (Sub-fatia 2A: só leitura → PDF) ────────
+// Espelha o Pedido de Embarque: monta HTML e imprime via window.print() no
+// #or-print-area. NÃO grava nada e NÃO altera o processo.
+//
+// ══════════════════════ CONTRATO PARA A SUB-FATIA 2B ═════════════════════════
+// _mcMemorando é o OBJETO ÚNICO do memorando. A 2A só o constrói, edita
+// (modalidade/exportador) e imprime. A 2B vai, a partir DESTE MESMO objeto:
+//   (a) SALVAR em cambios.json → POST /api/cambios com _mcMemorando (ver o
+//       marcador «2B-SALVAR» em mcPrint). Nenhuma serialização nova é necessária.
+//   (b) APLICAR NAS PARCELAS   → para cada item de _mcMemorando.itens_cambio,
+//       casar item._parcela_id em proc.pagamentos_fornecedor e gravar
+//       { data_realizada, cambio: item.taxa, valor_reais: item.valor_reais,
+//         status: 'pago' } (ver o marcador «2B-APLICAR» em mcBuildMemorando).
+// Por isso itens_cambio já carrega _parcela_id e modalidade/data são campos do
+// objeto: a 2B "só salva e aplica", sem remontar nada.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Importador PILAR — constante fixa (mesmo padrão do Pedido de Embarque).
+const MC_PILAR = {
+  nome:     'PILAR IMPORTS LTDA',
+  cnpj:     '43.954.200/0001-96',
+  endereco: 'ROD FERNAO DIAS S/N KM 931 ARMZ 01 BOX 09 MONJOLINHO, ITAPEVA – MG, CEP: 37655-000'
+};
+
+let _mcMemorando = null;   // objeto único do memorando (ver CONTRATO 2B acima)
+
+// Casa o exportador do processo com o cadastro de fornecedores — CASE-INSENSITIVE.
+function mcMatchFornecedor(nome) {
+  const key = (nome || '').trim().toLowerCase();
+  if (!key) return null;
+  const cad = JSON.parse(localStorage.getItem('pilar_fornecedores') || '[]');
+  return cad.find(f => (f.nome || '').trim().toLowerCase() === key) || null;
+}
+
+// Snapshot do processo em edição (form ao vivo + parcelas em memória + nº salvo).
+function mcColetarProcesso() {
+  const salvo = _npEditId
+    ? (JSON.parse(localStorage.getItem('pilar_processos') || '[]').find(p => p.id === _npEditId) || null)
+    : null;
+  const op = npLerOperacional();
+  return {
+    id:     _npEditId,
+    numero: salvo?.numero || '',
+    dados_gerais: {
+      fornecedor:    val('np-fornecedor'),
+      cliente:       val('np-cliente'),
+      pais:          val('np-pais'),
+      data_pedido:   val('np-data'),
+      prev_embarque: val('np-embarque')
+    },
+    operacional: { invoice: op.invoice, bl: op.bl },
+    pagamentos_fornecedor: JSON.parse(JSON.stringify(_fcPagamentos || []))
+  };
+}
+
+// Data de hoje em ISO (yyyy-mm-dd). Browser — não é o sandbox de workflow.
+function mcHojeISO() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Pré-preenche a modalidade a partir das parcelas: antes do embarque = antecipado,
+// no embarque/sem data = à vista, depois = a prazo. Percentuais somam ~100%.
+function mcModalidadeDasParcelas(parcelas, prevEmbarque) {
+  const emb = prevEmbarque ? String(prevEmbarque).slice(0, 10) : '';
+  let ant = 0, avista = 0, aprazo = 0;
+  parcelas.forEach(p => {
+    const pct = (p.percentual || 0) * 100;
+    const dt  = (p.data_prevista || '').slice(0, 10);
+    if (emb && dt && dt < emb)      ant    += pct;
+    else if (emb && dt && dt > emb) aprazo += pct;
+    else                            avista += pct;
+  });
+  const r = n => Math.round(n);
+  return { antecipado_pct: r(ant), avista_pct: r(avista), aprazo_pct: r(aprazo),
+           outros_pct: 0, outros_desc: '', fluxo: '' };
+}
+
+// Constrói o OBJETO ÚNICO do memorando a partir do snapshot do processo.
+function mcBuildMemorando(proc) {
+  const g   = proc.dados_gerais || {};
+  const op  = proc.operacional || {};
+  const par = proc.pagamentos_fornecedor || [];
+  const match = mcMatchFornecedor(g.fornecedor);
+
+  // Tabela do câmbio: uma linha por parcela. «2B-APLICAR»: _parcela_id casa em
+  // pagamentos_fornecedor para gravar data_realizada/cambio/valor/status na 2B.
+  const itens_cambio = par.map(p => ({
+    _parcela_id:   p.id != null ? p.id : null,
+    descricao:     p.descricao || '',
+    invoice:       op.invoice?.num || '',
+    bl:            op.bl?.num || '',
+    valor_usd:     p.valor_usd || 0,
+    moeda:         'USD',
+    taxa:          p.cambio || 0,
+    valor_reais:   p.valor_reais || 0,
+    prev_embarque: g.prev_embarque || '',
+    _status_atual: p.status || 'previsto'   // 2B: previsto → pago
+  }));
+  const total = {
+    usd:   itens_cambio.reduce((s, r) => s + (r.valor_usd || 0), 0),
+    reais: itens_cambio.reduce((s, r) => s + (r.valor_reais || 0), 0)
+  };
+
+  return {
+    // ── cabeçalho ──
+    referencia:   proc.numero || '',   // = NÚMERO DO PROCESSO (não sequencial)
+    processo_id:  proc.id,
+    processo_num: proc.numero || '',
+    data_emissao: mcHojeISO(),         // editável no modal
+    // ── exportador (do cadastro; editável se não casar) ──
+    exportador: {
+      nome:            match ? match.nome : (g.fornecedor || ''),
+      endereco:        match ? (match.endereco || '') : '',
+      dados_bancarios: match ? (match.dados_bancarios || '') : '',
+      pais_origem:     match ? (match.pais_origem || '') : (g.pais || ''),
+      encontrado:      !!match
+    },
+    // ── importador (constante fixa) ──
+    importador: { ...MC_PILAR },
+    // ── tabela do câmbio + total ──
+    itens_cambio, total,
+    // ── modalidade (pré-preenchida das parcelas; editável) ──
+    modalidade: mcModalidadeDasParcelas(par, g.prev_embarque)
+  };
+}
+
+function mcAbrir(proc) {
+  if (document.getElementById('mc-overlay')) return;
+  _mcMemorando = mcBuildMemorando(proc);
+  const m = _mcMemorando;
+
+  if (!m.exportador.encontrado) {
+    toast(`Fornecedor "${proc.dados_gerais?.fornecedor || '—'}" não está no cadastro — selecione ou preencha manualmente.`);
+  }
+
+  const cad = JSON.parse(localStorage.getItem('pilar_fornecedores') || '[]');
+  const expKey = (m.exportador.nome || '').trim().toLowerCase();
+  const opts = cad.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+    .map(f => `<option value="${esc(f.nome)}"${(f.nome || '').trim().toLowerCase() === expKey ? ' selected' : ''}>${esc(f.nome)}</option>`).join('');
+
+  const taStyle  = 'padding:7px 9px;border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--cinza);font-family:inherit;background:#fff;resize:vertical;min-height:66px;width:100%';
+  const pctInput = (campo, label) => `
+    <div class="npm-field" style="flex:1;min-width:88px">
+      <label>${label}</label>
+      <input type="number" min="0" max="100" step="1" value="${m.modalidade[campo]}" oninput="mcSetModalidade('${campo}', this.value)">
+    </div>`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'mc-overlay';
+  overlay.className = 'npm-overlay';
+  overlay.innerHTML = `
+    <div class="npm-box" style="width:840px;max-width:96vw" onclick="event.stopPropagation()">
+      <div class="npm-hd">🏦 Memorando de Fechamento de Câmbio${m.referencia ? ' — ' + esc(m.referencia) : ''}</div>
+      <div class="npm-bd">
+        ${!m.exportador.encontrado ? `
+        <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:4px;padding:8px 10px;font-size:12px;color:#8D6E00">
+          ⚠ Exportador do processo não encontrado no cadastro. Selecione um fornecedor abaixo ou preencha os campos manualmente.
+        </div>` : ''}
+
+        <div class="npm-field">
+          <label>Fornecedor do cadastro (casa por nome, ignora maiúsc./minúsc.)</label>
+          <select onchange="mcSelecionarFornecedor(this.value)">
+            <option value="">— selecionar / preencher manualmente —</option>
+            ${opts}
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="npm-field">
+            <label>Exportador — nome</label>
+            <input id="mc-exp-nome" type="text" value="${esc(m.exportador.nome)}" oninput="mcSetExportador('nome', this.value)">
+          </div>
+          <div class="npm-field">
+            <label>Data de emissão</label>
+            <input id="mc-data" type="date" value="${esc(m.data_emissao)}" oninput="mcSet('data_emissao', this.value)">
+          </div>
+        </div>
+        <div class="npm-field">
+          <label>Exportador — endereço</label>
+          <textarea id="mc-exp-end" style="${taStyle}" oninput="mcSetExportador('endereco', this.value)">${esc(m.exportador.endereco)}</textarea>
+        </div>
+        <div class="npm-field">
+          <label>Beneficiário — dados bancários (SWIFT / conta / banco)</label>
+          <textarea id="mc-exp-banco" style="${taStyle}" oninput="mcSetExportador('dados_bancarios', this.value)">${esc(m.exportador.dados_bancarios)}</textarea>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);margin-top:4px">Modalidade (editável)</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${pctInput('antecipado_pct', 'Antecipado %')}
+          ${pctInput('avista_pct', 'À vista %')}
+          ${pctInput('aprazo_pct', 'A prazo %')}
+          ${pctInput('outros_pct', 'Outros %')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="npm-field">
+            <label>Outros — descrição</label>
+            <input type="text" value="${esc(m.modalidade.outros_desc)}" oninput="mcSetModalidade('outros_desc', this.value)">
+          </div>
+          <div class="npm-field">
+            <label>Fluxo (ex.: D0/D0)</label>
+            <input type="text" value="${esc(m.modalidade.fluxo)}" placeholder="D0/D0" oninput="mcSetModalidade('fluxo', this.value)">
+          </div>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);margin-top:4px">Pré-visualização</div>
+        <div id="mc-preview" style="border:1px solid var(--border);border-radius:4px;overflow:auto;max-height:44vh;background:#fff"></div>
+      </div>
+      <div class="npm-ft">
+        <button class="btn btn-s" onclick="mcFechar()">Cancelar</button>
+        <button class="btn btn-p" onclick="mcPrint()">🖨️ Exportar PDF</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', mcFechar);
+  document.body.appendChild(overlay);
+  mcRenderPreview();
+}
+
+function mcFechar() { document.getElementById('mc-overlay')?.remove(); }
+
+function mcSet(campo, valor) { if (_mcMemorando) { _mcMemorando[campo] = valor; mcRenderPreview(); } }
+
+function mcSetModalidade(campo, valor) {
+  if (!_mcMemorando) return;
+  const num = ['antecipado_pct', 'avista_pct', 'aprazo_pct', 'outros_pct'].includes(campo);
+  _mcMemorando.modalidade[campo] = num ? (parseFloat(valor) || 0) : valor;
+  mcRenderPreview();
+}
+
+function mcSetExportador(campo, valor) {
+  if (!_mcMemorando) return;
+  _mcMemorando.exportador[campo] = valor;
+  mcRenderPreview();
+}
+
+// Preenche o exportador a partir do cadastro (fonte única — não redigita), atualiza
+// os inputs e o preview.
+function mcSelecionarFornecedor(nome) {
+  if (!_mcMemorando) return;
+  const f = mcMatchFornecedor(nome);
+  const exp = _mcMemorando.exportador;
+  if (f) {
+    exp.nome = f.nome || ''; exp.endereco = f.endereco || '';
+    exp.dados_bancarios = f.dados_bancarios || ''; exp.pais_origem = f.pais_origem || '';
+    exp.encontrado = true;
+  }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('mc-exp-nome', exp.nome); set('mc-exp-end', exp.endereco); set('mc-exp-banco', exp.dados_bancarios);
+  mcRenderPreview();
+}
+
+function mcRenderPreview() {
+  const box = document.getElementById('mc-preview');
+  if (box) box.innerHTML = mcDocHTML();
+}
+
+// HTML do memorando (mesmo para preview e impressão — sem inputs internos).
+function mcDocHTML() {
+  const m = _mcMemorando;
+  if (!m) return '';
+  const nn = v => v || '—';
+  const th = t => `<th style="padding:5px 6px;background:var(--turquesa,#00B5AD);${t === 'l' ? 'text-align:left' : (t === 'r' ? 'text-align:right' : 'text-align:center')}">`;
+
+  const linhas = m.itens_cambio.map(r => `
+    <tr>
+      <td style="padding:4px 6px">${esc(nn(r.invoice))}</td>
+      <td style="padding:4px 6px">${esc(nn(r.bl))}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtN(r.valor_usd, 2)}</td>
+      <td style="padding:4px 6px;text-align:center">${esc(r.moeda)}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtN(r.taxa, 4)}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtN(r.valor_reais, 2)}</td>
+      <td style="padding:4px 6px;text-align:center">${peFmtData(r.prev_embarque)}</td>
+    </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;padding:12px;color:#999">Sem parcelas na seção 5</td></tr>`;
+
+  const mod = m.modalidade;
+  const modLinha = [
+    mod.antecipado_pct ? `Antecipado ${fmtN(mod.antecipado_pct, 0)}%` : '',
+    mod.avista_pct     ? `À vista ${fmtN(mod.avista_pct, 0)}%` : '',
+    mod.aprazo_pct     ? `A prazo ${fmtN(mod.aprazo_pct, 0)}%` : '',
+    mod.outros_pct     ? `Outros ${fmtN(mod.outros_pct, 0)}%${mod.outros_desc ? ' (' + esc(mod.outros_desc) + ')' : ''}` : ''
+  ].filter(Boolean).join('  ·  ') || '—';
+
+  const bloco = (titulo, corpo) => `
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#666;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:4px">${titulo}</div>
+      <div style="font-size:11.5px;white-space:pre-wrap;line-height:1.45">${corpo}</div>
+    </div>`;
+
+  return `
+    <div class="mc-doc" id="mc-doc" style="background:#fff;color:#1a1a1a;padding:22px 26px;font-family:Arial,Helvetica,sans-serif;max-width:820px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--turquesa,#00B5AD);padding-bottom:10px;margin-bottom:14px">
+        <img src="logo_pilar.png" alt="PILAR" style="height:42px">
+        <div>
+          <div style="font-size:15px;font-weight:800;letter-spacing:.5px">DRAFT P/ FECHAMENTO DE CÂMBIO</div>
+          <div style="font-size:11px;color:#666">PILAR IMPORTS LTDA</div>
+        </div>
+      </div>
+
+      <table style="width:100%;font-size:11.5px;margin-bottom:14px">
+        <tr>
+          <td style="padding:1px 0"><b>Referência:</b> ${esc(nn(m.referencia))}</td>
+          <td style="padding:1px 0"><b>Processo:</b> ${esc(nn(m.processo_num))}</td>
+          <td style="padding:1px 0;text-align:right"><b>Data:</b> ${peFmtData(m.data_emissao)}</td>
+        </tr>
+      </table>
+
+      ${bloco('Exportador', `<b>${esc(nn(m.exportador.nome))}</b>${m.exportador.pais_origem ? '  ·  ' + esc(m.exportador.pais_origem) : ''}\n${esc(m.exportador.endereco || '—')}`)}
+      ${bloco('Importador', `<b>${esc(m.importador.nome)}</b>  ·  CNPJ ${esc(m.importador.cnpj)}${m.importador.endereco ? '\n' + esc(m.importador.endereco) : ''}`)}
+
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#666;margin:6px 0 4px">Câmbio</div>
+      <table class="mc-cambio" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">
+        <thead>
+          <tr style="color:#fff">
+            ${th('l')}Invoice</th>${th('l')}BL</th>${th('r')}Valor USD</th>${th('c')}Moeda</th>
+            ${th('r')}Taxa</th>${th('r')}Valor R$</th>${th('c')}Prev. Emb.</th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+        <tfoot>
+          <tr style="font-weight:700;border-top:2px solid #333;background:#f5f5f5">
+            <td colspan="2" style="padding:5px 6px">TOTAL</td>
+            <td style="padding:5px 6px;text-align:right">${fmtN(m.total.usd, 2)}</td>
+            <td style="text-align:center">USD</td>
+            <td></td>
+            <td style="padding:5px 6px;text-align:right">${fmtN(m.total.reais, 2)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      ${bloco('Modalidade', `${modLinha}${mod.fluxo ? '\nFluxo: ' + esc(mod.fluxo) : ''}`)}
+      ${bloco('Informações complementares — Beneficiário', `<b>${esc(nn(m.exportador.nome))}</b>\n${esc(m.exportador.endereco || '—')}\n\n${esc(m.exportador.dados_bancarios || '—')}`)}
+    </div>`;
+}
+
+function mcPrint() {
+  if (!_mcMemorando) { toast('Abra o memorando primeiro.'); return; }
+  // «2B-SALVAR»: aqui a 2B fará POST /api/cambios com _mcMemorando (grava em
+  // cambios.json) e aplicará em pagamentos_fornecedor via _parcela_id. A 2A NÃO.
+  document.getElementById('or-print-area').innerHTML = mcDocHTML();
   window.print();
   toast('✓ Diálogo de impressão aberto');
 }
