@@ -116,6 +116,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--cinza-med);font-weight:700;padding:8px 10px;border-bottom:2px solid var(--border);white-space:nowrap}
 .tbl td{padding:9px 10px;border-bottom:1px solid var(--cinza-light)}
 .tbl tbody tr:hover{background:#F9FBFC;cursor:pointer}
+/* Seção 4 — Precificação: scroll horizontal sempre visível (tabela larga > container 980px) */
+#s4-tabela{scrollbar-width:thin;scrollbar-color:var(--cinza-med) var(--cinza-light)}
+#s4-tabela::-webkit-scrollbar{height:10px}
+#s4-tabela::-webkit-scrollbar-track{background:var(--cinza-light);border-radius:5px}
+#s4-tabela::-webkit-scrollbar-thumb{background:var(--cinza-med);border-radius:5px}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase}
 .badge-ativo{background:#E8F5E9;color:#2E7D32}
 .badge-concluido{background:#E3F2FD;color:#1565C0}
@@ -2729,7 +2734,7 @@ function npRecalcular() {
     </tr>`;
   }).join('');
 
-  s4t.innerHTML = `<table class="tbl">
+  s4t.innerHTML = `<table class="tbl" style="min-width:1180px">
     <thead><tr>
       <th>#</th><th>Descrição</th>
       <th style="text-align:center">Margem %</th>
