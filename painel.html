@@ -444,6 +444,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <a class="nav-link" href="#" onclick="return navTo(this, renderFluxoCaixa)">
       <span class="nav-icon">📊</span> Fluxo de Caixa
     </a>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderCambio)">
+      <span class="nav-icon">💱</span> Câmbio
+    </a>
     <a class="nav-link" href="index.html">
       <span class="nav-icon">🧮</span> Calculadora
     </a>
@@ -486,6 +489,7 @@ const ROTAS = {
   'pedido-embarque':    { fn: renderPedidoEmbarque,      nav: 'renderPedidoEmbarque' },
   'resumo-despachante': { fn: renderResumoDespachante,   nav: 'renderResumoDespachante' },
   'fluxo-caixa':        { fn: renderFluxoCaixa,          nav: 'renderFluxoCaixa' },
+  'cambio':             { fn: renderCambio,              nav: 'renderCambio' },
   'catalogo':           { fn: renderCatalogo,            nav: 'renderCatalogo' },
   'fornecedores':       { fn: renderFornecedores,        nav: 'renderFornecedores' },
   'configuracoes':      { fn: renderConfig,              nav: 'renderConfig' },
@@ -497,7 +501,7 @@ const _fnParaHash = new Map([
   [renderNovaDemanda, '#/nova-demanda'],
   [renderOrderRequest, '#/order-request'], [renderProposta, '#/proposta'],
   [renderPedidoEmbarque, '#/pedido-embarque'], [renderResumoDespachante, '#/resumo-despachante'],
-  [renderFluxoCaixa, '#/fluxo-caixa'], [renderCatalogo, '#/catalogo'],
+  [renderFluxoCaixa, '#/fluxo-caixa'], [renderCambio, '#/cambio'], [renderCatalogo, '#/catalogo'],
   [renderFornecedores, '#/fornecedores'], [renderConfig, '#/configuracoes'],
 ]);
 
@@ -5709,6 +5713,252 @@ function mcPrint() {
   toast(aplicou
     ? '✓ Memorando registrado, parcela marcada como paga e PDF gerado.'
     : '✓ Memorando registrado e PDF gerado (parcela não localizada p/ aplicar).');
+}
+
+// ── Câmbio — rastreabilidade (Sub-fatia 2C: só leitura) ──────────────────────
+// Lista TODOS os fechamentos gravados no cambios.json (cache pilar_cambios,
+// populado no boot pela 2B). Tabela filtrável + export Excel + regenerar PDF.
+// NÃO grava nada, NÃO toca a 2B nem os processos. Reusa mcDocHTML (PDF) e espelha
+// fcExportarExcel (Excel).
+
+let _cbFiltroProc = '', _cbFiltroForn = '', _cbDe = '', _cbAte = '';
+
+function _cambios() {
+  try { return JSON.parse(localStorage.getItem('pilar_cambios') || '[]'); }
+  catch { return []; }
+}
+// Data da linha = fechamento (cai p/ emissão se vazia). ISO 'yyyy-mm-dd'.
+function _cbData(reg) { return (reg.data_fechamento || reg.data_emissao || '').slice(0, 10); }
+const _cbRow = reg => (reg.itens_cambio && reg.itens_cambio[0]) || {};
+
+// String compacta da modalidade (mesma lógica do modLinha do mcDocHTML).
+function cambioModalidadeTxt(mod) {
+  mod = mod || {};
+  const parts = [
+    mod.antecipado_pct ? `Antec. ${fmtN(mod.antecipado_pct, 0)}%` : '',
+    mod.avista_pct     ? `À vista ${fmtN(mod.avista_pct, 0)}%` : '',
+    mod.aprazo_pct     ? `A prazo ${fmtN(mod.aprazo_pct, 0)}%` : '',
+    mod.outros_pct     ? `Outros ${fmtN(mod.outros_pct, 0)}%` : ''
+  ].filter(Boolean);
+  let s = parts.join(' · ') || '—';
+  if (mod.fluxo) s += ` (${esc(mod.fluxo)})`;
+  return s;
+}
+
+function renderCambio() {
+  const regs = _cambios();
+  _cbFiltroProc = ''; _cbFiltroForn = ''; _cbDe = ''; _cbAte = '';
+
+  if (!regs.length) {
+    document.getElementById('vc').innerHTML = `
+      <div style="max-width:1100px">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px">Câmbio — Rastreabilidade</h2>
+        <div class="card"><div class="card-bd" style="text-align:center;padding:48px;color:var(--cinza-med)">
+          <div style="font-size:36px;margin-bottom:12px">💱</div>
+          <div style="font-weight:600;margin-bottom:6px">Nenhum memorando de câmbio registrado ainda</div>
+          <div style="font-size:13px">Gere um memorando na seção 5 de um processo (botão 🏦 na parcela) e ele aparece aqui.</div>
+        </div></div>
+      </div>`;
+    return;
+  }
+
+  const uniq = (arr, key) => [...new Set(arr.map(key).filter(Boolean))].sort();
+  const procOpts = uniq(regs, r => r.processo_num).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  const fornOpts = uniq(regs, r => r.fornecedor).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1180px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h2 style="font-size:18px;font-weight:700">Câmbio — Rastreabilidade</h2>
+        <button class="btn btn-s btn-sm" onclick="cambioExportarExcel()" title="Exporta os fechamentos filtrados para .xlsx">📊 Exportar Excel</button>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-bd" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="margin:0"><label>Processo</label>
+            <select id="cb-f-proc" onchange="cambioSetFiltro()"><option value="">Todos</option>${procOpts}</select></div>
+          <div class="field" style="margin:0"><label>Fornecedor</label>
+            <select id="cb-f-forn" onchange="cambioSetFiltro()"><option value="">Todos</option>${fornOpts}</select></div>
+          <div class="field" style="margin:0"><label>Fechamento — de</label>
+            <input type="date" id="cb-f-de" onchange="cambioSetFiltro()"></div>
+          <div class="field" style="margin:0"><label>até</label>
+            <input type="date" id="cb-f-ate" onchange="cambioSetFiltro()"></div>
+          <button class="btn btn-s btn-sm" onclick="cambioLimparFiltros()">Limpar filtros</button>
+          <span id="cb-count" style="font-size:12px;color:var(--cinza-med);margin-left:auto"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="items-tbl" style="font-size:13px;width:100%">
+            <thead><tr>
+              <th>Data</th><th>Processo</th><th>Fornecedor</th>
+              <th style="text-align:right">Valor USD</th><th>Moeda</th>
+              <th style="text-align:right">Taxa</th><th style="text-align:right">Valor R$</th>
+              <th>Modalidade</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="cb-tbody"></tbody>
+            <tfoot id="cb-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  cambioRenderTabela();
+}
+
+function cambioSetFiltro() {
+  _cbFiltroProc = document.getElementById('cb-f-proc')?.value || '';
+  _cbFiltroForn = document.getElementById('cb-f-forn')?.value || '';
+  _cbDe  = document.getElementById('cb-f-de')?.value || '';
+  _cbAte = document.getElementById('cb-f-ate')?.value || '';
+  cambioRenderTabela();
+}
+
+function cambioLimparFiltros() {
+  _cbFiltroProc = ''; _cbFiltroForn = ''; _cbDe = ''; _cbAte = '';
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('cb-f-proc', ''); set('cb-f-forn', ''); set('cb-f-de', ''); set('cb-f-ate', '');
+  cambioRenderTabela();
+}
+
+// Lista filtrada (processo + fornecedor + período pela data de fechamento). Combináveis.
+function cambioListaFiltrada() {
+  return _cambios().filter(r => {
+    if (_cbFiltroProc && r.processo_num !== _cbFiltroProc) return false;
+    if (_cbFiltroForn && r.fornecedor  !== _cbFiltroForn) return false;
+    const d = _cbData(r);
+    if (_cbDe  && (!d || d < _cbDe))  return false;
+    if (_cbAte && (!d || d > _cbAte)) return false;
+    return true;
+  }).sort((a, b) => (_cbData(b) || '').localeCompare(_cbData(a) || ''));  // mais recente primeiro
+}
+
+function cambioRenderTabela() {
+  const tbody = document.getElementById('cb-tbody');
+  const tfoot = document.getElementById('cb-tfoot');
+  const count = document.getElementById('cb-count');
+  if (!tbody) return;
+
+  const lista = cambioListaFiltrada();
+  if (count) count.textContent = `${lista.length} fechamento${lista.length !== 1 ? 's' : ''}`;
+
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--cinza-med)">Nenhum fechamento corresponde aos filtros.</td></tr>`;
+    if (tfoot) tfoot.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = lista.map(r => {
+    const row = _cbRow(r);
+    return `<tr>
+      <td style="white-space:nowrap">${peFmtData(_cbData(r))}</td>
+      <td>${esc(r.processo_num || '—')}</td>
+      <td>${esc(r.fornecedor || '—')}</td>
+      <td style="text-align:right;white-space:nowrap">${fmtN(r.total?.usd || 0, 2)}</td>
+      <td style="text-align:center">${esc(row.moeda || 'USD')}</td>
+      <td style="text-align:right">${fmtN(row.taxa || 0, 4)}</td>
+      <td style="text-align:right;white-space:nowrap;font-weight:600;color:var(--turquesa-dark)">${fmtN(r.total?.reais || 0, 2)}</td>
+      <td style="font-size:12px">${cambioModalidadeTxt(r.modalidade)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-s btn-sm" onclick="cambioReimprimir('${esc(String(r.id))}')" title="Regerar o PDF deste memorando">🖨 PDF</button></td>
+    </tr>`;
+  }).join('');
+
+  const totUsd = lista.reduce((s, r) => s + (r.total?.usd || 0), 0);
+  const totBrl = lista.reduce((s, r) => s + (r.total?.reais || 0), 0);
+  if (tfoot) tfoot.innerHTML = `
+    <tr style="background:var(--cinza-light);font-weight:700">
+      <td colspan="3" style="padding:7px 8px">TOTAL (${lista.length})</td>
+      <td style="text-align:right;padding:7px 8px">USD ${fmtN(totUsd, 2)}</td>
+      <td colspan="2"></td>
+      <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(totBrl, 2)}</td>
+      <td colspan="2"></td>
+    </tr>`;
+}
+
+// Regenera o PDF de um fechamento a partir do REGISTRO salvo (não do processo ao
+// vivo). Reusa o mcDocHTML da 2A — o registro guarda tudo que o doc precisa.
+// Só leitura: não chama _apiSalvarCambio nem mcAplicarNaParcela.
+function cambioReimprimir(id) {
+  const reg = _cambios().find(r => String(r.id) === String(id));
+  if (!reg) { toast('Registro de câmbio não encontrado.'); return; }
+  _mcMemorando = { ...reg, referencia: reg.processo_num || reg.referencia || '' };
+  document.getElementById('or-print-area').innerHTML = mcDocHTML();
+  window.print();
+  toast('✓ PDF do memorando regenerado.');
+}
+
+// Export Excel dos fechamentos FILTRADOS (espelha fcExportarExcel: AOA + estilo +
+// autofilter + writeFile). Só leitura.
+function cambioExportarExcel() {
+  if (typeof XLSX === 'undefined') { toast('Planilha (SheetJS) não carregada.'); return; }
+  const lista = cambioListaFiltrada();
+  if (!lista.length) { toast('Nada para exportar.'); return; }
+
+  const serialData = iso => {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00');
+    return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000);
+  };
+
+  const aoa = [['Data', 'Processo', 'Fornecedor', 'Valor USD', 'Moeda', 'Taxa', 'Valor R$', 'Modalidade']];
+  lista.forEach(r => {
+    const row = _cbRow(r);
+    aoa.push([
+      serialData(_cbData(r)), r.processo_num || '', r.fornecedor || '',
+      r.total?.usd || 0, row.moeda || 'USD', row.taxa || 0, r.total?.reais || 0,
+      cambioModalidadeTxt(r.modalidade)
+    ]);
+  });
+  const totUsd = lista.reduce((s, r) => s + (r.total?.usd || 0), 0);
+  const totBrl = lista.reduce((s, r) => s + (r.total?.reais || 0), 0);
+  const totalRow = aoa.length;
+  aoa.push(['TOTAL', '', '', totUsd, '', '', totBrl, '']);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 12 }, { wch: 15 }, { wch: 24 }, { wch: 15 }, { wch: 8 }, { wch: 10 }, { wch: 16 }, { wch: 30 }];
+
+  const NCOLS = 8;
+  const thin  = { style: 'thin',   color: { rgb: 'BFBFBF' } };
+  const med   = { style: 'medium', color: { rgb: '1F3864' } };
+  const bThin = { top: thin, bottom: thin, left: thin, right: thin };
+  const bMed  = { top: med,  bottom: med,  left: med,  right: med };
+  const cell  = (r, c) => { const a = XLSX.utils.encode_cell({ r, c }); if (!ws[a]) ws[a] = { t: 's', v: '' }; return ws[a]; };
+  const Z_USD = 'US$ #,##0.00', Z_BRL = 'R$ #,##0.00', Z_TAXA = '#,##0.0000';
+  const rightCols = new Set([3, 5, 6]);   // Valor USD, Taxa, Valor R$
+
+  for (let c = 0; c < NCOLS; c++) cell(0, c).s = {
+    font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { patternType: 'solid', fgColor: { rgb: '00B0C8' } },
+    alignment: { horizontal: rightCols.has(c) ? 'right' : 'left', vertical: 'center' }, border: bThin
+  };
+  lista.forEach((r, i) => {
+    const rr = i + 1;
+    for (let c = 0; c < NCOLS; c++) {
+      cell(rr, c).s = {
+        font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+        alignment: { horizontal: c === 0 ? 'center' : rightCols.has(c) ? 'right' : 'left', vertical: 'center' },
+        border: bThin
+      };
+    }
+    cell(rr, 0).z = 'dd/mm/yyyy';
+    cell(rr, 3).z = Z_USD; cell(rr, 5).z = Z_TAXA; cell(rr, 6).z = Z_BRL;
+  });
+  for (let c = 0; c < NCOLS; c++) cell(totalRow, c).s = {
+    font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+    fill: { patternType: 'solid', fgColor: { rgb: 'BDD7EE' } },
+    alignment: { horizontal: rightCols.has(c) ? 'right' : 'left', vertical: 'center' }, border: bMed
+  };
+  cell(totalRow, 3).z = Z_USD; cell(totalRow, 6).z = Z_BRL;
+
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRow - 1, c: NCOLS - 1 } }) };
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const nome = `Cambio_${_cbFiltroProc || _cbFiltroForn || 'todos'}_${hoje}.xlsx`;
+  XLSX.utils.book_append_sheet(wb, ws, 'Câmbio');
+  XLSX.writeFile(wb, nome);
+  toast(`✓ Excel gerado: ${nome}`);
 }
 
 // ── Order Request ──────────────────────────────────────────────────────────
