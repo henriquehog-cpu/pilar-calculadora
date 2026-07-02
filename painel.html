@@ -447,6 +447,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </a>
 
     <div class="nav-sep">Sistema</div>
+    <a class="nav-link" href="#" onclick="return navTo(this, renderFornecedores)">
+      <span class="nav-icon">📇</span> Fornecedores
+    </a>
     <a class="nav-link" href="#" onclick="return navTo(this, renderConfig)">
       <span class="nav-icon">⚙</span> Configurações
     </a>
@@ -477,6 +480,7 @@ const ROTAS = {
   'resumo-despachante': { fn: renderResumoDespachante,   nav: 'renderResumoDespachante' },
   'fluxo-caixa':        { fn: renderFluxoCaixa,          nav: 'renderFluxoCaixa' },
   'catalogo':           { fn: renderCatalogo,            nav: 'renderCatalogo' },
+  'fornecedores':       { fn: renderFornecedores,        nav: 'renderFornecedores' },
   'configuracoes':      { fn: renderConfig,              nav: 'renderConfig' },
 };
 // Mapa inverso: função de render -> hash (usado pelo menu lateral via navTo)
@@ -486,7 +490,8 @@ const _fnParaHash = new Map([
   [renderNovaDemanda, '#/nova-demanda'],
   [renderOrderRequest, '#/order-request'], [renderProposta, '#/proposta'],
   [renderPedidoEmbarque, '#/pedido-embarque'], [renderResumoDespachante, '#/resumo-despachante'],
-  [renderFluxoCaixa, '#/fluxo-caixa'], [renderCatalogo, '#/catalogo'], [renderConfig, '#/configuracoes'],
+  [renderFluxoCaixa, '#/fluxo-caixa'], [renderCatalogo, '#/catalogo'],
+  [renderFornecedores, '#/fornecedores'], [renderConfig, '#/configuracoes'],
 ]);
 
 function _setActiveNav(fnNome) {
@@ -5799,6 +5804,189 @@ function catProcessarXlsx(input) {
   reader.readAsArrayBuffer(file);
 }
 
+// ── Cadastro de Fornecedores (Fatia 1) ──────────────────────────────────────
+// Espelha o Catálogo Omie: cache em localStorage['pilar_fornecedores'] +
+// arquivo próprio no servidor (/api/fornecedores). O array inteiro é reenviado a
+// cada save (não há rota de DELETE). Item: { nome, endereco, dados_bancarios,
+// pais_origem } — endereco e dados_bancarios são TEXTO LIVRE (quebras preservadas).
+// A tela de add/editar espelha o modal npm* e a remoção espelha ndExcluir.
+
+function _fornecedores() {
+  try { return JSON.parse(localStorage.getItem('pilar_fornecedores') || '[]'); }
+  catch { return []; }
+}
+
+// Persiste no cache local e no servidor (rota própria, fora do auto-sync /api/dados).
+function _apiSalvarFornecedores(arr) {
+  localStorage.setItem('pilar_fornecedores', JSON.stringify(arr));
+  return fetch('/api/fornecedores', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(arr)
+  });
+}
+
+function renderFornecedores() {
+  const forns = _fornecedores();
+  document.getElementById('vc').innerHTML = `
+    <div style="max-width:1100px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <h2 style="font-size:18px;font-weight:700">Cadastro de Fornecedores</h2>
+        <button class="btn btn-p" onclick="fornAbrir(-1)">＋ Novo fornecedor</button>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-bd" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <input id="forn-q" type="text" placeholder="Buscar nome ou país…"
+            style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px"
+            oninput="fornRenderGrade()">
+          <span id="forn-count" style="font-size:12px;color:var(--cinza-med)">${forns.length} fornecedores</span>
+        </div>
+      </div>
+
+      <div id="forn-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+    </div>`;
+
+  fornRenderGrade();
+}
+
+function fornRenderGrade() {
+  const grid  = document.getElementById('forn-grid');
+  const count = document.getElementById('forn-count');
+  if (!grid) return;
+
+  const q     = (document.getElementById('forn-q')?.value || '').trim().toLowerCase();
+  const todos = _fornecedores();
+  // Mantém o índice real no array completo (o filtro só oculta).
+  const visiveis = todos
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) =>
+      !q ||
+      (f.nome || '').toLowerCase().includes(q) ||
+      (f.pais_origem || '').toLowerCase().includes(q));
+
+  if (count) count.textContent = `${visiveis.length} fornecedor${visiveis.length !== 1 ? 'es' : ''}`;
+
+  if (!todos.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--cinza-med)">
+      <div style="font-size:36px;margin-bottom:12px">📇</div>
+      <div style="font-weight:600;margin-bottom:6px">Nenhum fornecedor cadastrado</div>
+      <div style="font-size:13px">Clique em "＋ Novo fornecedor" para adicionar.</div>
+    </div>`;
+    return;
+  }
+  if (!visiveis.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--cinza-med);font-size:13px">Nenhum fornecedor corresponde à busca.</div>`;
+    return;
+  }
+
+  grid.innerHTML = visiveis.map(({ f, i }) => `
+    <div style="background:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <div style="font-size:14px;font-weight:700;color:var(--cinza);line-height:1.4">${esc(f.nome || '(sem nome)')}</div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="btn btn-s" style="padding:2px 8px;font-size:12px" onclick="fornAbrir(${i})" title="Editar">✎</button>
+          <button class="btn btn-s" style="padding:2px 8px;font-size:12px" onclick="fornRemover(${i})" title="Remover">✕</button>
+        </div>
+      </div>
+      ${f.pais_origem ? `<div style="font-size:11px;margin-bottom:8px"><span style="background:var(--cinza-light);padding:1px 7px;border-radius:3px">${esc(f.pais_origem)}</span></div>` : ''}
+      <details style="font-size:12px;color:var(--cinza-med)">
+        <summary style="cursor:pointer;font-weight:600;color:var(--cinza)">Endereço e dados bancários</summary>
+        <div style="margin-top:8px">
+          <div style="font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">Endereço</div>
+          <div style="white-space:pre-wrap;margin-bottom:10px">${esc(f.endereco || '—')}</div>
+          <div style="font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">Dados bancários</div>
+          <div style="white-space:pre-wrap">${esc(f.dados_bancarios || '—')}</div>
+        </div>
+      </details>
+    </div>`).join('');
+}
+
+// idx = -1 → novo; idx >= 0 → edita o fornecedor naquele índice do array completo.
+function fornAbrir(idx) {
+  if (document.getElementById('forn-overlay')) return;
+  const forns = _fornecedores();
+  const f = (idx >= 0 && forns[idx]) ? forns[idx] : { nome: '', pais_origem: '', endereco: '', dados_bancarios: '' };
+  const novo = idx < 0;
+  const taStyle = 'padding:7px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--cinza);font-family:inherit;background:#fff;resize:vertical;min-height:90px';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'forn-overlay';
+  overlay.className = 'npm-overlay';
+  overlay.innerHTML = `
+    <div class="npm-box" onclick="event.stopPropagation()">
+      <div class="npm-hd">${novo ? '＋ Novo Fornecedor' : '✎ Editar Fornecedor'}</div>
+      <div class="npm-bd">
+        <input type="hidden" id="forn-idx" value="${idx}">
+        <div class="npm-field">
+          <label>Nome *</label>
+          <input id="forn-nome" type="text" value="${esc(f.nome || '')}" placeholder="Ex.: KINGLAND">
+        </div>
+        <div class="npm-field">
+          <label>País de origem</label>
+          <input id="forn-pais" type="text" value="${esc(f.pais_origem || '')}" placeholder="Ex.: CHINA">
+        </div>
+        <div class="npm-field">
+          <label>Endereço</label>
+          <textarea id="forn-endereco" style="${taStyle}" placeholder="Texto livre (quebras de linha preservadas)">${esc(f.endereco || '')}</textarea>
+        </div>
+        <div class="npm-field">
+          <label>Dados bancários</label>
+          <textarea id="forn-banco" style="${taStyle}" placeholder="Beneficiário / Banco / SWIFT / conta… (texto livre)">${esc(f.dados_bancarios || '')}</textarea>
+        </div>
+      </div>
+      <div class="npm-ft">
+        <button class="btn btn-s" onclick="fornFechar()">Cancelar</button>
+        <button class="btn btn-p" onclick="fornSalvarModal(this)">${novo ? 'Adicionar' : 'Salvar'}</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', fornFechar);
+  document.body.appendChild(overlay);
+  document.getElementById('forn-nome')?.focus();
+}
+
+function fornFechar() {
+  document.getElementById('forn-overlay')?.remove();
+}
+
+async function fornSalvarModal(btn) {
+  const idx  = parseInt(document.getElementById('forn-idx')?.value, 10);
+  const nome = (document.getElementById('forn-nome')?.value || '').trim();
+  if (!nome) { toast('O nome do fornecedor é obrigatório.'); document.getElementById('forn-nome')?.focus(); return; }
+
+  const registro = {
+    nome,
+    pais_origem:     (document.getElementById('forn-pais')?.value || '').trim(),
+    endereco:        document.getElementById('forn-endereco')?.value || '',
+    dados_bancarios: document.getElementById('forn-banco')?.value || ''
+  };
+
+  const arr = _fornecedores();
+  if (idx >= 0 && arr[idx]) arr[idx] = registro; else arr.push(registro);
+
+  if (btn) btn.disabled = true;
+  try {
+    await _apiSalvarFornecedores(arr);
+    toast(idx >= 0 ? '✓ Fornecedor atualizado.' : '✓ Fornecedor adicionado.');
+  } catch {
+    toast('Salvo localmente (servidor offline).');
+  } finally {
+    fornFechar();
+    fornRenderGrade();
+  }
+}
+
+function fornRemover(idx) {
+  const arr = _fornecedores();
+  const f = arr[idx];
+  if (!f) return;
+  if (!confirm(`Remover o fornecedor "${f.nome || '(sem nome)'}"? Esta ação não pode ser desfeita.`)) return;
+  arr.splice(idx, 1);
+  _apiSalvarFornecedores(arr).catch(() => {});
+  fornRenderGrade();
+  toast('Fornecedor removido.');
+}
+
 // ── Autocomplete itens (Novo/Editar Processo) ──────────────────────────────
 const _acMatches = {};
 
@@ -6028,10 +6216,11 @@ function _apiSincronizar() {
 
 async function _apiCarregar() {
   try {
-    const [rDados, rGen, rOmie] = await Promise.all([
+    const [rDados, rGen, rOmie, rForn] = await Promise.all([
       fetch('/api/dados'),
       fetch('/api/produtos-genericos'),
-      fetch('/api/catalogo-omie')
+      fetch('/api/catalogo-omie'),
+      fetch('/api/fornecedores')
     ]);
     if (rDados.ok) {
       const d = await rDados.json();
@@ -6049,6 +6238,10 @@ async function _apiCarregar() {
     if (rOmie.ok) {
       const o = await rOmie.json();
       if (Array.isArray(o)) _lsSetOrig('pilar_catalogo_omie', JSON.stringify(o));
+    }
+    if (rForn.ok) {
+      const f = await rForn.json();
+      if (Array.isArray(f)) _lsSetOrig('pilar_fornecedores', JSON.stringify(f));
     }
   } catch { /* offline — usa cache localStorage */ }
 }

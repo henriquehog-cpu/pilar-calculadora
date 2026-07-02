@@ -4,6 +4,8 @@ node_modules/
 dados.json
 produtos_genericos.json
 catalogo_omie.json
+fornecedores.json
+fornecedores_pilar.json
 logs/
 config/fornecedores-bloqueados.json
 sims_prod_teste.json

@@ -16,6 +16,7 @@ const PROD_FILE   = path.join(ROOT, 'produtos.json');            // legado: só 
 const PROD_GEN_FILE      = path.join(ROOT, 'produtos_genericos.json');      // runtime (gitignorado)
 const PROD_GEN_SEED      = path.join(ROOT, 'produtos_genericos.seed.json'); // semente versionada
 const CATALOGO_OMIE_FILE = path.join(ROOT, 'catalogo_omie.json');          // runtime (gitignorado)
+const FORNECEDORES_FILE  = path.join(ROOT, 'fornecedores.json');           // runtime (gitignorado)
 const BANCODI_FILE = path.join(ROOT, 'banco_di.json');
 const OMIE_HOST   = 'app.omie.com.br';
 const OMIE_PATH   = '/api/v1/geral/produtos/';
@@ -626,6 +627,24 @@ const server = http.createServer((req, res) => {
     readBody(req).then(data => {
       if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de produtos' });
       gravarAtomico(CATALOGO_OMIE_FILE, data);
+      json(res, 200, { ok: true, total: data.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── GET /api/fornecedores ──────────────────────────────────────────────────
+  // Cadastro de fornecedores (Fatia 1). Espelha catalogo-omie: arquivo próprio
+  // gitignorado, array reenviado inteiro a cada save. Cada item:
+  //   { nome, endereco, dados_bancarios, pais_origem }  (endereco/dados = texto livre)
+  if (req.method === 'GET' && url === '/api/fornecedores') {
+    json(res, 200, lerJson(FORNECEDORES_FILE, []));
+    return;
+  }
+  // ── POST /api/fornecedores ─────────────────────────────────────────────────
+  if (req.method === 'POST' && url === '/api/fornecedores') {
+    readBody(req).then(data => {
+      if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de fornecedores' });
+      gravarAtomico(FORNECEDORES_FILE, data);
       json(res, 200, { ok: true, total: data.length });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
