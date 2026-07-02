@@ -1898,8 +1898,8 @@ function npAtualizarRodape() {
   if (!tfoot) return;
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light)">
-      <td colspan="12" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
-      <td style="text-align:right;padding:8px 10px;font-size:15px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(fobTotal)}</td>
+      <td colspan="11" style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cinza-med)">Total FOB USD</td>
+      <td colspan="2" style="text-align:right;padding:8px 10px;font-size:15px;font-weight:700;color:var(--turquesa-dark);white-space:nowrap">USD ${fmtN(fobTotal)}</td>
       <td></td>
     </tr>`;
 }
