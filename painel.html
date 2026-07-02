@@ -5336,6 +5336,8 @@ function mcBuildMemorando(proc) {
     processo_id:  proc.id,
     processo_num: proc.numero || '',
     data_emissao: mcHojeISO(),         // editável no modal
+    // data REAL do fechamento (editável) → aplicada em parcela.data_realizada na 2B
+    data_fechamento: (par[0] && (par[0].data_realizada || par[0].data_prevista)) || mcHojeISO(),
     // ── exportador (do cadastro; editável se não casar) ──
     exportador: {
       nome:            match ? match.nome : (g.fornecedor || ''),
@@ -5358,6 +5360,11 @@ function mcBuildMemorando(proc) {
 // clicada → a tabela do câmbio fica com 1 linha, o TOTAL é o dela e _mcMemorando
 // carrega o _parcela_id dela (a 2B aplica NESSA parcela via «2B-APLICAR»).
 function mcAbrirParcela(i) {
+  const parcelaMem = (_fcPagamentos || [])[i];
+  if (!parcelaMem) { toast('Parcela não encontrada.'); return; }
+  // «2B-APLICAR» depende de casar por id: garante uma chave estável ANTES de
+  // montar o snapshot (parcelas novas já nascem com id; antigas podem não ter).
+  if (parcelaMem.id == null) parcelaMem.id = Date.now();
   const proc = mcColetarProcesso();
   const parcela = (proc.pagamentos_fornecedor || [])[i];
   if (!parcela) { toast('Parcela não encontrada.'); return; }
@@ -5374,6 +5381,7 @@ function mcAbrir(proc) {
     toast(`Fornecedor "${proc.dados_gerais?.fornecedor || '—'}" não está no cadastro — selecione ou preencha manualmente.`);
   }
 
+  const row = m.itens_cambio[0] || {};   // 2B edita os valores REAIS desta parcela
   const cad = JSON.parse(localStorage.getItem('pilar_fornecedores') || '[]');
   const expKey = (m.exportador.nome || '').trim().toLowerCase();
   const opts = cad.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
@@ -5425,6 +5433,26 @@ function mcAbrir(proc) {
           <textarea id="mc-exp-banco" style="${taStyle}" oninput="mcSetExportador('dados_bancarios', this.value)">${esc(m.exportador.dados_bancarios)}</textarea>
         </div>
 
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);margin-top:4px">Fechamento — valores reais do banco</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="npm-field" style="flex:1;min-width:130px">
+            <label>Data do fechamento</label>
+            <input type="date" value="${esc(m.data_fechamento)}" oninput="mcSetFechamento('data_fechamento', this.value)">
+          </div>
+          <div class="npm-field" style="flex:1;min-width:100px">
+            <label>Câmbio (taxa)</label>
+            <input type="number" step="0.0001" min="0" value="${row.taxa || ''}" placeholder="0,0000" oninput="mcSetFechamento('taxa', this.value)">
+          </div>
+          <div class="npm-field" style="flex:1;min-width:110px">
+            <label>Valor USD</label>
+            <input type="number" step="0.01" min="0" value="${row.valor_usd || ''}" placeholder="0,00" oninput="mcSetFechamento('valor_usd', this.value)">
+          </div>
+          <div class="npm-field" style="flex:1;min-width:110px">
+            <label>Valor R$</label>
+            <input id="mc-fech-brl" type="number" step="0.01" min="0" value="${row.valor_reais || ''}" placeholder="0,00" oninput="mcSetFechamento('valor_reais', this.value)">
+          </div>
+        </div>
+
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--cinza-med);margin-top:4px">Modalidade (editável)</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           ${pctInput('antecipado_pct', 'Antecipado %')}
@@ -5470,6 +5498,27 @@ function mcSetModalidade(campo, valor) {
 function mcSetExportador(campo, valor) {
   if (!_mcMemorando) return;
   _mcMemorando.exportador[campo] = valor;
+  mcRenderPreview();
+}
+
+// Valores REAIS do fechamento (a parcela clicada = itens_cambio[0]). taxa/USD
+// recomputam R$ (= USD×taxa, mesma lógica do fcChangePagamento); R$ pode ser
+// sobrescrito manualmente. total (linha única) acompanha. É daqui que a 2B
+// aplica na parcela (cambio/valor/valor_reais).
+function mcSetFechamento(campo, valor) {
+  if (!_mcMemorando) return;
+  if (campo === 'data_fechamento') { _mcMemorando.data_fechamento = valor; mcRenderPreview(); return; }
+  const row = _mcMemorando.itens_cambio[0];
+  if (!row) return;
+  if (campo === 'taxa' || campo === 'valor_usd') {
+    row[campo] = parseFloat(valor) || 0;
+    row.valor_reais = (row.valor_usd || 0) * (row.taxa || 0);
+    const brlEl = document.getElementById('mc-fech-brl');
+    if (brlEl) brlEl.value = (row.valor_reais || 0).toFixed(2);   // reflete sem roubar foco
+  } else if (campo === 'valor_reais') {
+    row.valor_reais = parseFloat(valor) || 0;                     // override manual
+  }
+  _mcMemorando.total = { usd: row.valor_usd || 0, reais: row.valor_reais || 0 };
   mcRenderPreview();
 }
 
@@ -5573,13 +5622,93 @@ function mcDocHTML() {
     </div>`;
 }
 
+// Registro auto-suficiente do memorando p/ o cambios.json (regenerável na 2C).
+function mcBuildRegistro(m) {
+  const row = m.itens_cambio[0] || {};
+  return {
+    id:              Date.now(),           // server carimba se faltar
+    criado_em:       new Date().toISOString(),
+    processo_id:     m.processo_id,
+    processo_num:    m.processo_num,
+    parcela_id:      row._parcela_id != null ? row._parcela_id : null,
+    fornecedor:      m.exportador.nome || '',
+    data_emissao:    m.data_emissao,
+    data_fechamento: m.data_fechamento || '',
+    exportador:   { ...m.exportador },
+    importador:   { ...m.importador },
+    itens_cambio: m.itens_cambio.map(r => ({ ...r })),
+    total:        { ...m.total },
+    modalidade:   { ...m.modalidade }
+  };
+}
+
+// «2B-SALVAR»: APPEND no cambios.json (histórico append-only) + cache local p/ 2C.
+function _apiSalvarCambio(registro) {
+  const cache = JSON.parse(localStorage.getItem('pilar_cambios') || '[]');
+  cache.push(registro);
+  localStorage.setItem('pilar_cambios', JSON.stringify(cache));  // fora do _PILAR_KEYS: não dispara /api/dados
+  return fetch('/api/cambios', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(registro)          // UM registro — server faz push
+  });
+}
+
+// «2B-APLICAR»: grava os valores REAIS na parcela do processo, via o mecanismo
+// canônico _procSetStatus (merge por id no servidor, SEM navegar). Casa por
+// _parcela_id; data real → data_realizada (data_prevista fica INTACTA). Só toca
+// pagamentos_fornecedor — as demais seções do processo ficam preservadas.
+function mcAplicarNaParcela(m) {
+  const parcelaId = m.itens_cambio[0] && m.itens_cambio[0]._parcela_id;
+  const row = m.itens_cambio[0] || {};
+  const idx = _fcPagamentos.findIndex(p => p.id === parcelaId);
+  if (idx < 0) return false;
+  const p = _fcPagamentos[idx];
+  p.cambio         = row.taxa || 0;
+  p.valor_usd      = row.valor_usd || 0;
+  p.valor_reais    = row.valor_reais || 0;
+  p.usd_manual     = true;                        // valor real digitado (não recalcular pelo %)
+  p.data_realizada = m.data_fechamento || mcHojeISO();
+  p.status         = 'pago';                       // data_prevista NÃO é tocada
+
+  // Persiste só a fatia pagamentos_fornecedor no processo salvo (padrão _procSetStatus).
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const pidx  = todos.findIndex(x => x.id === _npEditId);
+  if (pidx < 0) return false;
+  todos[pidx].pagamentos_fornecedor = _fcPagamentos;
+  todos[pidx].atualizado_em = new Date().toISOString();
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));  // cache local
+  _apiSalvarProcessos(todos);                                      // MERGE por id no servidor
+
+  // Reflete na seção 5 aberta atrás do modal.
+  if (typeof fcRenderPagamentos === 'function') fcRenderPagamentos();
+  if (typeof fcRenderResumo === 'function') fcRenderResumo();
+  return true;
+}
+
+// Exportar PDF = UM ATO: grava o memorando (append) + aplica na parcela + imprime.
 function mcPrint() {
   if (!_mcMemorando) { toast('Abra o memorando primeiro.'); return; }
-  // «2B-SALVAR»: aqui a 2B fará POST /api/cambios com _mcMemorando (grava em
-  // cambios.json) e aplicará em pagamentos_fornecedor via _parcela_id. A 2A NÃO.
+  const m = _mcMemorando;
+
+  // Processo precisa estar salvo — a parcela precisa existir p/ ser atualizada.
+  const salvoExiste = _npEditId != null &&
+    JSON.parse(localStorage.getItem('pilar_processos') || '[]').some(x => x.id === _npEditId);
+  if (!salvoExiste) { toast('Salve o processo antes de fechar o câmbio.'); return; }  // aborta: sem gravar, sem PDF
+
+  // «2B-SALVAR» — histórico append-only.
+  _apiSalvarCambio(mcBuildRegistro(m)).catch(() => {});
+  // «2B-APLICAR» — valores reais na parcela + status pago.
+  const aplicou = mcAplicarNaParcela(m);
+
+  // PDF (comportamento 2A).
   document.getElementById('or-print-area').innerHTML = mcDocHTML();
   window.print();
-  toast('✓ Diálogo de impressão aberto');
+
+  mcFechar();
+  toast(aplicou
+    ? '✓ Memorando registrado, parcela marcada como paga e PDF gerado.'
+    : '✓ Memorando registrado e PDF gerado (parcela não localizada p/ aplicar).');
 }
 
 // ── Order Request ──────────────────────────────────────────────────────────
@@ -6581,11 +6710,12 @@ function _apiSincronizar() {
 
 async function _apiCarregar() {
   try {
-    const [rDados, rGen, rOmie, rForn] = await Promise.all([
+    const [rDados, rGen, rOmie, rForn, rCamb] = await Promise.all([
       fetch('/api/dados'),
       fetch('/api/produtos-genericos'),
       fetch('/api/catalogo-omie'),
-      fetch('/api/fornecedores')
+      fetch('/api/fornecedores'),
+      fetch('/api/cambios')
     ]);
     if (rDados.ok) {
       const d = await rDados.json();
@@ -6607,6 +6737,10 @@ async function _apiCarregar() {
     if (rForn.ok) {
       const f = await rForn.json();
       if (Array.isArray(f)) _lsSetOrig('pilar_fornecedores', JSON.stringify(f));
+    }
+    if (rCamb.ok) {
+      const c = await rCamb.json();
+      if (Array.isArray(c)) _lsSetOrig('pilar_cambios', JSON.stringify(c));  // histórico p/ a 2C
     }
   } catch { /* offline — usa cache localStorage */ }
 }

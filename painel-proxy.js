@@ -17,6 +17,7 @@ const PROD_GEN_FILE      = path.join(ROOT, 'produtos_genericos.json');      // r
 const PROD_GEN_SEED      = path.join(ROOT, 'produtos_genericos.seed.json'); // semente versionada
 const CATALOGO_OMIE_FILE = path.join(ROOT, 'catalogo_omie.json');          // runtime (gitignorado)
 const FORNECEDORES_FILE  = path.join(ROOT, 'fornecedores.json');           // runtime (gitignorado)
+const CAMBIOS_FILE       = path.join(ROOT, 'cambios.json');                // runtime (gitignorado) — histórico append-only
 const BANCODI_FILE = path.join(ROOT, 'banco_di.json');
 const OMIE_HOST   = 'app.omie.com.br';
 const OMIE_PATH   = '/api/v1/geral/produtos/';
@@ -646,6 +647,34 @@ const server = http.createServer((req, res) => {
       if (!Array.isArray(data)) return json(res, 400, { erro: 'Esperado array de fornecedores' });
       gravarAtomico(FORNECEDORES_FILE, data);
       json(res, 200, { ok: true, total: data.length });
+    }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
+    return;
+  }
+
+  // ── GET /api/cambios ───────────────────────────────────────────────────────
+  // Histórico de memorandos de fechamento de câmbio (Fatia 2B). Arquivo próprio
+  // gitignorado. APPEND-ONLY: o POST recebe UM registro e faz push (nunca
+  // sobrescreve o histórico) — difere do fornecedores/catalogo de propósito,
+  // pra proteger a rastreabilidade. Cada registro é auto-suficiente p/ regenerar
+  // o PDF na 2C (processo, parcela_id, exportador, itens_cambio, total, modalidade).
+  if (req.method === 'GET' && url === '/api/cambios') {
+    json(res, 200, lerJson(CAMBIOS_FILE, []));
+    return;
+  }
+  // ── POST /api/cambios ──── anexa UM registro (append-only) ──────────────────
+  if (req.method === 'POST' && url === '/api/cambios') {
+    readBody(req).then(data => {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return json(res, 400, { erro: 'Esperado um registro (objeto) de memorando de câmbio' });
+      }
+      const lista = lerJson(CAMBIOS_FILE, []);
+      const base  = Array.isArray(lista) ? lista : [];
+      // Carimbo de segurança: garante id e criado_em mesmo se o cliente não mandar.
+      if (data.id == null) data.id = Date.now();
+      if (!data.criado_em) data.criado_em = new Date().toISOString();
+      base.push(data);                       // APPEND — nunca sobrescreve
+      gravarAtomico(CAMBIOS_FILE, base);
+      json(res, 200, { ok: true, total: base.length, id: data.id });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
   }
