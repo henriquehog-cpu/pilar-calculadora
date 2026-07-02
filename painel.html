@@ -1479,17 +1479,10 @@ function renderNovoProcesso(proc, seed) {
         <div class="card">
           <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
             <span>5 — Pagamentos ao Fornecedor</span>
-            <div style="display:flex;gap:8px">
-              <button onclick="mcAbrir(mcColetarProcesso())"
-                style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600"
-                title="Gera o DRAFT p/ fechamento de câmbio (PDF) — puxa do processo + cadastro de fornecedores">
-                🏦 Gerar Memorando de Câmbio
-              </button>
-              <button onclick="fcAddPagamento()"
-                style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
-                + Parcela
-              </button>
-            </div>
+            <button onclick="fcAddPagamento()"
+              style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600">
+              + Parcela
+            </button>
           </div>
           <div style="overflow-x:auto">
             <table class="items-tbl" style="font-size:13px">
@@ -3222,6 +3215,7 @@ function fcRenderPagamentos() {
           oninput="fcChangePagamento(${i},'status',this.value)">${statusSel}</select>
       </td>
       <td style="white-space:nowrap">
+        <button class="btn btn-s btn-sm" onclick="mcAbrirParcela(${i})" title="Gerar memorando de câmbio desta parcela" style="margin-right:4px">🏦</button>
         ${p.status !== 'pago'
           ? `<button class="btn btn-s btn-sm" onclick="fcMarcarPago(${i})" style="margin-right:4px">✓ Pago</button>`
           : ''}
@@ -5357,6 +5351,18 @@ function mcBuildMemorando(proc) {
     // ── modalidade (pré-preenchida das parcelas; editável) ──
     modalidade: mcModalidadeDasParcelas(par, g.prev_embarque)
   };
+}
+
+// Abre o memorando de UMA parcela (Henrique fecha o câmbio uma parcela por vez:
+// sinal e saldo nunca no mesmo memorando). Filtra o snapshot para só a parcela
+// clicada → a tabela do câmbio fica com 1 linha, o TOTAL é o dela e _mcMemorando
+// carrega o _parcela_id dela (a 2B aplica NESSA parcela via «2B-APLICAR»).
+function mcAbrirParcela(i) {
+  const proc = mcColetarProcesso();
+  const parcela = (proc.pagamentos_fornecedor || [])[i];
+  if (!parcela) { toast('Parcela não encontrada.'); return; }
+  proc.pagamentos_fornecedor = [parcela];
+  mcAbrir(proc);
 }
 
 function mcAbrir(proc) {
