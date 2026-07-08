@@ -590,6 +590,10 @@ function getSimState() {
       cont:   n('cont_'  + id),
       frod:   n('frod_'  + id),
       margem: n('margem_'+ id),
+      // PV manual: preserva o preço de venda fixado pelo usuário (senão o load recalcula
+      // e o PV diverge, pois a margem derivada usa base de custo diferente do loop).
+      pvusd:     n('pvusd_' + id),
+      pv_manual: pvManual[id] === true,
     })).filter(it => it.prod || it.qtd > 0)
   };
 }
@@ -628,10 +632,16 @@ function applySimState(state) {
     set('fob_'   + id, it.fob);
     set('cont_'  + id, it.cont || 1);
     set('frod_'  + id, it.frod);
-    set('margem_'+ id, it.margem || 20);
-    // Garantir que PV USD não fique com valor residual
-    set('pvusd_' + id, '');
-    pvManual[id] = false;
+    set('margem_'+ id, it.margem ?? 20);
+    // PV USD: restaura o PV manual salvo (pv_manual + pvusd válidos) para não recalcular
+    // e divergir. Sim antiga (sem os campos) → comportamento de antes: limpa + false.
+    if (it.pv_manual === true && parseFloat(it.pvusd) > 0) {
+      set('pvusd_' + id, it.pvusd);
+      pvManual[id] = true;
+    } else {
+      set('pvusd_' + id, '');
+      pvManual[id] = false;
+    }
     if (it.prod) {
       const match = produtos.find(p => p.produto === it.prod);
       if (match) {

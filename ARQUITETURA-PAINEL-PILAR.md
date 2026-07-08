@@ -315,6 +315,10 @@ Consome, **read-only**, endpoints do proxy:
   formato `dd/mm/yyyy`), TZ-safe via `Date.UTC` das partes locais (evita as quirks de
   célula `t:'d'` desta build). Ver `fcExportarExcel`/`cambioExportarExcel`.
 - **PV manual vs iterativo:** `pv_fixo_usd > 0` desliga a convergência (usa o PV fixado).
+- **Persistência do PV manual na Calculadora:** `getSimState` grava por item `pvusd` +
+  `pv_manual`; `applySimState` restaura o flag/valor quando `pv_manual===true` e `pvusd>0`
+  (senão limpa, como sim antigas). Sem isso o PV manual seria recalculado no load e
+  divergiria, pois a margem derivada usa base de custo diferente do loop iterativo.
 - **Códigos de processo/item:** o servidor valida/gera código (`FAMÍLIA.LARGURA.GRAMATURA.NNNN`)
   no `mergeFatiaPorId` — um item com código malformado faz o POST inteiro do processo
   retornar 400.
