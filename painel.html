@@ -3326,11 +3326,11 @@ function fcMarcarPago(i) {
 function fcNfTotalUSD() {
   // TOTAL NF em USD = valor da mercadoria = soma dos itens (qtd × PV unitário USD).
   // Fixo, vem dos ITENS — NÃO de nf_total_brl ÷ câmbio cliente (conceito errado).
-  // Precedência de PV idêntica à da pré-visualização do Pedido de Embarque (peCompute),
-  // para que o documento e a tela de recebimentos nunca divirjam.
+  // Precedência única dos documentos (pvUnitUSD / pvUnitCalcMap — mesma da
+  // Proposta e do Pedido de Embarque), para que documento e tela nunca divirjam.
+  const mapa = pvUnitCalcMap(_fcProcesso);
   return (_fcProcesso?.itens || []).reduce((s, it) =>
-    s + (parseFloat(it.quantidade) || 0) *
-        (parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || 0), 0);
+    s + (parseFloat(it.quantidade) || 0) * pvUnitUSD(it, mapa), 0);
 }
 
 function fcRenderRecebimentos() {
@@ -4077,6 +4077,26 @@ function rdBuildProcParaCalc(proc) {
   };
 }
 
+// ── PV unitário USD por item — PRECEDÊNCIA ÚNICA dos documentos ──────────────
+// Usada por Proposta (propSelecionarProcesso), Pedido de Embarque (peCompute) e
+// Fluxo de Caixa (fcNfTotalUSD): resultado.pv_usd → pv_fixo_usd → pvUSD calculado
+// (rdBuildProcParaCalc + npCalcResultado). O mapa casa por REFERÊNCIA de item —
+// filtros não desalinham índices. Só o PV resultante sai nos documentos;
+// FOB/custo/margem nunca aparecem.
+function pvUnitCalcMap(proc) {
+  const m = new Map();
+  if (proc && typeof Calc !== 'undefined') {
+    const calcProc = rdBuildProcParaCalc(proc);
+    const res = npCalcResultado(calcProc);
+    if (res && Array.isArray(res.itens_resultado))
+      calcProc.itens.forEach((it, i) => m.set(it, res.itens_resultado[i]?.pvUSD));
+  }
+  return m;
+}
+function pvUnitUSD(it, mapa) {
+  return parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || (mapa && mapa.get(it)) || 0;
+}
+
 // Seção "💰 Simulação de Numerário" — lista linear estilo extrato (= Seção 5)
 function rdNumerarioHTML(proc) {
   if (!proc || typeof Calc === 'undefined') return '';
@@ -4790,9 +4810,9 @@ function propSelecionarProcesso(id) {
   const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
 
   // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
-  // processo com PV pela MESMA precedência do Pedido de Embarque e do Fluxo de
-  // Caixa: resultado.pv_usd → pv_fixo_usd → pvUSD calculado (npCalcResultado,
-  // derivado de FOB+margem — só o PV resultante entra no documento).
+  // processo com PV pela precedência única dos documentos (pvUnitUSD /
+  // pvUnitCalcMap, compartilhada com Pedido de Embarque e Fluxo de Caixa).
+  // 4 casas decimais, como o PE exibe (evita divergência de centavos no total).
   if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
     const unidades = (proc.itens || []).map(it => it.unidade || '');
     _propItens = proc.pvItens.map((it, i) => ({
@@ -4800,20 +4820,12 @@ function propSelecionarProcesso(id) {
       unidade: unidades[i] || '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
     }));
   } else {
-    // Calcula PVs dos itens (rdBuildProcParaCalc filtra itens sem qtd/FOB mas
-    // mantém as REFERÊNCIAS → mapa por referência, índices sempre casam).
-    const pvCalc = new Map();
-    if (typeof Calc !== 'undefined') {
-      const calcProc = rdBuildProcParaCalc(proc);
-      const res = npCalcResultado(calcProc);
-      if (res && Array.isArray(res.itens_resultado))
-        calcProc.itens.forEach((it, i) => pvCalc.set(it, res.itens_resultado[i]?.pvUSD));
-    }
+    const mapa = pvUnitCalcMap(proc);
     _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
       .map(it => {
-        const pv = parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || pvCalc.get(it) || 0;
+        const pv = pvUnitUSD(it, mapa);
         return { produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
-                 unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 100) / 100 : '' };
+                 unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 10000) / 10000 : '' };
       });
   }
   if (!_propItens.length) _propItens = [{ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
@@ -5053,9 +5065,10 @@ function peCompute() {
     ? (pctSinal * 100 * cambioSinal + pctSaldo * 100 * cambioSaldo) / 100
     : cambioSaldo;
 
+  const mapaPv = pvUnitCalcMap(proc);
   const rows = itens.map((it, i) => {
     const qtd = _peQtd[i] || 0;
-    const pvUsd = parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || 0;
+    const pvUsd = pvUnitUSD(it, mapaPv);
     const totUsd = qtd * pvUsd;
     const precoBrl = pvUsd * cambioMedio;
     const totBrl = qtd * precoBrl;

@@ -170,13 +170,20 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
   Pedido de Embarque (`renderPedidoEmbarque`), Resumo Despachante (`renderResumoDespachante`).
   Todos geram PDF via **HTML + `window.print()`** no `#or-print-area` (não há lib de PDF);
   o CSS `@media print` esconde a UI e mostra só a área de impressão.
-  - **Herança de PV na Proposta** (`propSelecionarProcesso`): com `proc.pvItens`
-    (processo nascido de demanda) herda qtd+PV de lá e a **unidade** de `proc.itens`
-    (por índice). Sem `pvItens` (processo manual), o PV unitário USD segue a MESMA
-    precedência do Pedido de Embarque/Fluxo de Caixa: `it.resultado?.pv_usd` →
-    `it.pv_fixo_usd` → `pvUSD` calculado (`rdBuildProcParaCalc` + `npCalcResultado`
-    → `itens_resultado[]`, casado por referência de item). Só o PV resultante entra
-    no documento — FOB/custo/margem continuam fora.
+  - **PV unitário USD por item — precedência única dos documentos** (helpers
+    `pvUnitCalcMap(proc)` + `pvUnitUSD(it, mapa)`, definidos junto de
+    `rdBuildProcParaCalc`): `it.resultado?.pv_usd` → `it.pv_fixo_usd` → `pvUSD`
+    calculado (`rdBuildProcParaCalc` + `npCalcResultado` → `itens_resultado[]`,
+    mapa casado por REFERÊNCIA de item — filtros não desalinham índices).
+    Consumida pelos 3 pontos: Proposta (`propSelecionarProcesso`), Pedido de
+    Embarque (`peCompute`) e Fluxo de Caixa (`fcNfTotalUSD`) — documento e tela
+    nunca divergem, inclusive em processo manual (PV derivado de FOB+margem).
+    Só o PV resultante entra nos documentos — FOB/custo/margem continuam fora.
+  - **Herança na Proposta** (`propSelecionarProcesso`): com `proc.pvItens`
+    (processo nascido de demanda) herda qtd+PV de lá e a **unidade** de
+    `proc.itens` (por índice). Sem `pvItens` (processo manual), usa a precedência
+    acima, arredondada a 4 casas (mesma precisão exibida pelo PE). Campo continua
+    editável — o PV herdado é só o valor inicial.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.
