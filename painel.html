@@ -4833,7 +4833,11 @@ function propSelecionarProcesso(id) {
   set('prop-cliente', g.cliente || '');
   set('prop-numero', proc.numero || '');
   set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
-  set('prop-pctsinal', 20); set('prop-cambio', ''); set('prop-datasinal', hoje); set('prop-datavenc', '');
+  // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
+  // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
+  const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
+  const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
+  set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
   set('prop-cambioref', ''); set('prop-dataref', hoje);
   set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60); set('prop-obs', '');
 

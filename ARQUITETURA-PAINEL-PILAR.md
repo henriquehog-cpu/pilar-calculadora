@@ -183,7 +183,9 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     (processo nascido de demanda) herda qtd+PV de lá e a **unidade** de
     `proc.itens` (por índice). Sem `pvItens` (processo manual), usa a precedência
     acima, arredondada a 4 casas (mesma precisão exibida pelo PE). Campo continua
-    editável — o PV herdado é só o valor inicial.
+    editável — o PV herdado é só o valor inicial. O **câmbio do sinal** também é
+    herdado: 1ª parcela de `recebimentos_cliente`, fallback câmbio fiscal/DI —
+    mesma regra do PE (`peSelecionar`).
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.
