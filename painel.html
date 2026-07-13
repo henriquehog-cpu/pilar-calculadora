@@ -4790,16 +4790,31 @@ function propSelecionarProcesso(id) {
   const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
 
   // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
-  // processo (descrição/qtd) com PV em branco para preencher à mão.
+  // processo com PV pela MESMA precedência do Pedido de Embarque e do Fluxo de
+  // Caixa: resultado.pv_usd → pv_fixo_usd → pvUSD calculado (npCalcResultado,
+  // derivado de FOB+margem — só o PV resultante entra no documento).
   if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
-    _propItens = proc.pvItens.map(it => ({
+    const unidades = (proc.itens || []).map(it => it.unidade || '');
+    _propItens = proc.pvItens.map((it, i) => ({
       produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
-      unidade: '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
+      unidade: unidades[i] || '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
     }));
   } else {
+    // Calcula PVs dos itens (rdBuildProcParaCalc filtra itens sem qtd/FOB mas
+    // mantém as REFERÊNCIAS → mapa por referência, índices sempre casam).
+    const pvCalc = new Map();
+    if (typeof Calc !== 'undefined') {
+      const calcProc = rdBuildProcParaCalc(proc);
+      const res = npCalcResultado(calcProc);
+      if (res && Array.isArray(res.itens_resultado))
+        calcProc.itens.forEach((it, i) => pvCalc.set(it, res.itens_resultado[i]?.pvUSD));
+    }
     _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
-      .map(it => ({ produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
-                    unidade: it.unidade || '', pvUnitarioUSD: '' }));
+      .map(it => {
+        const pv = parseFloat(it.resultado?.pv_usd) || parseFloat(it.pv_fixo_usd) || pvCalc.get(it) || 0;
+        return { produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
+                 unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 100) / 100 : '' };
+      });
   }
   if (!_propItens.length) _propItens = [{ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
 

@@ -170,6 +170,13 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
   Pedido de Embarque (`renderPedidoEmbarque`), Resumo Despachante (`renderResumoDespachante`).
   Todos geram PDF via **HTML + `window.print()`** no `#or-print-area` (não há lib de PDF);
   o CSS `@media print` esconde a UI e mostra só a área de impressão.
+  - **Herança de PV na Proposta** (`propSelecionarProcesso`): com `proc.pvItens`
+    (processo nascido de demanda) herda qtd+PV de lá e a **unidade** de `proc.itens`
+    (por índice). Sem `pvItens` (processo manual), o PV unitário USD segue a MESMA
+    precedência do Pedido de Embarque/Fluxo de Caixa: `it.resultado?.pv_usd` →
+    `it.pv_fixo_usd` → `pvUSD` calculado (`rdBuildProcParaCalc` + `npCalcResultado`
+    → `itens_resultado[]`, casado por referência de item). Só o PV resultante entra
+    no documento — FOB/custo/margem continuam fora.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.
