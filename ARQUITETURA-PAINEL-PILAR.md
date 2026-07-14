@@ -239,7 +239,10 @@ pré-preencher a partir de uma demanda e grava simulações (via `/api/simulacoe
 (a prazo) e 3 campos livres (Prazo, Condições, Observações). `gerarPdfCotacao(btn)` gera o
 PDF via **html2pdf (CDN)** — fora do caminho de `window.print()`, sem URL/rodapé do
 navegador. Não toca no motor: clona `#cot-content` e (a) renderiza sempre a **1020px**
-(`holder`/`clone` fixos, `maxWidth:none`), independente do viewport; (b) aplica
+(`holder`/`clone` fixos, `maxWidth:none`) **e força o html2canvas a rasterizar nessa
+largura** (`windowWidth:1020`, `width:1020` — senão, em janela < 1020px, o canvas usava a
+largura do viewport e cortava as últimas colunas / o bloco `.cot-info`), independente do
+viewport; (b) aplica
 `white-space:nowrap` nos `<td>` numéricos da `.cot-table` (colunas à direita, ambas as
 serializações do atributo `style`) p/ valores tipo `USD 11.687,86` não quebrarem;
 (c) converte `<textarea>` → `<div>` com visual do `@media print` (`border:none;padding:0`),

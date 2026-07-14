@@ -2072,6 +2072,7 @@ function gerarPdfCotacao(btn) {
   holder.style.left = '-10000px';
   holder.style.top = '0';
   holder.style.width = '1020px';
+  holder.style.overflow = 'visible';
   clone.style.width = '1020px';
   clone.style.maxWidth = 'none';
   clone.style.margin = '0';
@@ -2088,7 +2089,7 @@ function gerarPdfCotacao(btn) {
     margin: 10,
     filename: `Cotação - ${nomeCliente}.pdf`,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false, windowWidth: 1020, width: 1020 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['css', 'legacy'] }
   }).from(clone).save()
