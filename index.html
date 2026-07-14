@@ -2034,24 +2034,46 @@ function gerarPdfCotacao(btn) {
   const origTAs  = src.querySelectorAll('textarea');
   const cloneTAs = clone.querySelectorAll('textarea');
   cloneTAs.forEach((ta, i) => {
+    const raw = (origTAs[i] ? origTAs[i].value : ta.value) || '';
+    // Textarea vazio: remove o rótulo (.cot-lbl) imediatamente anterior e o
+    // próprio campo, para não sair label órfão nem caixa vazia no PDF.
+    if (!raw.trim()) {
+      const lbl = ta.previousElementSibling;
+      if (lbl && lbl.classList && lbl.classList.contains('cot-lbl')) lbl.remove();
+      ta.remove();
+      return;
+    }
+    // Mesmo visual do @media print (.cot-ta{border:none;padding:0}).
     const div = document.createElement('div');
     div.className = ta.className;
     div.style.whiteSpace = 'pre-wrap';
-    div.style.minHeight = ta.offsetHeight + 'px';
-    div.textContent = (origTAs[i] ? origTAs[i].value : ta.value) || '';
+    div.style.border = 'none';
+    div.style.padding = '0';
+    div.style.minHeight = (origTAs[i] || ta).offsetHeight + 'px';
+    div.textContent = raw;
     ta.parentNode.replaceChild(div, ta);
   });
 
-  // Evita cortar tabelas/blocos no meio entre páginas.
-  clone.querySelectorAll('table, .cot-table, .cot-hdr, .cot-footer, tr')
+  // Valores numéricos (colunas alinhadas à direita) nunca quebram em 2 linhas,
+  // ex.: "USD 11.687,86". Cobre as duas serializações possíveis do atributo
+  // style (com e sem espaço após o ':').
+  clone.querySelectorAll('.cot-table td[style*="text-align:right"], .cot-table td[style*="text-align: right"]')
+       .forEach(td => { td.style.whiteSpace = 'nowrap'; });
+
+  // Evita cortar linhas/cabeçalho/nota no meio entre páginas — mas NÃO a tabela
+  // inteira nem o footer, para o rodapé fluir na mesma página quando couber.
+  clone.querySelectorAll('tr, .cot-hdr, .cot-nota')
        .forEach(el => { el.style.pageBreakInside = 'avoid'; });
 
-  // Renderiza o clone fora da tela (sem alterar o que o usuário vê).
+  // Renderiza o clone fora da tela (sem alterar o que o usuário vê), sempre na
+  // largura de projeto do .cot-wrap (1020px), independente do viewport.
   const holder = document.createElement('div');
   holder.style.position = 'fixed';
   holder.style.left = '-10000px';
   holder.style.top = '0';
-  holder.style.width = src.offsetWidth + 'px';
+  holder.style.width = '1020px';
+  clone.style.width = '1020px';
+  clone.style.maxWidth = 'none';
   clone.style.margin = '0';
   clone.style.boxShadow = 'none';
   holder.appendChild(clone);

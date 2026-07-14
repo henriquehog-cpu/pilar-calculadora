@@ -234,6 +234,19 @@ evento; numerário = 1 consolidado/processo), usando `data_realizada` se houver,
 Página standalone de precificação por item, usando `Calc` (`calc.js`). Lê `?seed=` para
 pré-preencher a partir de uma demanda e grava simulações (via `/api/simulacoes`).
 
+**Cotação / PDF (client-side):** `showCotacao()` monta a tela `#cotacao-sec` (container
+`.cot-wrap#cot-content`, largura de projeto **1020px**) com Opção 1 (à vista) / Opção 2
+(a prazo) e 3 campos livres (Prazo, Condições, Observações). `gerarPdfCotacao(btn)` gera o
+PDF via **html2pdf (CDN)** — fora do caminho de `window.print()`, sem URL/rodapé do
+navegador. Não toca no motor: clona `#cot-content` e (a) renderiza sempre a **1020px**
+(`holder`/`clone` fixos, `maxWidth:none`), independente do viewport; (b) aplica
+`white-space:nowrap` nos `<td>` numéricos da `.cot-table` (colunas à direita, ambas as
+serializações do atributo `style`) p/ valores tipo `USD 11.687,86` não quebrarem;
+(c) converte `<textarea>` → `<div>` com visual do `@media print` (`border:none;padding:0`),
+**removendo o campo + o `.cot-lbl` anterior quando vazio** (sem label órfão nem caixa vazia);
+(d) restringe `pageBreakInside:avoid` a `tr`/`.cot-hdr`/`.cot-nota` (não à tabela nem ao
+`.cot-footer`), deixando o rodapé fluir na mesma página quando couber.
+
 ---
 
 ## 5. O CÁLCULO — régua fiscal
