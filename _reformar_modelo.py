@@ -15,6 +15,7 @@ Mudancas estruturais (ver tarefa A1/A3/A4):
   - Frete: "o container de 40hc" -> "{{MODALIDADE_FRETE}}"
 """
 import sys
+import copy
 from docx import Document
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -36,6 +37,13 @@ def achar(doc, sub):
 
 def remover(p):
     p._element.getparent().remove(p._element)
+
+
+def _set_run_text(r, text):
+    for t in r.findall(qn('w:t')):
+        r.remove(t)
+    t = OxmlElement('w:t'); t.set(qn('xml:space'), 'preserve'); t.text = text
+    r.append(t)
 
 
 def main():
@@ -100,6 +108,29 @@ def main():
                     t.text = t.text.replace('o container de 40hc',
                                             '{{MODALIDADE_FRETE}}')
         print('OK frete -> {{MODALIDADE_FRETE}}')
+
+    # F) variante (ii) A PRAZO — duplica o (ii) à vista com texto de parcelas.
+    #    O gerador remove a variante que não se aplica (à vista x a prazo).
+    if achar(doc, '{{N_PARCELAS}}') is None:
+        pav = None
+        for p in paras(doc):
+            if '(ii) Saldo' in p.text and '{{DIAS_ANTES_DESEMBARQUE}}' in p.text:
+                pav = p
+                break
+        if pav is not None:
+            novo = copy.deepcopy(pav._p)
+            runs = novo.findall(qn('w:r'))
+            # run[0] (negrito) mantém "(ii) Saldo de {{PCT_SALDO}}";
+            # run[1] recebe o texto a prazo; runs extras são descartados.
+            _set_run_text(runs[1],
+                          ': em {{N_PARCELAS}} parcelas {{PERIODICIDADE}} e iguais de '
+                          'USD {{VALOR_PARCELA_USD}} ({{VALOR_PARCELA_EXTENSO}}), vencendo a '
+                          'primeira em {{DATA_1A_PARCELA}} e as demais a cada período '
+                          'subsequente;')
+            for r in runs[2:]:
+                novo.remove(r)
+            pav._p.addnext(novo)
+            print('OK variante (ii) a prazo adicionada')
 
     doc.save(SAIDA)
     print('salvo:', SAIDA)

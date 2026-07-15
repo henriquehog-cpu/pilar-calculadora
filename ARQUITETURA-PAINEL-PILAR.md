@@ -97,7 +97,13 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
   recebimentos_cliente:  [ { ...análogo, status ('previsto'|'recebido'|'atrasado') } ],
   numerario_despachante: [ ... ],
   resultado: { fob_total_usd, cif_total_brl, custo_final_total, nf_total_brl, lucro_brl, margem_pct, ... },
-  pvItens?, demandaId?   // quando o processo nasceu de uma demanda
+  pvItens?, demandaId?,  // quando o processo nasceu de uma demanda
+  proposta?: {           // estado salvo da tela Proposta (propSalvar) — restaurado por propSelecionarProcesso
+    cliente, numero, qtd_containers, tipo_container,
+    itens:[{codigo,produto,quantidade,unidade,pvUnitarioUSD}], grupos_nomes:{key→nome},
+    pct_sinal, cambio_sinal, data_sinal, data_venc_sinal, cambio_ref, data_ref,
+    dias_antes, frete_usd, modalidade_frete, prazo_entrega, observacoes,
+    pagamento:{ modalidade:'avista'|'aprazo', parcelas?, periodicidade?, data_1a_parcela? }, salvo_em }
 }
 ```
 
@@ -136,7 +142,7 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
 | `GET/POST/DELETE /api/simulacoes[/:id]` | Fatia `pilar_simulacoes` (merge por id). |
 | `GET /api/banco-di` | Lê `banco_di.json` (templates de descrição de DI por família). |
 | `POST /api/etiquetas` | Gera etiquetas `.xlsx` (via script Python). |
-| `POST /api/proposta` | Gera proposta `.docx` (via `gerar_proposta.py`): corpo com itens agrupados + anexo com todos os itens. Body inclui `itens` (com `codigo`), `grupos`, `modalidade_frete`. |
+| `POST /api/proposta` | Gera proposta `.docx` (via `gerar_proposta.py`): corpo com itens agrupados + anexo (larguras fixas) com todos os itens. Body inclui `itens` (com `codigo`), `grupos`, `modalidade_frete`, `pagamento` (à vista / a prazo). |
 | `GET /api/resumo-diario` | **Read-only**. Monta o briefing diário consumido pela **Astrid** (Telegram): processos ativos, parcelas/recebimentos próximos etc. |
 | `GET /api/impostos-posvenda` | **Read-only**. Impostos pós-venda por processo via a régua única (`calc-processo.js`). |
 | `POST /api/ia/chat` | Chat com IA. Valida `fluxo` (`qualificacao`/`proposta`/`extracao`) + `mensagens`; teto de base64 (imagens); rate-limit 20/min; `systemPrompt` de `prompts/<fluxo>.md`; chama `chamarAnthropic`. |
@@ -214,6 +220,28 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     O Sinal (i) é um único parágrafo contínuo; quando `data_venc_sinal` vem vazio,
     "até o dia " é removido (evita "à vista até o dia na conta"). Modelo mantém apenas
     qtd/tipo de container nos dados; não há mais linha de container no texto.
+    A tabela do anexo tem **larguras fixas (DXA)**: `tblLayout=fixed` + `tblGrid` +
+    `tcW` por célula (`_tabela_larguras`); com coluna Código
+    `1818/3564/992/567/1418/1285`, sem Código a Descrição absorve os 1818 (`5382`).
+    Ordem canônica de `<w:tblPr>` mantida (`_tabela_bordas` insere `tblBorders`
+    antes de `tblLayout`).
+  - **Salvar proposta** (`propSalvar`/`propRestaurarEstado`/`_propColetarEstado`):
+    o botão **"💾 Salvar proposta"** persiste o estado da tela em **`proc.proposta`**
+    (cabeçalho, `_propItens` c/ `codigo`, nomes de grupo editados, sinal, datas,
+    referência em R$, condições gerais, `modalidade_frete`, observações e a config
+    de pagamento) pelo **padrão canônico** de fatia do processo (merge por `id` via
+    `_apiSalvarProcessos`, sem clobber — igual `_procSetStatus`). `propSelecionarProcesso`
+    restaura tudo de `proc.proposta` quando existe; senão cai na herança dos dados do
+    processo. **Gerar o `.docx` também salva** (`gerarProposta` chama `propSalvar(true)`).
+  - **Pagamento do saldo — à vista x a prazo** (seção *Sinal*): select
+    `prop-pgmodalidade`; a prazo mostra Nº de parcelas (≥2), periodicidade
+    (mensal/quinzenal) e 1º vencimento. Parcelas **iguais** do saldo em USD
+    (`saldo ÷ N`, 2 casas), **sem juros**, com a diferença de centavos na última
+    (`calc_parcelas`). O modelo tem **as duas variantes do parágrafo (ii)** (à vista
+    com dias antes do desembarque; a prazo com `{{N_PARCELAS}}/{{PERIODICIDADE}}/
+    {{VALOR_PARCELA_USD}}/{{VALOR_PARCELA_EXTENSO}}/{{DATA_1A_PARCELA}}`) e o gerador
+    remove a inaplicável (`remover_variante_ii`). Payload ganha
+    `pagamento: {modalidade, parcelas, periodicidade, data_1a_parcela}`.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.

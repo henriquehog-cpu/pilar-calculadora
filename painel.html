@@ -4763,6 +4763,27 @@ function renderProposta() {
               <div class="field"><label>Vencimento do sinal</label>
                 <input id="prop-datavenc" type="date"></div>
             </div>
+            <div class="g3" style="margin-top:2px">
+              <div class="field" style="margin-bottom:0"><label>Modalidade de pagamento do saldo</label>
+                <select id="prop-pgmodalidade" onchange="propTogglePagamento()">
+                  <option value="avista">À vista</option>
+                  <option value="aprazo">A prazo (parcelas)</option>
+                </select></div>
+            </div>
+            <div id="prop-pgcampos" style="display:none;margin-top:8px">
+              <div class="g3">
+                <div class="field" style="margin-bottom:0"><label>Nº de parcelas do saldo</label>
+                  <input id="prop-pgparcelas" type="number" step="1" min="2" value="2"></div>
+                <div class="field" style="margin-bottom:0"><label>Periodicidade</label>
+                  <select id="prop-pgperiod">
+                    <option value="mensal">Mensal</option>
+                    <option value="quinzenal">Quinzenal</option>
+                  </select></div>
+                <div class="field" style="margin-bottom:0"><label>1º vencimento</label>
+                  <input id="prop-pg1venc" type="date"></div>
+              </div>
+              <span class="note">Parcelas iguais do saldo em USD (saldo ÷ nº), sem juros; a diferença de centavos vai na última parcela.</span>
+            </div>
           </div>
         </div>
 
@@ -4816,6 +4837,7 @@ function renderProposta() {
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:30px">
           <button class="btn" id="btn-prop-ia" onclick="propAbrirIA()">✨ Gerar rascunho com IA</button>
+          <button class="btn" id="btn-prop-salvar" onclick="propSalvar()">💾 Salvar proposta</button>
           <button class="btn btn-p" id="btn-prop-gerar" onclick="gerarProposta()">📄 Gerar Proposta (.docx)</button>
         </div>
       </div>
@@ -4833,42 +4855,51 @@ function propSelecionarProcesso(id) {
   const hoje = new Date().toISOString().slice(0, 10);
   const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
 
-  // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
-  // processo com PV pela precedência única dos documentos (pvUnitUSD /
-  // pvUnitCalcMap, compartilhada com Pedido de Embarque e Fluxo de Caixa).
-  // 4 casas decimais, como o PE exibe (evita divergência de centavos no total).
-  if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
-    const unidades = (proc.itens || []).map(it => it.unidade || '');
-    const codigos = (proc.itens || []).map(it => it.codigo || '');
-    _propItens = proc.pvItens.map((it, i) => ({
-      codigo: codigos[i] || '', produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
-      unidade: unidades[i] || '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
-    }));
+  // Proposta já salva no processo → restaura tudo dela (itens/grupos/pagamento
+  // inclusive). Sem proposta salva → herança dos dados do processo.
+  if (proc.proposta) {
+    propRestaurarEstado(proc.proposta);
   } else {
-    const mapa = pvUnitCalcMap(proc);
-    _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
-      .map(it => {
-        const pv = pvUnitUSD(it, mapa);
-        return { codigo: it.codigo || '', produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
-                 unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 10000) / 10000 : '' };
-      });
-  }
-  if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
-  _propGruposNomes = {};
+    // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
+    // processo com PV pela precedência única dos documentos (pvUnitUSD /
+    // pvUnitCalcMap, compartilhada com Pedido de Embarque e Fluxo de Caixa).
+    // 4 casas decimais, como o PE exibe (evita divergência de centavos no total).
+    if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
+      const unidades = (proc.itens || []).map(it => it.unidade || '');
+      const codigos = (proc.itens || []).map(it => it.codigo || '');
+      _propItens = proc.pvItens.map((it, i) => ({
+        codigo: codigos[i] || '', produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
+        unidade: unidades[i] || '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
+      }));
+    } else {
+      const mapa = pvUnitCalcMap(proc);
+      _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
+        .map(it => {
+          const pv = pvUnitUSD(it, mapa);
+          return { codigo: it.codigo || '', produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
+                   unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 10000) / 10000 : '' };
+        });
+    }
+    if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+    _propGruposNomes = {};
 
-  set('prop-cliente', g.cliente || '');
-  set('prop-numero', proc.numero || '');
-  set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
-  // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
-  // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
-  const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
-  const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
-  set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
-  set('prop-cambioref', ''); set('prop-dataref', hoje);
-  set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
-  set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
+    set('prop-cliente', g.cliente || '');
+    set('prop-numero', proc.numero || '');
+    set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
+    // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
+    // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
+    const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
+    const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
+    set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
+    set('prop-cambioref', ''); set('prop-dataref', hoje);
+    set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
+    set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
+    set('prop-pgmodalidade', 'avista'); set('prop-pgparcelas', 2);
+    set('prop-pgperiod', 'mensal'); set('prop-pg1venc', '');
+  }
 
   form.style.display = 'block';
+  propTogglePagamento();
   propRenderItens();
   propRecalc();
 }
@@ -4950,6 +4981,108 @@ function propRenderGrupos() {
   el.innerHTML = rows;
 }
 
+// ── Estado da proposta: salvar/restaurar por processo (proc.proposta) ────────
+function propTogglePagamento() {
+  const modalidade = document.getElementById('prop-pgmodalidade')?.value || 'avista';
+  const campos = document.getElementById('prop-pgcampos');
+  if (campos) campos.style.display = modalidade === 'aprazo' ? 'block' : 'none';
+}
+
+// Config de pagamento do saldo lida da tela (à vista x a prazo).
+function _propPagamentoConfig() {
+  const v = id => document.getElementById(id)?.value || '';
+  const modalidade = v('prop-pgmodalidade') || 'avista';
+  if (modalidade !== 'aprazo') return { modalidade: 'avista' };
+  return {
+    modalidade: 'aprazo',
+    parcelas: Math.max(2, parseInt(v('prop-pgparcelas'), 10) || 2),
+    periodicidade: v('prop-pgperiod') || 'mensal',
+    data_1a_parcela: v('prop-pg1venc') || ''
+  };
+}
+
+// Snapshot completo da tela (cabeçalho, itens c/ codigo, nomes de grupo, sinal,
+// referência, condições gerais, observações e config de pagamento).
+function _propColetarEstado() {
+  const v = id => document.getElementById(id)?.value || '';
+  return {
+    cliente: v('prop-cliente'),
+    numero: v('prop-numero'),
+    qtd_containers: v('prop-qtdcont'),
+    tipo_container: v('prop-tipocont'),
+    itens: _propItens.map(it => ({
+      codigo: it.codigo || '', produto: it.produto || '',
+      quantidade: it.quantidade, unidade: it.unidade || '',
+      pvUnitarioUSD: it.pvUnitarioUSD
+    })),
+    grupos_nomes: Object.assign({}, _propGruposNomes),
+    pct_sinal: v('prop-pctsinal'),
+    cambio_sinal: v('prop-cambio'),
+    data_sinal: v('prop-datasinal'),
+    data_venc_sinal: v('prop-datavenc'),
+    cambio_ref: v('prop-cambioref'),
+    data_ref: v('prop-dataref'),
+    dias_antes: v('prop-diasantes'),
+    frete_usd: v('prop-frete'),
+    modalidade_frete: v('prop-modalidade'),
+    prazo_entrega: v('prop-prazo'),
+    observacoes: v('prop-obs'),
+    pagamento: _propPagamentoConfig(),
+    salvo_em: new Date().toISOString()
+  };
+}
+
+// Restaura a tela a partir de proc.proposta (itens/grupos/pagamento inclusive).
+function propRestaurarEstado(e) {
+  const set = (k, val) => { const el = document.getElementById(k); if (el) el.value = val; };
+  const orDef = (val, def) => (val != null && val !== '' ? val : def);
+  _propItens = (e.itens || []).map(it => ({
+    codigo: it.codigo || '', produto: it.produto || '',
+    quantidade: it.quantidade != null ? it.quantidade : '',
+    unidade: it.unidade || '',
+    pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
+  }));
+  if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+  _propGruposNomes = Object.assign({}, e.grupos_nomes || {});
+  set('prop-cliente', e.cliente || '');
+  set('prop-numero', e.numero || '');
+  set('prop-qtdcont', orDef(e.qtd_containers, 1));
+  set('prop-tipocont', e.tipo_container || '40HC');
+  set('prop-pctsinal', orDef(e.pct_sinal, 20));
+  set('prop-cambio', e.cambio_sinal || '');
+  set('prop-datasinal', e.data_sinal || '');
+  set('prop-datavenc', e.data_venc_sinal || '');
+  set('prop-cambioref', e.cambio_ref || '');
+  set('prop-dataref', e.data_ref || '');
+  set('prop-diasantes', orDef(e.dias_antes, 20));
+  set('prop-frete', orDef(e.frete_usd, ''));
+  set('prop-modalidade', e.modalidade_frete || 'o container de 40hc');
+  set('prop-prazo', orDef(e.prazo_entrega, 60));
+  set('prop-obs', e.observacoes || '');
+  const pg = e.pagamento || {};
+  set('prop-pgmodalidade', pg.modalidade || 'avista');
+  set('prop-pgparcelas', pg.parcelas || 2);
+  set('prop-pgperiod', pg.periodicidade || 'mensal');
+  set('prop-pg1venc', pg.data_1a_parcela || '');
+}
+
+// Persiste a fatia `proposta` no processo (padrão _procSetStatus: merge por id
+// no servidor via _apiSalvarProcessos, sem clobber das demais seções).
+function propSalvar(silent) {
+  if (!_propProcesso) { if (!silent) toast('Selecione um processo.'); return false; }
+  const estado = _propColetarEstado();
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+  const idx = todos.findIndex(p => String(p.id) === String(_propProcesso.id));
+  if (idx < 0) { if (!silent) toast('Processo não encontrado — salve o processo primeiro.'); return false; }
+  todos[idx].proposta = estado;
+  todos[idx].atualizado_em = new Date().toISOString();
+  localStorage.setItem('pilar_processos', JSON.stringify(todos));  // cache local
+  _apiSalvarProcessos(todos);                                      // MERGE por id no servidor
+  _propProcesso.proposta = estado;                                 // memória consistente
+  if (!silent) toast('✓ Proposta salva no processo.');
+  return true;
+}
+
 async function gerarProposta() {
   if (!_propProcesso) { toast('Selecione um processo.'); return; }
   const v = id => document.getElementById(id)?.value || '';
@@ -4983,8 +5116,12 @@ async function gerarProposta() {
     dias_antes_desembarque: parseFloat(v('prop-diasantes')) || 0,
     frete_usd: parseFloat(v('prop-frete')) || 0,
     prazo_entrega: parseFloat(v('prop-prazo')) || 0,
-    observacoes: v('prop-obs')
+    observacoes: v('prop-obs'),
+    pagamento: _propPagamentoConfig()
   };
+
+  // Gerar o .docx também salva o estado no processo (mesmo caminho do botão).
+  propSalvar(true);
 
   const btn = document.getElementById('btn-prop-gerar');
   btn.disabled = true;

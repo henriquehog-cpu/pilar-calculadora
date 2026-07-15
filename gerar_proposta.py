@@ -289,6 +289,16 @@ def linha_grupo_segs(g, ultimo, mapa):
     return segs
 
 
+# Saldo em N parcelas iguais (USD): base = round(saldo/N, 2); a última absorve
+# a diferença de centavos para o somatório fechar exatamente com o saldo.
+def calc_parcelas(saldo_usd, n):
+    n = max(2, int(n))
+    base = round(float(saldo_usd) / n, 2)
+    parcelas = [base] * (n - 1)
+    parcelas.append(round(float(saldo_usd) - base * (n - 1), 2))
+    return base, parcelas
+
+
 def montar_mapa(d, itens):
     cliente = str(d.get('cliente', '') or '')
     numero_pil = str(d.get('numero_pil', '') or '')
@@ -310,6 +320,16 @@ def montar_mapa(d, itens):
     valor_sinal_usd = round(pv_total_usd * pct_sinal / 100.0, 2)
     valor_sinal_brl = round(valor_sinal_usd * cambio, 2)
     pv_total_brl_ref = round(pv_total_usd * cambio_ref, 2)
+
+    # Pagamento do saldo: à vista (default) ou a prazo (parcelas iguais em USD).
+    pg = d.get('pagamento') or {}
+    aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
+    n_parc = max(2, int(num(pg.get('parcelas'), 2)))
+    saldo_usd = round(pv_total_usd - valor_sinal_usd, 2)
+    parcela_usd = calc_parcelas(saldo_usd, n_parc)[0] if aprazo else 0
+    period_txt = {'mensal': 'mensais',
+                  'quinzenal': 'quinzenais'}.get(
+                      str(pg.get('periodicidade', 'mensal')), 'mensais')
 
     def pct_txt(p):
         return '%s%% (%s por cento)' % (fmt_num(p, 0).split(',')[0],
@@ -338,6 +358,11 @@ def montar_mapa(d, itens):
         '{{VALOR_SINAL_BRL_EXTENSO}}': extenso_brl(valor_sinal_brl),
         '{{DATA_VENC_SINAL}}': fmt_data_longa(d.get('data_venc_sinal')),
         '{{DIAS_ANTES_DESEMBARQUE}}': dias_txt(dias_antes),
+        '{{N_PARCELAS}}': dias_txt(n_parc) if aprazo else '',
+        '{{PERIODICIDADE}}': period_txt if aprazo else '',
+        '{{VALOR_PARCELA_USD}}': fmt_num(parcela_usd, 2) if aprazo else '',
+        '{{VALOR_PARCELA_EXTENSO}}': extenso_usd(parcela_usd) if aprazo else '',
+        '{{DATA_1A_PARCELA}}': fmt_data_longa(d.get('pagamento', {}).get('data_1a_parcela')) if aprazo else '',
         '{{FRETE_USD}}': fmt_num(frete, 0).split(',')[0],
         '{{MODALIDADE_FRETE}}': modalidade,
         '{{PRAZO_ENTREGA}}': dias_txt(prazo),
@@ -381,6 +406,17 @@ def expandir_grupos(doc, grupos, mapa):
             p._p.addprevious(novo)
         p._p.getparent().remove(p._p)
         return
+
+
+# Mantém no modelo as DUAS variantes do parágrafo (ii); remove a que não se
+# aplica. À vista → remove a de parcelas ({{N_PARCELAS}}); a prazo → remove a
+# de dias antes do desembarque ({{DIAS_ANTES_DESEMBARQUE}}).
+def remover_variante_ii(doc, aprazo):
+    alvo = '{{DIAS_ANTES_DESEMBARQUE}}' if aprazo else '{{N_PARCELAS}}'
+    for p in list(doc.paragraphs):
+        if alvo in p.text:
+            p._element.getparent().remove(p._element)
+            return
 
 
 def substituir(doc, mapa):
@@ -431,7 +467,53 @@ def _tabela_bordas(table):
         e.set(qn('w:val'), 'single'); e.set(qn('w:sz'), '4')
         e.set(qn('w:space'), '0'); e.set(qn('w:color'), 'auto')
         borders.append(e)
-    tblPr.append(borders)
+    # Ordem canônica de CT_TblPr: tblBorders vem antes de tblLayout/tblLook.
+    # (find() pode devolver elemento vazio, que é "falsy" no lxml — testar None.)
+    ref = tblPr.find(qn('w:tblLayout'))
+    if ref is None:
+        ref = tblPr.find(qn('w:tblLook'))
+    if ref is not None:
+        ref.addprevious(borders)
+    else:
+        tblPr.append(borders)
+
+
+# Larguras fixas (DXA) — layout fixed + tblGrid + tcW por célula. Reaproveita o
+# tblW/tblLayout já criados por add_table + autofit=False (evita duplicá-los, o
+# que geraria XML inválido); insere na posição canônica se não existirem.
+def _tabela_larguras(table, widths):
+    tblPr = table._tbl.tblPr
+
+    tblW = tblPr.find(qn('w:tblW'))
+    if tblW is None:
+        tblW = OxmlElement('w:tblW')
+        borders = tblPr.find(qn('w:tblBorders'))
+        (borders.addprevious if borders is not None else tblPr.append)(tblW)
+    tblW.set(qn('w:w'), str(sum(widths))); tblW.set(qn('w:type'), 'dxa')
+
+    layout = tblPr.find(qn('w:tblLayout'))
+    if layout is None:
+        layout = OxmlElement('w:tblLayout')
+        borders = tblPr.find(qn('w:tblBorders'))
+        (borders.addnext if borders is not None else tblPr.append)(layout)
+    layout.set(qn('w:type'), 'fixed')
+
+    grid = table._tbl.find(qn('w:tblGrid'))
+    if grid is not None:
+        for gc in list(grid):
+            grid.remove(gc)
+        for w in widths:
+            gc = OxmlElement('w:gridCol'); gc.set(qn('w:w'), str(w)); grid.append(gc)
+
+    for row in table.rows:
+        for j, cell in enumerate(row.cells):
+            tcPr = cell._tc.get_or_add_tcPr()
+            old = tcPr.find(qn('w:tcW'))
+            if old is not None:
+                tcPr.remove(old)
+            tcW = OxmlElement('w:tcW')
+            tcW.set(qn('w:w'), str(widths[j])); tcW.set(qn('w:type'), 'dxa')
+            tcPr.append(tcW)
 
 
 def adicionar_anexo(doc, itens):
@@ -450,8 +532,11 @@ def adicionar_anexo(doc, itens):
 
     cols = (['Código'] if mostrar_cod else []) + \
         ['Descrição', 'Qtd', 'Un', 'PV Unit. USD', 'Total USD']
+    # Larguras (DXA) do ajuste manual do usuário. Sem coluna Código, os 1818 da
+    # coluna Código são somados à Descrição (3564 + 1818 = 5382).
+    widths = ([1818, 3564] if mostrar_cod else [5382]) + [992, 567, 1418, 1285]
     table = doc.add_table(rows=1, cols=len(cols))
-    table.autofit = True
+    table.autofit = False
     _tabela_bordas(table)
 
     aligns = (['left'] if mostrar_cod else []) + \
@@ -479,6 +564,9 @@ def adicionar_anexo(doc, itens):
     for j, val in enumerate(tot):
         _cell(cells[j], val, bold=True, align=aligns[j])
 
+    # Larguras fixas depois de montar todas as linhas (tcW em cada célula).
+    _tabela_larguras(table, widths)
+
 
 def main():
     raw = sys.stdin.read()
@@ -497,8 +585,11 @@ def main():
     itens = itens_norm(d)
     grupos = grupos_norm(d, itens)
     mapa = montar_mapa(d, itens)
+    pg = d.get('pagamento') or {}
+    aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
     doc = Document(MODELO)
     expandir_grupos(doc, grupos, mapa)
+    remover_variante_ii(doc, aprazo)
     substituir(doc, mapa)
     adicionar_anexo(doc, itens)
 
