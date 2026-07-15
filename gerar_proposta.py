@@ -5,29 +5,35 @@
 Lê os dados via stdin (JSON), preenche o modelo proposta_modelo.docx e escreve
 o .docx resultante em stdout (binário). Todo diagnóstico vai para stderr.
 
-Entrada (stdin), todos os campos opcionais exceto o que define o conteúdo:
+Entrada (stdin), todos os campos opcionais exceto os itens:
 {
-  "numero_pil": "PIL-003-2026",
-  "cliente": "JUMA",
-  "descricao_resumida": "Tecido Microfibra 85gsm estampada 250cm de largura",
-  "qtd_total": 120000,
-  "unidade": "metros",
-  "fob_unit": 0.966,
-  "pct_sinal": 20,
-  "cambio_sinal": 5.0399,
-  "data_sinal": "2026-04-14",        # ISO (yyyy-mm-dd)
-  "data_venc_sinal": "2026-04-22",   # ISO
+  "numero_pil": "PIL-016-2026",
+  "cliente": "GILIDIVAN",
+  "itens": [                          # preço de VENDA (USD); nunca FOB/custo
+    {"codigo": "E01", "produto": "TEC...80GSM DES A",
+     "quantidade": 30000, "unidade": "M", "pv_unit_usd": 0.81}
+  ],
+  "grupos": [                         # opcional: grupos do corpo (nome editável
+    {"produto": "TEC...80GSM", "qtd": 68000,   #  no painel). Ausente -> agrupa
+     "unidade": "M", "pv_unit_usd": 0.81}      #  aqui (agrupar/nome_grupo).
+  ],
+  "modalidade_frete": "o container de 40hc",   # ou "LCL"
+  "pct_sinal": 10,
+  "cambio_sinal": 5.1680,
+  "data_sinal": "2026-07-14",         # ISO (yyyy-mm-dd)
+  "data_venc_sinal": "",              # ISO; vazio -> some "até o dia"
+  "cambio_ref": 5.1680, "data_ref": "2026-07-14",
   "dias_antes_desembarque": 20,
-  "frete_usd": 2200,
-  "prazo_entrega": 60,
+  "frete_usd": 150, "prazo_entrega": 60,
   "observacoes": ""
 }
 
-Cálculos derivados:
-  fob_total       = qtd_total * fob_unit
-  valor_sinal_usd = fob_total * pct_sinal/100
-  valor_sinal_brl = valor_sinal_usd * cambio_sinal
-  pct_saldo       = 100 - pct_sinal
+Estrutura do .docx:
+  - Corpo: um parágrafo por GRUPO (PV unitário em negrito), total emendado no
+    último; o Sinal (i) é um único parágrafo contínuo.
+  - Anexo (última página): tabela com TODOS os itens + linha TOTAL GERAL.
+Cálculos: pv_total_usd = soma(qtd*pv_unit); valor_sinal_usd = pv_total*pct/100;
+valor_sinal_brl = valor_sinal_usd * cambio_sinal; pct_saldo = 100 - pct_sinal.
 Os campos *_EXTENSO são gerados por extenso em português (sem dependências).
 """
 import io
@@ -40,6 +46,8 @@ import copy
 from docx import Document
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.shared import Pt
+from docx.enum.text import WD_BREAK, WD_ALIGN_PARAGRAPH
 
 MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       'proposta_modelo.docx')
@@ -147,9 +155,18 @@ def fmt_num(v, dec=2):
 
 
 def fmt_preco(v):
-    """Preço unitário: 2 a 4 casas, sem zeros à direita supérfluos (mín. 2)."""
-    frac = '{:.4f}'.format(float(v)).split('.')[1].rstrip('0')
-    return fmt_num(v, max(2, len(frac)))
+    """Preço unitário: 2 casas quando >= USD 1 (5.733,62); 4 casas quando
+    < USD 1 (0,9660)."""
+    v = float(v)
+    return fmt_num(v, 2 if abs(v) >= 1 else 4)
+
+
+def fmt_qtd(v):
+    """Quantidade: inteiro quando exata; senão 2 casas."""
+    v = float(v)
+    if abs(v - round(v)) < 1e-9:
+        return fmt_num(v, 0).split(',')[0]
+    return fmt_num(v, 2)
 
 
 _MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -188,13 +205,15 @@ def itens_norm(d):
     for it in (d.get('itens') or []):
         it = it or {}
         prod = str(it.get('produto', '') or '').strip()
+        cod = str(it.get('codigo', '') or '').strip()
         qtd = num(it.get('quantidade'), 0)
         unidade = str(it.get('unidade', '') or '').strip()
         pvu = num(it.get('pv_unit_usd'), 0)
         if not prod and qtd <= 0:
             continue
-        out.append({'produto': prod, 'qtd': qtd, 'unidade': unidade,
-                    'pv_unit_usd': pvu, 'total_usd': round(qtd * pvu, 2)})
+        out.append({'codigo': cod, 'produto': prod, 'qtd': qtd,
+                    'unidade': unidade, 'pv_unit_usd': pvu,
+                    'total_usd': round(qtd * pvu, 2)})
     return out
 
 
@@ -203,18 +222,71 @@ def singular_un(u):
     return u[:-1] if len(u) > 1 and u.lower().endswith('s') else u
 
 
-# Linha de item SEM "•": o marcador vem do estilo de lista do parágrafo clonado.
-def linha_item(it):
-    qtd_txt = fmt_num(it['qtd'], 0).split(',')[0]
-    pvu = fmt_preco(it['pv_unit_usd'])
-    ext = extenso_usd(it['pv_unit_usd'])
-    tot = fmt_num(it['total_usd'], 2)
-    un = it['unidade']
+# ── Agrupamento (corpo da proposta) ──────────────────────────────────────────
+# Nome do grupo = descrição truncada logo após o token "...GSM"; sem match, a
+# descrição inteira. Grupo = mesmo nome + mesma unidade + mesmo PV unitário.
+_GSM_RE = re.compile(r'^(.*?\d+\s*GSM)', re.IGNORECASE)
+
+
+def nome_grupo(produto):
+    m = _GSM_RE.match(produto or '')
+    return (m.group(1).strip() if m else (produto or '').strip())
+
+
+def agrupar(itens):
+    ordem, grupos = [], {}
+    for it in itens:
+        nome = nome_grupo(it['produto'])
+        key = (nome, it['unidade'], round(it['pv_unit_usd'], 4))
+        if key not in grupos:
+            grupos[key] = {'produto': nome, 'qtd': 0.0,
+                           'unidade': it['unidade'],
+                           'pv_unit_usd': it['pv_unit_usd']}
+            ordem.append(key)
+        grupos[key]['qtd'] += it['qtd']
+    return [grupos[k] for k in ordem]
+
+
+# Usa os grupos vindos do painel (nome editável) quando presentes; senão agrupa.
+def grupos_norm(d, itens):
+    raw = d.get('grupos')
+    if isinstance(raw, list) and raw:
+        out = []
+        for g in (raw or []):
+            g = g or {}
+            prod = str(g.get('produto', '') or '').strip()
+            qtd = num(g.get('qtd'), 0)
+            if not prod and qtd <= 0:
+                continue
+            out.append({'produto': prod, 'qtd': qtd,
+                        'unidade': str(g.get('unidade', '') or '').strip(),
+                        'pv_unit_usd': num(g.get('pv_unit_usd'), 0)})
+        if out:
+            return out
+    return agrupar(itens)
+
+
+# Segmentos (texto, negrito) de um parágrafo de grupo. PV unit em negrito.
+# No último grupo, emenda a frase do total após vírgula.
+def linha_grupo_segs(g, ultimo, mapa):
+    qtd_txt = fmt_qtd(g['qtd'])
+    pvu = fmt_preco(g['pv_unit_usd'])
+    ext = extenso_usd(g['pv_unit_usd'])
+    un = g['unidade']
     if un:
-        return ('%s %s de %s — USD %s por %s (%s), total USD %s'
-                % (qtd_txt, un, it['produto'], pvu, singular_un(un), ext, tot))
-    return ('%s de %s — USD %s (%s), total USD %s'
-            % (qtd_txt, it['produto'], pvu, ext, tot))
+        segs = [('%s %s de %s ' % (qtd_txt, un, g['produto']), False),
+                ('USD %s' % pvu, True),
+                (' por %s (%s)' % (singular_un(un), ext), False)]
+    else:
+        segs = [('%s de %s ' % (qtd_txt, g['produto']), False),
+                ('USD %s' % pvu, True),
+                (' (%s)' % ext, False)]
+    if ultimo:
+        segs.append((', O valor total estimado do pedido antes do embarque é '
+                     'de USD %s (%s).' % (mapa['{{PV_TOTAL_USD}}'],
+                                          mapa['{{PV_TOTAL_USD_EXTENSO}}']),
+                     False))
+    return segs
 
 
 def montar_mapa(d, itens):
@@ -229,6 +301,8 @@ def montar_mapa(d, itens):
     dias_antes = num(d.get('dias_antes_desembarque'), 20)
     frete = num(d.get('frete_usd'), 0)
     prazo = num(d.get('prazo_entrega'), 60)
+    modalidade = (str(d.get('modalidade_frete', '') or '').strip()
+                  or 'o container de 40hc')
     obs = str(d.get('observacoes', '') or '').strip()
 
     # Preço de venda em USD (âncora). R$ é apenas referência do dia.
@@ -265,65 +339,145 @@ def montar_mapa(d, itens):
         '{{DATA_VENC_SINAL}}': fmt_data_longa(d.get('data_venc_sinal')),
         '{{DIAS_ANTES_DESEMBARQUE}}': dias_txt(dias_antes),
         '{{FRETE_USD}}': fmt_num(frete, 0).split(',')[0],
+        '{{MODALIDADE_FRETE}}': modalidade,
         '{{PRAZO_ENTREGA}}': dias_txt(prazo),
         '{{OBSERVACOES}}': obs,
     }
 
 
-# Substitui o texto de um parágrafo (elemento w:p) preservando a formatação do
-# 1º run (fonte/tamanho/estilo). Remove realce residual.
-def _set_par_text(p_el, text):
-    runs = p_el.findall(qn('w:r'))
-    for r in runs[1:]:
-        p_el.remove(r)
-    runs = p_el.findall(qn('w:r'))
-    if not runs:
-        r0 = OxmlElement('w:r'); p_el.append(r0)
-    else:
-        r0 = runs[0]
-    rpr = r0.find(qn('w:rPr'))
-    if rpr is not None:
-        h = rpr.find(qn('w:highlight'))
-        if h is not None:
-            rpr.remove(h)
-    for t in r0.findall(qn('w:t')):
-        r0.remove(t)
+# Monta um w:r com a formatação-base do corpo (Arial 9 / sz 18) e negrito
+# opcional — mesma estrutura (rFonts + b + sz) dos runs do modelo.
+def _mk_run(text, bold):
+    r = OxmlElement('w:r')
+    rpr = OxmlElement('w:rPr')
+    rf = OxmlElement('w:rFonts')
+    rf.set(qn('w:ascii'), 'Arial'); rf.set(qn('w:hAnsi'), 'Arial')
+    rpr.append(rf)
+    b = OxmlElement('w:b')
+    if not bold:
+        b.set(qn('w:val'), '0')
+    rpr.append(b)
+    sz = OxmlElement('w:sz'); sz.set(qn('w:val'), '18')
+    rpr.append(sz)
+    r.append(rpr)
     t = OxmlElement('w:t'); t.set(qn('xml:space'), 'preserve'); t.text = text
-    r0.append(t)
+    r.append(t)
+    return r
 
 
-# Expande {{ITENS}} clonando o próprio parágrafo-placeholder (que já tem o
-# estilo de lista/recuo/fonte do modelo) — uma cópia por item.
-def expandir_itens(doc, itens):
+# Expande {{GRUPOS}} clonando o parágrafo-placeholder (recuo/estilo do modelo)
+# — uma cópia por grupo, com o PV unitário em negrito.
+def expandir_grupos(doc, grupos, mapa):
     for p in list(doc.paragraphs):
-        if '{{ITENS}}' not in p.text:
+        if '{{GRUPOS}}' not in p.text:
             continue
-        for it in itens:
+        n = len(grupos)
+        for i, g in enumerate(grupos):
             novo = copy.deepcopy(p._p)
-            _set_par_text(novo, linha_item(it))
+            for r in novo.findall(qn('w:r')):
+                novo.remove(r)
+            for text, bold in linha_grupo_segs(g, i == n - 1, mapa):
+                novo.append(_mk_run(text, bold))
             p._p.addprevious(novo)
         p._p.getparent().remove(p._p)
         return
 
 
 def substituir(doc, mapa):
+    venc_vazio = not mapa['{{DATA_VENC_SINAL}}']
     for p in list(doc.paragraphs):
         txt = p.text
-        if '{{' not in txt:
-            continue
         # Parágrafo exclusivo das observações: remove se vazio
         if '{{OBSERVACOES}}' in txt:
             if not mapa['{{OBSERVACOES}}']:
                 p._element.getparent().remove(p._element)
                 continue
         for run in p.runs:
-            if '{{' not in run.text:
-                continue
             novo = run.text
-            for k, v in mapa.items():
-                if k in novo:
-                    novo = novo.replace(k, v)
-            run.text = novo
+            # Sinal sem vencimento: não deixar "à vista até o dia  na conta".
+            if venc_vazio and 'à vista até o dia' in novo:
+                novo = novo.replace('à vista até o dia ', 'à vista')
+            if '{{' in novo:
+                for k, v in mapa.items():
+                    if k in novo:
+                        novo = novo.replace(k, v)
+            if novo != run.text:
+                run.text = novo
+
+
+# ── Anexo (última página): tabela com TODOS os itens ─────────────────────────
+def _cell(cell, text, bold=False, align='left'):
+    cell.text = ''
+    p = cell.paragraphs[0]
+    p.alignment = {'right': WD_ALIGN_PARAGRAPH.RIGHT,
+                   'center': WD_ALIGN_PARAGRAPH.CENTER}.get(
+                       align, WD_ALIGN_PARAGRAPH.LEFT)
+    run = p.add_run(text)
+    run.font.name = 'Arial'
+    run.font.size = Pt(9)
+    run.bold = bold
+    rpr = run._element.get_or_add_rPr()
+    rf = rpr.find(qn('w:rFonts'))
+    if rf is not None:
+        rf.set(qn('w:cs'), 'Arial')
+        rf.set(qn('w:eastAsia'), 'Arial')
+
+
+def _tabela_bordas(table):
+    tblPr = table._tbl.tblPr
+    borders = OxmlElement('w:tblBorders')
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        e = OxmlElement('w:' + edge)
+        e.set(qn('w:val'), 'single'); e.set(qn('w:sz'), '4')
+        e.set(qn('w:space'), '0'); e.set(qn('w:color'), 'auto')
+        borders.append(e)
+    tblPr.append(borders)
+
+
+def adicionar_anexo(doc, itens):
+    if not itens:
+        return
+    mostrar_cod = any(it.get('codigo') for it in itens)
+
+    quebra = doc.add_paragraph()
+    quebra.add_run().add_break(WD_BREAK.PAGE)
+
+    titulo = doc.add_paragraph()
+    rt = titulo.add_run('Anexo — Relação de Itens')
+    rt.bold = True
+    rt.font.name = 'Arial'
+    rt.font.size = Pt(12)
+
+    cols = (['Código'] if mostrar_cod else []) + \
+        ['Descrição', 'Qtd', 'Un', 'PV Unit. USD', 'Total USD']
+    table = doc.add_table(rows=1, cols=len(cols))
+    table.autofit = True
+    _tabela_bordas(table)
+
+    aligns = (['left'] if mostrar_cod else []) + \
+        ['left', 'right', 'center', 'right', 'right']
+    hdr = table.rows[0].cells
+    for j, nome in enumerate(cols):
+        _cell(hdr[j], nome, bold=True, align=aligns[j])
+
+    tot_qtd = 0.0
+    tot_usd = 0.0
+    for it in itens:
+        tot_qtd += it['qtd']
+        tot_usd += it['total_usd']
+        vals = ([it.get('codigo', '')] if mostrar_cod else []) + [
+            it['produto'], fmt_qtd(it['qtd']), it['unidade'],
+            fmt_preco(it['pv_unit_usd']), fmt_num(it['total_usd'], 2)]
+        cells = table.add_row().cells
+        for j, val in enumerate(vals):
+            _cell(cells[j], val, align=aligns[j])
+
+    # TOTAL GERAL (negrito)
+    base = ['TOTAL GERAL'] if not mostrar_cod else ['', 'TOTAL GERAL']
+    tot = base + [fmt_qtd(tot_qtd), '', '', fmt_num(round(tot_usd, 2), 2)]
+    cells = table.add_row().cells
+    for j, val in enumerate(tot):
+        _cell(cells[j], val, bold=True, align=aligns[j])
 
 
 def main():
@@ -341,10 +495,12 @@ def main():
         sys.exit(1)
 
     itens = itens_norm(d)
+    grupos = grupos_norm(d, itens)
     mapa = montar_mapa(d, itens)
     doc = Document(MODELO)
-    expandir_itens(doc, itens)
+    expandir_grupos(doc, grupos, mapa)
     substituir(doc, mapa)
+    adicionar_anexo(doc, itens)
 
     buf = io.BytesIO()
     doc.save(buf)

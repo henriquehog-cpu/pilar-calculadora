@@ -4673,7 +4673,18 @@ function toast(msg) {
 
 // ── Proposta Comercial ──────────────────────────────────────────────────────
 let _propProcesso = null;    // processo selecionado (o processo é a fonte dos documentos)
-let _propItens   = [];       // itens editáveis: [{produto, quantidade, unidade, pvUnitarioUSD}]
+let _propItens   = [];       // itens editáveis: [{codigo, produto, quantidade, unidade, pvUnitarioUSD}]
+let _propGrupos  = [];        // grupos do corpo (derivados dos itens): [{key, produto, qtd, unidade, pv_unit_usd}]
+let _propGruposNomes = {};    // key do grupo -> nome editado pelo usuário
+
+// Nome-base do grupo: descrição truncada logo após "…GSM"; sem match, inteira.
+function _propNomeGrupo(produto) {
+  const m = /^(.*?\d+\s*GSM)/i.exec(produto || '');
+  return (m ? m[1] : (produto || '')).trim();
+}
+function _propKeyGrupo(nomeDef, unidade, pv) {
+  return nomeDef + '|' + (unidade || '') + '|' + (Math.round((parseFloat(pv) || 0) * 10000) / 10000);
+}
 
 function renderProposta() {
   _propProcesso = null;
@@ -4728,6 +4739,14 @@ function renderProposta() {
         </div>
 
         <div class="card">
+          <div class="card-hd">Grupos (corpo da proposta)</div>
+          <div class="card-bd">
+            <span class="note">Itens agrupados por descrição (truncada após “…GSM”), unidade e PV unitário — é o que aparece no corpo da proposta. O nome do grupo é editável; quantidade e PV são calculados. O anexo lista todos os itens sem agrupar.</span>
+            <div id="prop-grupos" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="card">
           <div class="card-hd">Sinal</div>
           <div class="card-bd">
             <div class="g3">
@@ -4770,6 +4789,11 @@ function renderProposta() {
                 <input id="prop-frete" type="number" step="any" min="0" placeholder="2200"></div>
               <div class="field"><label>Prazo de entrega (dias)</label>
                 <input id="prop-prazo" type="number" step="1" min="0" value="60"></div>
+            </div>
+            <div class="field">
+              <label>Modalidade do frete</label>
+              <input id="prop-modalidade" type="text" list="prop-modalidade-opts" value="o container de 40hc">
+              <datalist id="prop-modalidade-opts"><option value="o container de 40hc"></option><option value="LCL"></option></datalist>
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Observações adicionais</label>
@@ -4815,8 +4839,9 @@ function propSelecionarProcesso(id) {
   // 4 casas decimais, como o PE exibe (evita divergência de centavos no total).
   if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
     const unidades = (proc.itens || []).map(it => it.unidade || '');
+    const codigos = (proc.itens || []).map(it => it.codigo || '');
     _propItens = proc.pvItens.map((it, i) => ({
-      produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
+      codigo: codigos[i] || '', produto: it.produto || '', quantidade: it.qtd != null ? it.qtd : '',
       unidade: unidades[i] || '', pvUnitarioUSD: it.pvUnitarioUSD != null ? it.pvUnitarioUSD : ''
     }));
   } else {
@@ -4824,11 +4849,12 @@ function propSelecionarProcesso(id) {
     _propItens = (proc.itens || []).filter(it => it.descricao || it.codigo || it.quantidade > 0)
       .map(it => {
         const pv = pvUnitUSD(it, mapa);
-        return { produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
+        return { codigo: it.codigo || '', produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
                  unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 10000) / 10000 : '' };
       });
   }
-  if (!_propItens.length) _propItens = [{ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+  if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+  _propGruposNomes = {};
 
   set('prop-cliente', g.cliente || '');
   set('prop-numero', proc.numero || '');
@@ -4839,7 +4865,8 @@ function propSelecionarProcesso(id) {
   const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
   set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
   set('prop-cambioref', ''); set('prop-dataref', hoje);
-  set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60); set('prop-obs', '');
+  set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
+  set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
 
   form.style.display = 'block';
   propRenderItens();
@@ -4852,19 +4879,19 @@ function propRenderItens() {
   const rows = _propItens.map((it, i) => `
     <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
       <input type="text" value="${_cmdEsc(it.produto)}" placeholder="Produto"
-        oninput="_propItens[${i}].produto=this.value" style="flex:2;min-width:160px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+        oninput="_propItens[${i}].produto=this.value;propRecalcGrupos()" style="flex:2;min-width:160px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
       <input type="number" step="any" min="0" value="${_cmdEsc(it.quantidade == null ? '' : it.quantidade)}" placeholder="Qtd"
         oninput="_propItens[${i}].quantidade=this.value;propRecalc()" style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
       <input type="text" value="${_cmdEsc(it.unidade)}" placeholder="unidade"
-        oninput="_propItens[${i}].unidade=this.value" style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+        oninput="_propItens[${i}].unidade=this.value;propRecalcGrupos()" style="width:90px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
       <input type="number" step="any" min="0" value="${_cmdEsc(it.pvUnitarioUSD == null ? '' : it.pvUnitarioUSD)}" placeholder="PV unit USD"
         oninput="_propItens[${i}].pvUnitarioUSD=this.value;propRecalc()" style="width:120px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
       <button class="btn btn-s btn-sm" onclick="propItemRemover(${i})" title="Remover item">✕</button>
     </div>`).join('');
   el.innerHTML = rows + '<button class="btn btn-s btn-sm" onclick="propItemAdd()" style="margin-top:2px">+ item</button>';
 }
-function propItemAdd() { _propItens.push({ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
-function propItemRemover(i) { _propItens.splice(i, 1); if (!_propItens.length) _propItens.push({ produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
+function propItemAdd() { _propItens.push({ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
+function propItemRemover(i) { _propItens.splice(i, 1); if (!_propItens.length) _propItens.push({ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }); propRenderItens(); propRecalc(); }
 
 function propRecalc() {
   const n = id => parseFloat(document.getElementById(id)?.value) || 0;
@@ -4880,16 +4907,62 @@ function propRecalc() {
   set('prop-sinalusd', fmtN(sinalUsd, 2));
   set('prop-sinalbrl', fmtN(sinalBrl, 2));
   set('prop-pvtotalbrlref', fmtN(pvTotalBrlRef, 2));
+  propRecalcGrupos();
+}
+
+// Reagrupa os itens preservando nomes de grupo editados (por chave de grupo).
+function propRecalcGrupos() {
+  const ordem = [], map = {};
+  _propItens.forEach(it => {
+    const prod = (it.produto || '').trim();
+    const qtd = parseFloat(it.quantidade) || 0;
+    const un = (it.unidade || '').trim();
+    const pv = parseFloat(it.pvUnitarioUSD) || 0;
+    if (!prod && qtd <= 0) return;
+    const nomeDef = _propNomeGrupo(prod);
+    const key = _propKeyGrupo(nomeDef, un, pv);
+    if (!map[key]) {
+      map[key] = { key, produto: (_propGruposNomes[key] != null ? _propGruposNomes[key] : nomeDef),
+                   qtd: 0, unidade: un, pv_unit_usd: pv };
+      ordem.push(key);
+    }
+    map[key].qtd += qtd;
+  });
+  _propGrupos = ordem.map(k => map[k]);
+  propRenderGrupos();
+}
+
+// PV do grupo: 2 casas quando >= USD 1; 4 casas quando < 1 (igual ao gerador).
+function _propFmtPV(v) { v = parseFloat(v) || 0; return fmtN(v, Math.abs(v) >= 1 ? 2 : 4); }
+
+function propRenderGrupos() {
+  const el = document.getElementById('prop-grupos');
+  if (!el) return;
+  if (!_propGrupos.length) { el.innerHTML = '<span class="note">Nenhum grupo (inclua itens acima).</span>'; return; }
+  const rows = _propGrupos.map((g, i) => `
+    <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
+      <input type="text" value="${_cmdEsc(g.produto)}" placeholder="Nome do grupo"
+        oninput="_propGrupos[${i}].produto=this.value;_propGruposNomes[_propGrupos[${i}].key]=this.value"
+        style="flex:2;min-width:200px;padding:5px 8px;border:1px solid var(--border,#ccc);border-radius:5px;font-size:13px">
+      <span style="width:110px;text-align:right;font-size:13px;color:var(--cinza-med)">${fmtN(g.qtd, 0).split(',')[0]}${g.unidade ? ' ' + _cmdEsc(g.unidade) : ''}</span>
+      <span style="width:120px;text-align:right;font-size:13px;color:var(--cinza-med)">USD ${_propFmtPV(g.pv_unit_usd)}</span>
+    </div>`).join('');
+  el.innerHTML = rows;
 }
 
 async function gerarProposta() {
   if (!_propProcesso) { toast('Selecione um processo.'); return; }
   const v = id => document.getElementById(id)?.value || '';
   const itens = _propItens
-    .map(it => ({ produto: (it.produto || '').trim(), quantidade: parseFloat(it.quantidade) || 0,
+    .map(it => ({ codigo: (it.codigo || '').trim(), produto: (it.produto || '').trim(), quantidade: parseFloat(it.quantidade) || 0,
                   unidade: (it.unidade || '').trim(), pv_unit_usd: parseFloat(it.pvUnitarioUSD) || 0 }))
     .filter(it => it.produto || it.quantidade > 0);
   if (!itens.length) { toast('Inclua ao menos um item com produto/quantidade.'); return; }
+
+  const grupos = _propGrupos
+    .map(g => ({ produto: (g.produto || '').trim(), qtd: parseFloat(g.qtd) || 0,
+                 unidade: (g.unidade || '').trim(), pv_unit_usd: parseFloat(g.pv_unit_usd) || 0 }))
+    .filter(g => g.produto || g.qtd > 0);
 
   const cliente = v('prop-cliente');
   const numero  = v('prop-numero') || _propProcesso.numero || '';
@@ -4899,6 +4972,8 @@ async function gerarProposta() {
     qtd_containers: parseFloat(v('prop-qtdcont')) || 1,
     tipo_container: v('prop-tipocont') || '40HC',
     itens,   // SOMENTE preço de venda — sem FOB/custo/margem/câmbio do cálculo
+    grupos,  // grupos do corpo (nome editável); anexo usa itens
+    modalidade_frete: v('prop-modalidade') || 'o container de 40hc',
     pct_sinal: parseFloat(v('prop-pctsinal')) || 0,
     cambio_sinal: parseFloat(v('prop-cambio')) || 0,
     data_sinal: v('prop-datasinal'),

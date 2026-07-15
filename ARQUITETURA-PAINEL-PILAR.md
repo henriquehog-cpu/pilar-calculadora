@@ -21,6 +21,8 @@ Sistema web da PILAR Imports para precificação e gestão operacional de import
 | `painel-proxy.js` (~1050 linhas) | **Backend** Node puro (sem framework): serve estáticos, expõe `/api/*`, proxeia Omie e Anthropic, persiste os JSON no servidor. |
 | `painel/js/calc.js` | **Motor fiscal por item** (`Calc.calcItem`, `Calc.calcProcesso`, `Calc.difalRate`). Módulo dual: `require` no Node, global no browser. |
 | `painel/js/calc-processo.js` | **Régua fiscal de processo** (`npCalcResultado`, `impostosPosVenda`, `vencMesSeguinte`) — camada acima do `calc.js`, **fonte única** usada IGUAL pelo browser e pelo backend. |
+| `gerar_proposta.py` | **Gerador da Proposta Comercial `.docx`** — lê JSON no stdin, preenche `proposta_modelo.docx` (tokens `{{...}}`), escreve o `.docx` no stdout. Chamado por `POST /api/proposta`. |
+| `proposta_modelo.docx` | **Modelo** da proposta (página/margens/Arial/header/footer + placeholders). Reformatado por `_reformar_modelo.py`. |
 
 `painel/js/app.js`, `documentos.js`, `fluxo-caixa.js`, `omie.js`, `processos.js`,
 `ptax.js` são de uma estrutura modular antiga (mai/2024) — **o painel em produção é o
@@ -134,7 +136,7 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
 | `GET/POST/DELETE /api/simulacoes[/:id]` | Fatia `pilar_simulacoes` (merge por id). |
 | `GET /api/banco-di` | Lê `banco_di.json` (templates de descrição de DI por família). |
 | `POST /api/etiquetas` | Gera etiquetas `.xlsx` (via script Python). |
-| `POST /api/proposta` | Gera proposta `.docx` (via script Python). |
+| `POST /api/proposta` | Gera proposta `.docx` (via `gerar_proposta.py`): corpo com itens agrupados + anexo com todos os itens. Body inclui `itens` (com `codigo`), `grupos`, `modalidade_frete`. |
 | `GET /api/resumo-diario` | **Read-only**. Monta o briefing diário consumido pela **Astrid** (Telegram): processos ativos, parcelas/recebimentos próximos etc. |
 | `GET /api/impostos-posvenda` | **Read-only**. Impostos pós-venda por processo via a régua única (`calc-processo.js`). |
 | `POST /api/ia/chat` | Chat com IA. Valida `fluxo` (`qualificacao`/`proposta`/`extracao`) + `mensagens`; teto de base64 (imagens); rate-limit 20/min; `systemPrompt` de `prompts/<fluxo>.md`; chama `chamarAnthropic`. |
@@ -186,6 +188,32 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     editável — o PV herdado é só o valor inicial. O **câmbio do sinal** também é
     herdado: 1ª parcela de `recebimentos_cliente`, fallback câmbio fiscal/DI —
     mesma regra do PE (`peSelecionar`).
+  - **Agrupamento no corpo** (`propRecalcGrupos`/`propRenderGrupos`): entre os
+    cards *Itens* e *Sinal* há o bloco **"Grupos (corpo da proposta)"**. Itens
+    são agrupados por **descrição truncada logo após "…GSM"** (`/^(.*?\d+\s*GSM)/i`;
+    sem match → descrição inteira) **+ unidade + PV unitário**; qtd = soma. O
+    **nome** do grupo é editável (persistido por chave em `_propGruposNomes`,
+    reaplicado a cada reagrupamento); qtd/PV são só leitura. É o que sai no corpo
+    da proposta — **um parágrafo por grupo**, sem marcador, PV unitário em negrito;
+    a frase do total é emendada no último grupo. O **anexo** lista todos os itens
+    (sem agrupar).
+  - **Novos campos do payload** (`gerarProposta` → `POST /api/proposta`):
+    `grupos: [{produto, qtd, unidade, pv_unit_usd}]` (nome editável do corpo),
+    `modalidade_frete` (texto; default `"o container de 40hc"`, alternativa `"LCL"`;
+    campo em *Condições gerais*) e `codigo` em cada item de `itens` (herdado de
+    `proc.itens`, sem input na tela — usado só na coluna *Código* do anexo).
+  - **Gerador `gerar_proposta.py`**: `fmt_preco` usa **2 casas quando PV ≥ USD 1**
+    e **4 casas quando < 1**. `grupos_norm` usa os `grupos` do payload quando
+    presentes (respeita nomes editados), senão agrupa (`agrupar`/`nome_grupo`, mesma
+    regra do painel). `expandir_grupos` clona o parágrafo `{{GRUPOS}}` (recuado, sem
+    marcador) por grupo, montando runs com negrito no PV. `adicionar_anexo` acrescenta,
+    após quebra de página ao fim do documento, o **"Anexo — Relação de Itens"**: tabela
+    Arial 9pt, cabeçalho em negrito e bordas simples, colunas
+    `Código | Descrição | Qtd | Un | PV Unit. USD | Total USD` (coluna *Código* só
+    quando algum item tem código) e linha final **TOTAL GERAL** (qtd e USD somados).
+    O Sinal (i) é um único parágrafo contínuo; quando `data_venc_sinal` vem vazio,
+    "até o dia " é removido (evita "à vista até o dia na conta"). Modelo mantém apenas
+    qtd/tipo de container nos dados; não há mais linha de container no texto.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.
