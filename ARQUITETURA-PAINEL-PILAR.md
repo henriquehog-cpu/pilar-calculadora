@@ -246,6 +246,11 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     {{VALOR_PARCELA_USD}}/{{VALOR_PARCELA_EXTENSO}}/{{DATA_1A_PARCELA}}`) e o gerador
     remove a inaplicável (`remover_variante_ii`). Payload ganha
     `pagamento: {modalidade, parcelas, periodicidade, data_1a_parcela}`.
+    O **1º vencimento** vem pré-preenchido com **entrega ao cliente + 30 dias**
+    (`prev_chegada_cliente`, soma em UTC via `_propVenc1aDefault` — sem armadilha de
+    fuso): aplicado na herança e ao trocar para *a prazo* com o campo vazio; **nunca
+    sobrescreve** valor salvo em `proc.proposta` nem já digitado; sem
+    `prev_chegada_cliente`, fica vazio. Campo continua editável.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.

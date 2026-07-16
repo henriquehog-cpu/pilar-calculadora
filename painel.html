@@ -4895,7 +4895,7 @@ function propSelecionarProcesso(id) {
     set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
     set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
     set('prop-pgmodalidade', 'avista'); set('prop-pgparcelas', 2);
-    set('prop-pgperiod', 'mensal'); set('prop-pg1venc', '');
+    set('prop-pgperiod', 'mensal'); set('prop-pg1venc', _propVenc1aDefault());
   }
 
   form.style.display = 'block';
@@ -4982,10 +4982,25 @@ function propRenderGrupos() {
 }
 
 // ── Estado da proposta: salvar/restaurar por processo (proc.proposta) ────────
+// 1º vencimento sugerido: entrega ao cliente do processo + 30 dias. Soma em UTC
+// (sem armadilha de fuso, como o string-math de vencMesSeguinte). Sem entrega
+// no processo → ''.
+function _propVenc1aDefault() {
+  const iso = _propProcesso?.dados_gerais?.prev_chegada_cliente || '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+  if (!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  d.setUTCDate(d.getUTCDate() + 30);
+  return d.toISOString().slice(0, 10);
+}
+
 function propTogglePagamento() {
   const modalidade = document.getElementById('prop-pgmodalidade')?.value || 'avista';
   const campos = document.getElementById('prop-pgcampos');
   if (campos) campos.style.display = modalidade === 'aprazo' ? 'block' : 'none';
+  // A prazo com 1º venc vazio → sugere entrega + 30d (nunca sobrescreve o preenchido).
+  const venc = document.getElementById('prop-pg1venc');
+  if (modalidade === 'aprazo' && venc && !venc.value) venc.value = _propVenc1aDefault();
 }
 
 // Config de pagamento do saldo lida da tela (à vista x a prazo).
