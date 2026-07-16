@@ -42,6 +42,7 @@ import re
 import sys
 import json
 import copy
+import datetime
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -299,6 +300,27 @@ def calc_parcelas(saldo_usd, n):
     return base, parcelas
 
 
+# % de cada parcela sobre o total (sem sinal, a prazo): 100/N. Inteiro → com
+# extenso ("25% (vinte e cinco por cento)"); fracionário → "33,33%".
+def pct_parcela_txt(n):
+    p = 100.0 / max(1, int(n))
+    if abs(p - round(p)) < 1e-9:
+        ip = int(round(p))
+        return '%d%% (%s por cento)' % (ip, extenso_int(ip))
+    return fmt_num(p, 2) + '%'
+
+
+# Dias corridos entre duas datas ISO (b - a); None se alguma faltar/for inválida.
+def dias_entre(a, b):
+    ma = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(a or ''))
+    mb = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(b or ''))
+    if not ma or not mb:
+        return None
+    da = datetime.date(*map(int, ma.groups()))
+    db = datetime.date(*map(int, mb.groups()))
+    return (db - da).days
+
+
 def montar_mapa(d, itens):
     cliente = str(d.get('cliente', '') or '')
     numero_pil = str(d.get('numero_pil', '') or '')
@@ -321,7 +343,10 @@ def montar_mapa(d, itens):
     valor_sinal_brl = round(valor_sinal_usd * cambio, 2)
     pv_total_brl_ref = round(pv_total_usd * cambio_ref, 2)
 
-    # Pagamento do saldo: à vista (default) ou a prazo (parcelas iguais em USD).
+    # Pagamento: com sinal (i)+(ii) ou, sem sinal (pct_sinal=0), item único
+    # "(i) Pagamento integral". Saldo à vista (default) ou a prazo (N parcelas
+    # iguais em USD). Sem sinal, saldo = total → parcela = total/N.
+    com_sinal = pct_sinal > 0
     pg = d.get('pagamento') or {}
     aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
     n_parc = max(2, int(num(pg.get('parcelas'), 2)))
@@ -330,6 +355,7 @@ def montar_mapa(d, itens):
     period_txt = {'mensal': 'mensais',
                   'quinzenal': 'quinzenais'}.get(
                       str(pg.get('periodicidade', 'mensal')), 'mensais')
+    dias_1a = dias_entre(d.get('data_ref'), pg.get('data_1a_parcela'))
 
     def pct_txt(p):
         return '%s%% (%s por cento)' % (fmt_num(p, 0).split(',')[0],
@@ -360,9 +386,11 @@ def montar_mapa(d, itens):
         '{{DIAS_ANTES_DESEMBARQUE}}': dias_txt(dias_antes),
         '{{N_PARCELAS}}': dias_txt(n_parc) if aprazo else '',
         '{{PERIODICIDADE}}': period_txt if aprazo else '',
+        '{{PCT_PARCELA}}': pct_parcela_txt(n_parc) if aprazo else '',
         '{{VALOR_PARCELA_USD}}': fmt_num(parcela_usd, 2) if aprazo else '',
         '{{VALOR_PARCELA_EXTENSO}}': extenso_usd(parcela_usd) if aprazo else '',
-        '{{DATA_1A_PARCELA}}': fmt_data_longa(d.get('pagamento', {}).get('data_1a_parcela')) if aprazo else '',
+        '{{DATA_1A_PARCELA}}': fmt_data_longa(pg.get('data_1a_parcela')) if aprazo else '',
+        '{{DIAS_1A_PARCELA}}': (dias_txt(dias_1a) if (aprazo and dias_1a is not None) else ''),
         '{{FRETE_USD}}': fmt_num(frete, 0).split(',')[0],
         '{{MODALIDADE_FRETE}}': modalidade,
         '{{PRAZO_ENTREGA}}': dias_txt(prazo),
@@ -408,15 +436,54 @@ def expandir_grupos(doc, grupos, mapa):
         return
 
 
-# Mantém no modelo as DUAS variantes do parágrafo (ii); remove a que não se
-# aplica. À vista → remove a de parcelas ({{N_PARCELAS}}); a prazo → remove a
-# de dias antes do desembarque ({{DIAS_ANTES_DESEMBARQUE}}).
-def remover_variante_ii(doc, aprazo):
-    alvo = '{{DIAS_ANTES_DESEMBARQUE}}' if aprazo else '{{N_PARCELAS}}'
+# ── Variantes por (com_sinal × modalidade) ───────────────────────────────────
+# O modelo mantém TODAS as variantes; o gerador remove as que não se aplicam.
+#   Pagamento:  com sinal → (i) Sinal + (ii) Saldo {à vista|a prazo}
+#               sem sinal → (i) Pagamento integral {à vista|a prazo}
+#   Perda:      com sinal {à vista|a prazo}; sem sinal → sem bullet
+#   Câmbio:     (com_sinal × modalidade) — 4 variantes
+def _classificar_pagamento(text):
+    if '(i) Sinal de' in text:
+        return 'sinal'
+    apz = '{{N_PARCELAS}}' in text
+    if 'Pagamento integral' in text:
+        return 'integral_aprazo' if apz else 'integral_avista'
+    if '(ii) Saldo de' in text:
+        return 'saldo_aprazo' if apz else 'saldo_avista'
+    return None
+
+
+def _classificar_perda(text):
+    if 'a título de sinal' not in text:
+        return None
+    return 'perda_aprazo' if 'qualquer parcela' in text else 'perda_avista'
+
+
+def _classificar_cambio(text):
+    if 'fechamento do câmbio' not in text:
+        return None
+    return ('cambio', 'data do sinal' in text, 'cada parcela' in text)
+
+
+def ajustar_variantes(doc, com_sinal, aprazo):
+    if com_sinal:
+        keep_pg = {'sinal', 'saldo_aprazo' if aprazo else 'saldo_avista'}
+        keep_perda = 'perda_aprazo' if aprazo else 'perda_avista'
+    else:
+        keep_pg = {'integral_aprazo' if aprazo else 'integral_avista'}
+        keep_perda = None  # sem sinal → bullet de perda removido
+    keep_cambio = ('cambio', com_sinal, aprazo)
     for p in list(doc.paragraphs):
-        if alvo in p.text:
-            p._element.getparent().remove(p._element)
-            return
+        t = p.text
+        for cls, keep in ((_classificar_pagamento(t), keep_pg),
+                          (_classificar_perda(t), keep_perda),
+                          (_classificar_cambio(t), keep_cambio)):
+            if cls is None:
+                continue
+            manter = (cls in keep) if isinstance(keep, set) else (cls == keep)
+            if not manter:
+                p._element.getparent().remove(p._element)
+            break
 
 
 def substituir(doc, mapa):
@@ -587,9 +654,10 @@ def main():
     mapa = montar_mapa(d, itens)
     pg = d.get('pagamento') or {}
     aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
+    com_sinal = num(d.get('pct_sinal'), 20) > 0
     doc = Document(MODELO)
     expandir_grupos(doc, grupos, mapa)
-    remover_variante_ii(doc, aprazo)
+    ajustar_variantes(doc, com_sinal, aprazo)
     substituir(doc, mapa)
     adicionar_anexo(doc, itens)
 

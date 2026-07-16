@@ -132,6 +132,85 @@ def main():
             pav._p.addnext(novo)
             print('OK variante (ii) a prazo adicionada')
 
+    # G) SEM SINAL — item único "(i) Pagamento integral" (à vista e a prazo).
+    #    Clona o (ii) Saldo à vista (label negrito + corpo) e insere após o (ii)
+    #    a prazo, para o gerador escolher a variante conforme sinal/modalidade.
+    if achar(doc, 'Pagamento integral') is None:
+        base = None
+        for p in paras(doc):
+            if '(ii) Saldo' in p.text and '{{DIAS_ANTES_DESEMBARQUE}}' in p.text:
+                base = p
+                break
+        anchor = None  # último parágrafo de "(ii) Saldo" (o a prazo)
+        for p in paras(doc):
+            if '(ii) Saldo' in p.text:
+                anchor = p
+        if base is not None and anchor is not None:
+            integral_avista = (
+                ': o valor total da mercadoria deverá ser pago e quitado em até no '
+                'máximo {{DIAS_ANTES_DESEMBARQUE}} dias antes do desembarque do navio '
+                'em território nacional, o que será devidamente comunicado pela Pilar '
+                'Imports por e-mail e WhatsApp;')
+            integral_aprazo = (
+                ': em {{N_PARCELAS}} parcelas {{PERIODICIDADE}} e iguais de {{PCT_PARCELA}} '
+                'do valor total apurado na data do faturamento (valor estimado nesta '
+                'data: USD {{VALOR_PARCELA_USD}} cada), vencendo a primeira '
+                '{{DIAS_1A_PARCELA}} dias a partir do faturamento e as demais a cada '
+                'período subsequente;')
+            anchor_el = anchor._p
+            for corpo in (integral_avista, integral_aprazo):
+                novo = copy.deepcopy(base._p)
+                runs = novo.findall(qn('w:r'))
+                _set_run_text(runs[0], '(i) Pagamento integral')
+                _set_run_text(runs[1], corpo)
+                for r in runs[2:]:
+                    novo.remove(r)
+                anchor_el.addnext(novo)
+                anchor_el = novo
+            print('OK itens "(i) Pagamento integral" (à vista + a prazo) adicionados')
+
+    # H) bullet PERDA DO SINAL — 2 variantes (com sinal, à vista/a prazo); corrige
+    #    "no presente e-mail"->"nesta proposta" e "à título"->"a título".
+    old = achar(doc, 'no presente e-mail')
+    if old is not None:
+        perda_avista = ('Caso o Saldo de {{PCT_SALDO}} não seja pago na data estipulada '
+                        'nesta proposta, vocês perderão o valor pago a título de sinal.')
+        perda_aprazo = ('Caso qualquer parcela do saldo não seja paga na data de seu '
+                        'vencimento, vocês perderão o valor pago a título de sinal.')
+        for txt in (perda_avista, perda_aprazo):
+            novo = copy.deepcopy(old._p)
+            runs = novo.findall(qn('w:r'))
+            _set_run_text(runs[0], txt)
+            for r in runs[1:]:
+                novo.remove(r)
+            old._p.addprevious(novo)
+        remover(old)
+        print('OK bullet perda do sinal -> 2 variantes')
+
+    # I) bullet FECHAMENTO DO CÂMBIO — 4 variantes (com_sinal x modalidade);
+    #    corrige "será considerada"->"será considerado".
+    old = achar(doc, 'será considerada o valor')
+    if old is not None:
+        variantes = [
+            'Para fechamento do câmbio, será considerado o valor fechado na data do '
+            'sinal e o valor fechado na data do pagamento do saldo.',
+            'Para fechamento do câmbio, será considerado o valor fechado na data do '
+            'sinal e os valores fechados nas datas de pagamento de cada parcela do saldo.',
+            'Para fechamento do câmbio, será considerado o valor fechado na data do '
+            'pagamento.',
+            'Para fechamento do câmbio, serão considerados os valores fechados nas '
+            'datas de pagamento de cada parcela.',
+        ]
+        for txt in variantes:
+            novo = copy.deepcopy(old._p)
+            runs = novo.findall(qn('w:r'))
+            _set_run_text(runs[0], txt)
+            for r in runs[1:]:
+                novo.remove(r)
+            old._p.addprevious(novo)
+        remover(old)
+        print('OK bullet fechamento do câmbio -> 4 variantes')
+
     doc.save(SAIDA)
     print('salvo:', SAIDA)
 
