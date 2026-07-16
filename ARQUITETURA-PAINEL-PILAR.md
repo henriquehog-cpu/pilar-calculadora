@@ -251,7 +251,7 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     restaura tudo de `proc.proposta` quando existe; senão cai na herança dos dados do
     processo. **Gerar o `.docx` também salva** (`gerarProposta` chama `propSalvar(true)`).
   - **Pagamento do saldo — à vista x a prazo** (seção *Sinal*): select
-    `prop-pgmodalidade`; a prazo mostra Nº de parcelas (≥2), periodicidade
+    `prop-pgmodalidade`; a prazo mostra Nº de parcelas (**≥1**), periodicidade
     (mensal/quinzenal) e **Dias para 1ª parcela (após faturamento)** (`prop-pgdias1a`,
     numérico, default 30, mín 1). Parcelas **iguais** em USD (`saldo ÷ N`, 2 casas),
     **sem juros**, com a diferença de centavos na última (`calc_parcelas`).
@@ -260,6 +260,17 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     `{{DIAS_1A_PARCELA}}` dias a partir do faturamento" — o número entra direto,
     com extenso. **Compat:** `proc.proposta` salvo no formato antigo
     (`data_1a_parcela`, data) é ignorado no restore e cai no default 30.
+  - **Parcela única (N=1)**: com `parcelas=1`, o campo Periodicidade é escondido
+    (`propTogglePeriodicidade`) e a cláusula a prazo vira singular. No gerador,
+    `ajustar_parcela_unica(doc, com_sinal)` (rodado após `ajustar_variantes` e antes
+    de `substituir`, só quando `aprazo` e `n_parc==1`) reescreve o corpo do parágrafo
+    a prazo (o que contém `{{N_PARCELAS}}`), preservando o rótulo em negrito: "…em
+    **parcela única**, correspondente ao saldo/valor total apurado na data do
+    faturamento (valor estimado nesta data: USD `{{VALOR_PARCELA_USD}}`), vencendo
+    `{{DIAS_1A_PARCELA}}` dias a partir do faturamento;" (sem periodicidade nem "e as
+    demais"). `VALOR_PARCELA_USD` = saldo/total inteiro (`calc_parcelas(...,1)`).
+    Sem alteração no modelo (mecânica de reescrita de texto no gerador). Com N≥2,
+    texto atual inalterado.
   - **Matriz de variantes (sinal × modalidade)** — o modelo guarda TODAS as
     variantes de parágrafo/bullet e `gerar_proposta.py:ajustar_variantes(doc,
     com_sinal, aprazo)` remove as que não se aplicam (classificadores por texto:

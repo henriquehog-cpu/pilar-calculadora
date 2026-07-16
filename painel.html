@@ -4773,8 +4773,8 @@ function renderProposta() {
             <div id="prop-pgcampos" style="display:none;margin-top:8px">
               <div class="g3">
                 <div class="field" style="margin-bottom:0"><label>Nº de parcelas do saldo</label>
-                  <input id="prop-pgparcelas" type="number" step="1" min="2" value="2"></div>
-                <div class="field" style="margin-bottom:0"><label>Periodicidade</label>
+                  <input id="prop-pgparcelas" type="number" step="1" min="1" value="2" oninput="propTogglePeriodicidade()"></div>
+                <div class="field" id="prop-pgperiod-field" style="margin-bottom:0"><label>Periodicidade</label>
                   <select id="prop-pgperiod">
                     <option value="mensal">Mensal</option>
                     <option value="quinzenal">Quinzenal</option>
@@ -4782,7 +4782,7 @@ function renderProposta() {
                 <div class="field" style="margin-bottom:0"><label>Dias para 1ª parcela (após faturamento)</label>
                   <input id="prop-pgdias1a" type="number" step="1" min="1" value="30"></div>
               </div>
-              <span class="note">Parcelas iguais do saldo em USD (saldo ÷ nº), sem juros; a diferença de centavos vai na última parcela.</span>
+              <span class="note">Parcelas iguais do saldo em USD (saldo ÷ nº), sem juros; a diferença de centavos vai na última parcela. Com 1 parcela, o saldo é pago de uma vez (sem periodicidade).</span>
             </div>
           </div>
         </div>
@@ -4986,6 +4986,14 @@ function propTogglePagamento() {
   const modalidade = document.getElementById('prop-pgmodalidade')?.value || 'avista';
   const campos = document.getElementById('prop-pgcampos');
   if (campos) campos.style.display = modalidade === 'aprazo' ? 'block' : 'none';
+  propTogglePeriodicidade();
+}
+
+// Com 1 parcela, a periodicidade não se aplica → esconde o campo.
+function propTogglePeriodicidade() {
+  const n = Math.max(1, parseInt(document.getElementById('prop-pgparcelas')?.value, 10) || 2);
+  const f = document.getElementById('prop-pgperiod-field');
+  if (f) f.style.display = n <= 1 ? 'none' : '';
 }
 
 // Config de pagamento do saldo lida da tela (à vista x a prazo).
@@ -4995,7 +5003,7 @@ function _propPagamentoConfig() {
   if (modalidade !== 'aprazo') return { modalidade: 'avista' };
   return {
     modalidade: 'aprazo',
-    parcelas: Math.max(2, parseInt(v('prop-pgparcelas'), 10) || 2),
+    parcelas: Math.max(1, parseInt(v('prop-pgparcelas'), 10) || 2),
     periodicidade: v('prop-pgperiod') || 'mensal',
     dias_1a_parcela: Math.max(1, parseInt(v('prop-pgdias1a'), 10) || 30)
   };

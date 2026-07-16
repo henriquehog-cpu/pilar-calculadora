@@ -291,8 +291,9 @@ def linha_grupo_segs(g, ultimo, mapa):
 
 # Saldo em N parcelas iguais (USD): base = round(saldo/N, 2); a última absorve
 # a diferença de centavos para o somatório fechar exatamente com o saldo.
+# N=1 → parcela única com o saldo inteiro.
 def calc_parcelas(saldo_usd, n):
-    n = max(2, int(n))
+    n = max(1, int(n))
     base = round(float(saldo_usd) / n, 2)
     parcelas = [base] * (n - 1)
     parcelas.append(round(float(saldo_usd) - base * (n - 1), 2))
@@ -337,7 +338,7 @@ def montar_mapa(d, itens):
     com_sinal = pct_sinal > 0
     pg = d.get('pagamento') or {}
     aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
-    n_parc = max(2, int(num(pg.get('parcelas'), 2)))
+    n_parc = max(1, int(num(pg.get('parcelas'), 2)))
     saldo_usd = round(pv_total_usd - valor_sinal_usd, 2)
     parcela_usd = calc_parcelas(saldo_usd, n_parc)[0] if aprazo else 0
     period_txt = {'mensal': 'mensais',
@@ -472,6 +473,28 @@ def ajustar_variantes(doc, com_sinal, aprazo):
             if not manter:
                 p._element.getparent().remove(p._element)
             break
+
+
+# N=1 (parcela única): reescreve o corpo do parágrafo a prazo (o que contém
+# {{N_PARCELAS}}) para a redação no singular, sem periodicidade nem "e as demais".
+# Roda depois de ajustar_variantes (só resta o parágrafo a prazo aplicável) e
+# antes de substituir (o token {{VALOR_PARCELA_USD}}/{{DIAS_1A_PARCELA}} é preenchido
+# depois). O rótulo em negrito (run[0]) é preservado.
+def ajustar_parcela_unica(doc, com_sinal):
+    ref = 'saldo apurado' if com_sinal else 'valor total apurado'
+    corpo = (': em parcela única, correspondente ao %s na data do faturamento '
+             '(valor estimado nesta data: USD {{VALOR_PARCELA_USD}}), vencendo '
+             '{{DIAS_1A_PARCELA}} dias a partir do faturamento;' % ref)
+    for p in doc.paragraphs:
+        if '{{N_PARCELAS}}' not in p.text:
+            continue
+        for r in p._p.findall(qn('w:r')):
+            if any('{{N_PARCELAS}}' in (t.text or '') for t in r.findall(qn('w:t'))):
+                for t in r.findall(qn('w:t')):
+                    r.remove(t)
+                t = OxmlElement('w:t'); t.set(qn('xml:space'), 'preserve'); t.text = corpo
+                r.append(t)
+                return
 
 
 def substituir(doc, mapa):
@@ -642,10 +665,13 @@ def main():
     mapa = montar_mapa(d, itens)
     pg = d.get('pagamento') or {}
     aprazo = str(pg.get('modalidade', 'avista') or 'avista') == 'aprazo'
+    n_parc = max(1, int(num(pg.get('parcelas'), 2)))
     com_sinal = num(d.get('pct_sinal'), 20) > 0
     doc = Document(MODELO)
     expandir_grupos(doc, grupos, mapa)
     ajustar_variantes(doc, com_sinal, aprazo)
+    if aprazo and n_parc == 1:
+        ajustar_parcela_unica(doc, com_sinal)
     substituir(doc, mapa)
     adicionar_anexo(doc, itens)
 
