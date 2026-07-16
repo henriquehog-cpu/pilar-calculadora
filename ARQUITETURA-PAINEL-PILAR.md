@@ -178,6 +178,10 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
   Pedido de Embarque (`renderPedidoEmbarque`), Resumo Despachante (`renderResumoDespachante`).
   Todos geram PDF via **HTML + `window.print()`** no `#or-print-area` (não há lib de PDF);
   o CSS `@media print` esconde a UI e mostra só a área de impressão.
+  - **Seletor de processo**: os 4 documentos listam **apenas processos ativos**
+    (`filter(p => (p.status || 'ativo') === 'ativo')` antes do `.reverse()`; status
+    ausente conta como ativo). Finalizados/concluídos só aparecem na tela **Processos**
+    (`renderProcessos`), que continua mostrando todos.
   - **PV unitário USD por item — precedência única dos documentos** (helpers
     `pvUnitCalcMap(proc)` + `pvUnitUSD(it, mapa)`, definidos junto de
     `rdBuildProcParaCalc`): `it.resultado?.pv_usd` → `it.pv_fixo_usd` → `pvUSD`

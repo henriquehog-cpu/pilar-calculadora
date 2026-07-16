@@ -3716,7 +3716,7 @@ function renderResumoDespachante() {
     })
     .catch(() => {});
 
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').filter(p => (p.status || 'ativo') === 'ativo').reverse();
   const opts = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
     : '<option value="">— selecione —</option>' +
@@ -4688,7 +4688,7 @@ function _propKeyGrupo(nomeDef, unidade, pv) {
 
 function renderProposta() {
   _propProcesso = null;
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').filter(p => (p.status || 'ativo') === 'ativo').reverse();
   const opts = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
     : '<option value="">— selecione um processo —</option>' +
@@ -5160,7 +5160,7 @@ let _peQtd = [];   // qtd embarcada por item (estado em memória)
 
 function renderPedidoEmbarque() {
   _peProcesso = null; _peQtd = [];
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').filter(p => (p.status || 'ativo') === 'ativo').reverse();
   const opts = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
     : '<option value="">— selecione um processo —</option>' +
@@ -6220,7 +6220,7 @@ let _orProcesso = null;
 
 function renderOrderRequest() {
   _orProcesso = null;
-  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').slice().reverse();
+  const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]').filter(p => (p.status || 'ativo') === 'ativo').reverse();
 
   const opts = todos.length === 0
     ? '<option value="">— nenhum processo salvo —</option>'
