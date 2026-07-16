@@ -4677,10 +4677,14 @@ let _propItens   = [];       // itens editáveis: [{codigo, produto, quantidade,
 let _propGrupos  = [];        // grupos do corpo (derivados dos itens): [{key, produto, qtd, unidade, pv_unit_usd}]
 let _propGruposNomes = {};    // key do grupo -> nome editado pelo usuário
 
-// Nome-base do grupo: descrição truncada logo após "…GSM"; sem match, inteira.
+// Nome-base do grupo (cascata): 1) trunca logo após "…GSM" (têxtil); 2) senão,
+// trunca ANTES do token " COR " (enxoval); 3) senão, descrição inteira.
 function _propNomeGrupo(produto) {
-  const m = /^(.*?\d+\s*GSM)/i.exec(produto || '');
-  return (m ? m[1] : (produto || '')).trim();
+  const s = (produto || '').trim();
+  const gsm = /^(.*?\d+\s*GSM)/i.exec(s);
+  if (gsm) return gsm[1].trim();
+  const cor = s.replace(/\s+COR\b.*$/i, '');
+  return cor.trim();
 }
 function _propKeyGrupo(nomeDef, unidade, pv) {
   return nomeDef + '|' + (unidade || '') + '|' + (Math.round((parseFloat(pv) || 0) * 10000) / 10000);
@@ -4741,7 +4745,7 @@ function renderProposta() {
         <div class="card">
           <div class="card-hd">Grupos (corpo da proposta)</div>
           <div class="card-bd">
-            <span class="note">Itens agrupados por descrição (truncada após “…GSM”), unidade e PV unitário — é o que aparece no corpo da proposta. O nome do grupo é editável; quantidade e PV são calculados. O anexo lista todos os itens sem agrupar.</span>
+            <span class="note">Itens agrupados por descrição (truncada após “…GSM”; sem GSM, truncada antes de “ COR ”; senão inteira), unidade e PV unitário — é o que aparece no corpo da proposta. O nome do grupo é editável; quantidade e PV são calculados. O anexo lista todos os itens sem agrupar.</span>
             <div id="prop-grupos" style="margin-top:8px"></div>
           </div>
         </div>

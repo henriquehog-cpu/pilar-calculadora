@@ -199,9 +199,12 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     herdado: 1ª parcela de `recebimentos_cliente`, fallback câmbio fiscal/DI —
     mesma regra do PE (`peSelecionar`).
   - **Agrupamento no corpo** (`propRecalcGrupos`/`propRenderGrupos`): entre os
-    cards *Itens* e *Sinal* há o bloco **"Grupos (corpo da proposta)"**. Itens
-    são agrupados por **descrição truncada logo após "…GSM"** (`/^(.*?\d+\s*GSM)/i`;
-    sem match → descrição inteira) **+ unidade + PV unitário**; qtd = soma. O
+    cards *Itens* e *Sinal* há o bloco **"Grupos (corpo da proposta)"**. A chave é a
+    **descrição truncada em cascata** (`_propNomeGrupo`): 1) tem "…GSM" →
+    trunca logo após (`/^(.*?\d+\s*GSM)/i`, têxtil); 2) senão, tem " COR " → trunca
+    **antes** dele (`/\s+COR\b.*$/i`, enxoval — ex.: "COBRE LEITO UNIQUE KING COR 05
+    - ROSE" → "COBRE LEITO UNIQUE KING"); 3) senão → descrição inteira. Chave =
+    nome truncado **+ unidade + PV unitário**; qtd = soma. O
     **nome** do grupo é editável (persistido por chave em `_propGruposNomes`,
     reaplicado a cada reagrupamento); qtd/PV são só leitura. É o que sai no corpo
     da proposta — **um parágrafo por grupo**, sem marcador, PV unitário em negrito;
