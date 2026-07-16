@@ -4779,8 +4779,8 @@ function renderProposta() {
                     <option value="mensal">Mensal</option>
                     <option value="quinzenal">Quinzenal</option>
                   </select></div>
-                <div class="field" style="margin-bottom:0"><label>1º vencimento</label>
-                  <input id="prop-pg1venc" type="date"></div>
+                <div class="field" style="margin-bottom:0"><label>Dias para 1ª parcela (após faturamento)</label>
+                  <input id="prop-pgdias1a" type="number" step="1" min="1" value="30"></div>
               </div>
               <span class="note">Parcelas iguais do saldo em USD (saldo ÷ nº), sem juros; a diferença de centavos vai na última parcela.</span>
             </div>
@@ -4895,7 +4895,7 @@ function propSelecionarProcesso(id) {
     set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
     set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
     set('prop-pgmodalidade', 'avista'); set('prop-pgparcelas', 2);
-    set('prop-pgperiod', 'mensal'); set('prop-pg1venc', _propVenc1aDefault());
+    set('prop-pgperiod', 'mensal'); set('prop-pgdias1a', 30);
   }
 
   form.style.display = 'block';
@@ -4982,25 +4982,10 @@ function propRenderGrupos() {
 }
 
 // ── Estado da proposta: salvar/restaurar por processo (proc.proposta) ────────
-// 1º vencimento sugerido: entrega ao cliente do processo + 30 dias. Soma em UTC
-// (sem armadilha de fuso, como o string-math de vencMesSeguinte). Sem entrega
-// no processo → ''.
-function _propVenc1aDefault() {
-  const iso = _propProcesso?.dados_gerais?.prev_chegada_cliente || '';
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
-  if (!m) return '';
-  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-  d.setUTCDate(d.getUTCDate() + 30);
-  return d.toISOString().slice(0, 10);
-}
-
 function propTogglePagamento() {
   const modalidade = document.getElementById('prop-pgmodalidade')?.value || 'avista';
   const campos = document.getElementById('prop-pgcampos');
   if (campos) campos.style.display = modalidade === 'aprazo' ? 'block' : 'none';
-  // A prazo com 1º venc vazio → sugere entrega + 30d (nunca sobrescreve o preenchido).
-  const venc = document.getElementById('prop-pg1venc');
-  if (modalidade === 'aprazo' && venc && !venc.value) venc.value = _propVenc1aDefault();
 }
 
 // Config de pagamento do saldo lida da tela (à vista x a prazo).
@@ -5012,7 +4997,7 @@ function _propPagamentoConfig() {
     modalidade: 'aprazo',
     parcelas: Math.max(2, parseInt(v('prop-pgparcelas'), 10) || 2),
     periodicidade: v('prop-pgperiod') || 'mensal',
-    data_1a_parcela: v('prop-pg1venc') || ''
+    dias_1a_parcela: Math.max(1, parseInt(v('prop-pgdias1a'), 10) || 30)
   };
 }
 
@@ -5078,7 +5063,8 @@ function propRestaurarEstado(e) {
   set('prop-pgmodalidade', pg.modalidade || 'avista');
   set('prop-pgparcelas', pg.parcelas || 2);
   set('prop-pgperiod', pg.periodicidade || 'mensal');
-  set('prop-pg1venc', pg.data_1a_parcela || '');
+  // Compat: proposta salva no formato antigo (data_1a_parcela) → ignora e usa 30.
+  set('prop-pgdias1a', pg.dias_1a_parcela != null ? pg.dias_1a_parcela : 30);
 }
 
 // Persiste a fatia `proposta` no processo (padrão _procSetStatus: merge por id

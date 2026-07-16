@@ -103,7 +103,7 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
     itens:[{codigo,produto,quantidade,unidade,pvUnitarioUSD}], grupos_nomes:{key→nome},
     pct_sinal, cambio_sinal, data_sinal, data_venc_sinal, cambio_ref, data_ref,
     dias_antes, frete_usd, modalidade_frete, prazo_entrega, observacoes,
-    pagamento:{ modalidade:'avista'|'aprazo', parcelas?, periodicidade?, data_1a_parcela? }, salvo_em }
+    pagamento:{ modalidade:'avista'|'aprazo', parcelas?, periodicidade?, dias_1a_parcela? }, salvo_em }
 }
 ```
 
@@ -239,14 +239,14 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     processo. **Gerar o `.docx` também salva** (`gerarProposta` chama `propSalvar(true)`).
   - **Pagamento do saldo — à vista x a prazo** (seção *Sinal*): select
     `prop-pgmodalidade`; a prazo mostra Nº de parcelas (≥2), periodicidade
-    (mensal/quinzenal) e 1º vencimento. Parcelas **iguais** em USD (`saldo ÷ N`,
-    2 casas), **sem juros**, com a diferença de centavos na última (`calc_parcelas`).
-    Payload ganha `pagamento: {modalidade, parcelas, periodicidade, data_1a_parcela}`.
-    O **1º vencimento** vem pré-preenchido com **entrega ao cliente + 30 dias**
-    (`prev_chegada_cliente`, soma em UTC via `_propVenc1aDefault` — sem armadilha de
-    fuso): aplicado na herança e ao trocar para *a prazo* com o campo vazio; **nunca
-    sobrescreve** valor salvo em `proc.proposta` nem já digitado; sem
-    `prev_chegada_cliente`, fica vazio. Campo continua editável.
+    (mensal/quinzenal) e **Dias para 1ª parcela (após faturamento)** (`prop-pgdias1a`,
+    numérico, default 30, mín 1). Parcelas **iguais** em USD (`saldo ÷ N`, 2 casas),
+    **sem juros**, com a diferença de centavos na última (`calc_parcelas`).
+    Payload ganha `pagamento: {modalidade, parcelas, periodicidade, dias_1a_parcela}`
+    (**número** de dias, não data). O documento diz "vencendo a primeira
+    `{{DIAS_1A_PARCELA}}` dias a partir do faturamento" — o número entra direto,
+    com extenso. **Compat:** `proc.proposta` salvo no formato antigo
+    (`data_1a_parcela`, data) é ignorado no restore e cai no default 30.
   - **Matriz de variantes (sinal × modalidade)** — o modelo guarda TODAS as
     variantes de parágrafo/bullet e `gerar_proposta.py:ajustar_variantes(doc,
     com_sinal, aprazo)` remove as que não se aplicam (classificadores por texto:
@@ -254,13 +254,13 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     `com_sinal = pct_sinal > 0`.
     - **Condições de Pagamento:** com sinal → **(i) Sinal** + **(ii) Saldo de
       `{{PCT_SALDO}}`** (à vista = dias antes do desembarque; a prazo =
-      `{{N_PARCELAS}}/{{PERIODICIDADE}}/{{VALOR_PARCELA_USD}}/{{VALOR_PARCELA_EXTENSO}}/
-      {{DATA_1A_PARCELA}}`). **Sem sinal** (`pct_sinal=0`) → item único **(i) Pagamento
-      integral** (à vista = "valor total da mercadoria… dias antes do desembarque";
-      a prazo = "`{{N_PARCELAS}}` parcelas… iguais de `{{PCT_PARCELA}}` = 100/N do total,
-      valor estimado USD `{{VALOR_PARCELA_USD}}` = total/N cada, vencendo a primeira
-      `{{DIAS_1A_PARCELA}}` dias a partir do faturamento"). Não sai "Sinal de 0%" nem
-      "Saldo de 100%".
+      `{{N_PARCELAS}}/{{PERIODICIDADE}}/{{VALOR_PARCELA_USD}}/{{VALOR_PARCELA_EXTENSO}}`,
+      1ª parcela `{{DIAS_1A_PARCELA}}` dias após o faturamento). **Sem sinal**
+      (`pct_sinal=0`) → item único **(i) Pagamento integral** (à vista = "valor total
+      da mercadoria… dias antes do desembarque"; a prazo = "`{{N_PARCELAS}}` parcelas…
+      iguais de `{{PCT_PARCELA}}` = 100/N do total, valor estimado USD
+      `{{VALOR_PARCELA_USD}}` = total/N cada, vencendo a primeira `{{DIAS_1A_PARCELA}}`
+      dias a partir do faturamento"). Não sai "Sinal de 0%" nem "Saldo de 100%".
     - **Condições Gerais — bullet perda:** com sinal à vista = "Caso o Saldo de
       `{{PCT_SALDO}}` não seja pago… nesta proposta…"; com sinal a prazo = "Caso
       qualquer parcela do saldo não seja paga na data de seu vencimento…"; **sem
@@ -270,8 +270,8 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
       (com_sinal × modalidade) — com sinal cita "data do sinal" (+ "cada parcela do
       saldo" no a prazo); sem sinal cita só "data do pagamento" / "cada parcela".
       (Corrigido "será considerada"→"será considerado".)
-    - Bullets de frete e entrega não têm variante. `DIAS_1A_PARCELA` =
-      `dias_entre(data_ref, data_1a_parcela)`; `PCT_PARCELA` = `pct_parcela_txt(N)`.
+    - Bullets de frete e entrega não têm variante. `DIAS_1A_PARCELA` = número de
+      dias informado (`dias_1a_parcela`, default 30); `PCT_PARCELA` = `pct_parcela_txt(N)`.
 - **Fluxo de Caixa** (`renderFluxoCaixa`) — consolidado de todos os processos: resumo por
   mês + linha do tempo (parcelas previstas/realizadas), filtro por processo, export `.xlsx`
   (`fcExportarExcel`). Só leitura.

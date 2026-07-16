@@ -125,8 +125,8 @@ def main():
             _set_run_text(runs[1],
                           ': em {{N_PARCELAS}} parcelas {{PERIODICIDADE}} e iguais de '
                           'USD {{VALOR_PARCELA_USD}} ({{VALOR_PARCELA_EXTENSO}}), vencendo a '
-                          'primeira em {{DATA_1A_PARCELA}} e as demais a cada período '
-                          'subsequente;')
+                          'primeira {{DIAS_1A_PARCELA}} dias a partir do faturamento e as '
+                          'demais a cada período subsequente;')
             for r in runs[2:]:
                 novo.remove(r)
             pav._p.addnext(novo)
@@ -210,6 +210,18 @@ def main():
             old._p.addprevious(novo)
         remover(old)
         print('OK bullet fechamento do câmbio -> 4 variantes')
+
+    # J) 1ª parcela em DIAS a partir do faturamento (unifica com/sem sinal e
+    #    remove a data absoluta {{DATA_1A_PARCELA}} do (ii) Saldo a prazo).
+    for p in paras(doc):
+        if '{{DATA_1A_PARCELA}}' in p.text:
+            for r in p._p.findall(qn('w:r')):
+                for t in r.findall(qn('w:t')):
+                    if t.text and '{{DATA_1A_PARCELA}}' in t.text:
+                        t.text = t.text.replace(
+                            'vencendo a primeira em {{DATA_1A_PARCELA}}',
+                            'vencendo a primeira {{DIAS_1A_PARCELA}} dias a partir do faturamento')
+            print('OK (ii) a prazo com sinal -> dias a partir do faturamento')
 
     doc.save(SAIDA)
     print('salvo:', SAIDA)

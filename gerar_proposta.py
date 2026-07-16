@@ -42,7 +42,6 @@ import re
 import sys
 import json
 import copy
-import datetime
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -310,17 +309,6 @@ def pct_parcela_txt(n):
     return fmt_num(p, 2) + '%'
 
 
-# Dias corridos entre duas datas ISO (b - a); None se alguma faltar/for inválida.
-def dias_entre(a, b):
-    ma = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(a or ''))
-    mb = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(b or ''))
-    if not ma or not mb:
-        return None
-    da = datetime.date(*map(int, ma.groups()))
-    db = datetime.date(*map(int, mb.groups()))
-    return (db - da).days
-
-
 def montar_mapa(d, itens):
     cliente = str(d.get('cliente', '') or '')
     numero_pil = str(d.get('numero_pil', '') or '')
@@ -355,7 +343,8 @@ def montar_mapa(d, itens):
     period_txt = {'mensal': 'mensais',
                   'quinzenal': 'quinzenais'}.get(
                       str(pg.get('periodicidade', 'mensal')), 'mensais')
-    dias_1a = dias_entre(d.get('data_ref'), pg.get('data_1a_parcela'))
+    # Dias até a 1ª parcela = número informado (após o faturamento). Default 30.
+    dias_1a = max(1, int(num(pg.get('dias_1a_parcela'), 30)))
 
     def pct_txt(p):
         return '%s%% (%s por cento)' % (fmt_num(p, 0).split(',')[0],
@@ -389,8 +378,7 @@ def montar_mapa(d, itens):
         '{{PCT_PARCELA}}': pct_parcela_txt(n_parc) if aprazo else '',
         '{{VALOR_PARCELA_USD}}': fmt_num(parcela_usd, 2) if aprazo else '',
         '{{VALOR_PARCELA_EXTENSO}}': extenso_usd(parcela_usd) if aprazo else '',
-        '{{DATA_1A_PARCELA}}': fmt_data_longa(pg.get('data_1a_parcela')) if aprazo else '',
-        '{{DIAS_1A_PARCELA}}': (dias_txt(dias_1a) if (aprazo and dias_1a is not None) else ''),
+        '{{DIAS_1A_PARCELA}}': dias_txt(dias_1a) if aprazo else '',
         '{{FRETE_USD}}': fmt_num(frete, 0).split(',')[0],
         '{{MODALIDADE_FRETE}}': modalidade,
         '{{PRAZO_ENTREGA}}': dias_txt(prazo),
