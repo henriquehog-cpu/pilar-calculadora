@@ -223,6 +223,103 @@ def main():
                             'vencendo a primeira {{DIAS_1A_PARCELA}} dias a partir do faturamento')
             print('OK (ii) a prazo com sinal -> dias a partir do faturamento')
 
+    # K) {{GRUPOS}}: remover a cor (404040) da marca de parágrafo — texto preto
+    #    padrão. Os runs gerados (gerar_proposta._mk_run) já não recebem cor.
+    p = achar(doc, '{{GRUPOS}}')
+    if p is not None:
+        ppr = p._p.find(qn('w:pPr'))
+        rpr = ppr.find(qn('w:rPr')) if ppr is not None else None
+        if rpr is not None:
+            c = rpr.find(qn('w:color'))
+            if c is not None:
+                rpr.remove(c)
+                print('OK {{GRUPOS}} cor removida')
+
+    # L) "Valor de referência…": trocar pStyle SemEspaamento -> PargrafodaLista
+    #    (entrelinha 360) + ind 720/0, e limpar b/bCs/color/highlight da marca e
+    #    dos runs (texto sem negrito, sem realce, sem cor).
+    p = achar(doc, 'Valor de referência')
+    if p is not None:
+        ppr = p._p.find(qn('w:pPr'))
+        if ppr is not None:
+            pstyle = ppr.find(qn('w:pStyle'))
+            if pstyle is not None:
+                pstyle.set(qn('w:val'), 'PargrafodaLista')
+            if ppr.find(qn('w:spacing')) is None:
+                sp = OxmlElement('w:spacing')
+                sp.set(qn('w:after'), '0'); sp.set(qn('w:line'), '360')
+                sp.set(qn('w:lineRule'), 'auto')
+                (pstyle.addnext(sp) if pstyle is not None else ppr.insert(0, sp))
+            ind = ppr.find(qn('w:ind'))
+            if ind is None:
+                ind = OxmlElement('w:ind'); ppr.append(ind)
+            ind.set(qn('w:left'), '720'); ind.set(qn('w:firstLine'), '0')
+            rpr = ppr.find(qn('w:rPr'))
+            if rpr is not None:
+                for tag in ('w:b', 'w:bCs', 'w:color', 'w:highlight'):
+                    e = rpr.find(qn(tag))
+                    if e is not None:
+                        rpr.remove(e)
+        for r in p._p.findall(qn('w:r')):
+            rr = r.find(qn('w:rPr'))
+            if rr is not None:
+                for tag in ('w:b', 'w:bCs', 'w:color', 'w:highlight'):
+                    e = rr.find(qn(tag))
+                    if e is not None:
+                        rr.remove(e)
+        print('OK "Valor de referência" -> pPr alvo, sem negrito/realce/cor')
+
+    # M) sectPr: cabeçalho (logo) e rodapé institucional em TODAS as páginas —
+    #    remove titlePg e aponta um único par default (header1 + footer2).
+    def _relid(reltype_suffix, target_contains):
+        for rid, rel in doc.part.rels.items():
+            if rel.reltype.endswith(reltype_suffix) and target_contains in str(rel.target_ref):
+                return rid
+        return None
+    hdr_id = _relid('/header', 'header1')
+    ftr_id = _relid('/footer', 'footer2')
+    sect = doc.sections[0]._sectPr
+    tp = sect.find(qn('w:titlePg'))
+    if tp is not None:
+        sect.remove(tp)
+    for ref in (sect.findall(qn('w:headerReference')) + sect.findall(qn('w:footerReference'))):
+        sect.remove(ref)
+    if ftr_id:
+        f = OxmlElement('w:footerReference'); f.set(qn('w:type'), 'default'); f.set(qn('r:id'), ftr_id)
+        sect.insert(0, f)
+    if hdr_id:
+        h = OxmlElement('w:headerReference'); h.set(qn('w:type'), 'default'); h.set(qn('r:id'), hdr_id)
+        sect.insert(0, h)
+    print('OK sectPr -> header1 + footer2 em todas as páginas (sem titlePg)')
+
+    # N) nº de página (campo PAGE) discreto no canto direito do footer2.
+    if ftr_id:
+        ftr_el = doc.part.rels[ftr_id].target_part._element
+        ja_tem = any('PAGE' in (fs.get(qn('w:instr')) or '')
+                     for fs in ftr_el.iter(qn('w:fldSimple')))
+        if not ja_tem:
+            p0 = ftr_el.find(qn('w:p'))
+            if p0 is not None:
+                ppr = p0.find(qn('w:pPr'))
+                if ppr is None:
+                    ppr = OxmlElement('w:pPr'); p0.insert(0, ppr)
+                if ppr.find(qn('w:jc')) is None:
+                    jc = OxmlElement('w:jc'); jc.set(qn('w:val'), 'right')
+                    rpr = ppr.find(qn('w:rPr'))
+                    (rpr.addprevious(jc) if rpr is not None else ppr.append(jc))
+                else:
+                    ppr.find(qn('w:jc')).set(qn('w:val'), 'right')
+                fld = OxmlElement('w:fldSimple')
+                fld.set(qn('w:instr'), r' PAGE   \* MERGEFORMAT ')
+                r = OxmlElement('w:r'); rp = OxmlElement('w:rPr')
+                rf = OxmlElement('w:rFonts'); rf.set(qn('w:ascii'), 'Arial'); rf.set(qn('w:hAnsi'), 'Arial'); rp.append(rf)
+                col = OxmlElement('w:color'); col.set(qn('w:val'), '808080'); rp.append(col)
+                sz = OxmlElement('w:sz'); sz.set(qn('w:val'), '14'); rp.append(sz)
+                r.append(rp)
+                t = OxmlElement('w:t'); t.text = '1'; r.append(t)
+                fld.append(r); p0.append(fld)
+                print('OK footer2 -> nº de página (campo PAGE) à direita')
+
     doc.save(SAIDA)
     print('salvo:', SAIDA)
 

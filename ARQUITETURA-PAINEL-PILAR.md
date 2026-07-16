@@ -229,6 +229,19 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     `1818/3564/992/567/1418/1285`, sem Código a Descrição absorve os 1818 (`5382`).
     Ordem canônica de `<w:tblPr>` mantida (`_tabela_bordas` insere `tblBorders`
     antes de `tblLayout`).
+  - **Formatação dos blocos do corpo** (`_reformar_modelo.py`, passos idempotentes):
+    o parágrafo `{{GRUPOS}}` e o "Valor de referência…" seguem o **pPr alvo** do item
+    (`pStyle=PargrafodaLista` + `spacing after=0 line=360` + `ind left=720 firstLine=0`)
+    e **rPr** Arial sz 18 **sem** `w:color`/`w:b`/`w:highlight` (marca de parágrafo e
+    runs). Antes, `{{GRUPOS}}` herdava `w:color=404040` (cinza) e o "Valor de referência"
+    saía em `SemEspaamento` (entrelinha simples) com negrito+realce amarelo residuais.
+    `gerar_proposta.py` (`_mk_run`/`substituir`) não injeta cor nem realce ao montar/
+    substituir os textos (o PV do grupo continua o único run em negrito).
+  - **Cabeçalho e rodapé em todas as páginas** (`_reformar_modelo.py`): o `sectPr` deixou
+    de usar `titlePg`; agora um único par **default** aponta `header1.xml` (logo PILAR)
+    e `footer2.xml` (institucional), então a página do anexo também sai com logo e rodapé
+    completos. O nº de página (campo `PAGE`) foi adicionado discretamente à direita do
+    `footer2` (antes só o `footer1` simples — hoje órfão — o trazia).
   - **Salvar proposta** (`propSalvar`/`propRestaurarEstado`/`_propColetarEstado`):
     o botão **"💾 Salvar proposta"** persiste o estado da tela em **`proc.proposta`**
     (cabeçalho, `_propItens` c/ `codigo`, nomes de grupo editados, sinal, datas,
