@@ -98,12 +98,13 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
   numerario_despachante: [ ... ],
   resultado: { fob_total_usd, cif_total_brl, custo_final_total, nf_total_brl, lucro_brl, margem_pct, ... },
   pvItens?, demandaId?,  // quando o processo nasceu de uma demanda
-  proposta?: {           // estado salvo da tela Proposta (propSalvar) — restaurado por propSelecionarProcesso
+  proposta?: {           // estado salvo da tela Proposta — CLIENTE ÚNICO (propSalvar)
     cliente, numero, qtd_containers, tipo_container,
     itens:[{codigo,produto,quantidade,unidade,pvUnitarioUSD}], grupos_nomes:{key→nome},
     pct_sinal, cambio_sinal, data_sinal, data_venc_sinal, cambio_ref, data_ref,
     dias_antes, frete_usd, modalidade_frete, prazo_entrega, observacoes,
-    pagamento:{ modalidade:'avista'|'aprazo', parcelas?, periodicidade?, dias_1a_parcela? }, salvo_em }
+    pagamento:{ modalidade:'avista'|'aprazo', parcelas?, periodicidade?, dias_1a_parcela? }, salvo_em },
+  propostas?: { [cliente]: <mesmo objeto de proposta> }  // MULTI-CLIENTE (itens de 2+ clientes no processo)
 }
 ```
 
@@ -253,6 +254,23 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     `_apiSalvarProcessos`, sem clobber — igual `_procSetStatus`). `propSelecionarProcesso`
     restaura tudo de `proc.proposta` quando existe; senão cai na herança dos dados do
     processo. **Gerar o `.docx` também salva** (`gerarProposta` chama `propSalvar(true)`).
+  - **Proposta por cliente (multi-cliente)** — um processo pode ter itens de clientes
+    diferentes (`it.cliente` em `proc.itens`; ex.: PIL-008 com BARRIGA e JUMA). O
+    fornecedor/desembaraço é um pedido só (**Order Request e Resumo Despachante NÃO
+    mudam**); só a **venda** é segregada. `propSelecionarProcesso` deriva os clientes
+    distintos (`_propClientesDistintos`): **0/1 → sem seletor** (comportamento atual,
+    diff zero); **2+ →** card **"Cliente"** (`prop-cliente-sel`), default o 1º cliente.
+    `_propCarregar()` (comum a processo/cliente) filtra `_propItens` só do cliente
+    selecionado a partir de `proc.itens`, sempre pela via `pvUnitCalcMap` (o rateio do
+    cálculo é sobre o processo inteiro; ignora `pvItens` no modo multi); cabeçalho,
+    grupos, totais, sinal/parcelas, resumo e anexo ficam por cliente. `propSelecionarCliente`
+    troca o cliente e recarrega. **Persistência:** multi salva em **`proc.propostas[cliente]`**
+    (merge no objeto — salvar BARRIGA não clobbera JUMA); cliente único segue em
+    `proc.proposta` (compat total). O `.docx` leva só os itens/grupos/valores do cliente
+    e o nome do arquivo usa o cliente selecionado (`… - BARRIGA.docx`). **Fase 2
+    (pendente):** segregar os *recebimentos do cliente* por cliente no processo — hoje
+    `recebimentos_cliente` é único; a proposta por cliente já está pronta para casar com
+    isso quando implementado.
   - **Pagamento do saldo — à vista x a prazo** (seção *Sinal*): select
     `prop-pgmodalidade`; a prazo mostra Nº de parcelas (**≥1**), periodicidade
     (mensal/quinzenal) e **Dias para 1ª parcela (após faturamento)** (`prop-pgdias1a`,

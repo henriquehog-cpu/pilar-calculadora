@@ -4673,6 +4673,7 @@ function toast(msg) {
 
 // ── Proposta Comercial ──────────────────────────────────────────────────────
 let _propProcesso = null;    // processo selecionado (o processo é a fonte dos documentos)
+let _propClienteSel = null;  // cliente selecionado no modo multi-cliente (null = cliente único)
 let _propItens   = [];       // itens editáveis: [{codigo, produto, quantidade, unidade, pvUnitarioUSD}]
 let _propGrupos  = [];        // grupos do corpo (derivados dos itens): [{key, produto, qtd, unidade, pv_unit_usd}]
 let _propGruposNomes = {};    // key do grupo -> nome editado pelo usuário
@@ -4710,6 +4711,17 @@ function renderProposta() {
             <label>Processo</label>
             <select id="prop-select" onchange="propSelecionarProcesso(this.value)">${opts}</select>
             <span class="note">A proposta usa o preço de venda (PV em USD) do processo. FOB, custo e margem não entram.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="prop-cliente-card" style="display:none">
+        <div class="card-hd tq">Cliente</div>
+        <div class="card-bd">
+          <div class="field" style="margin-bottom:0">
+            <label>Cliente da proposta</label>
+            <select id="prop-cliente-sel" onchange="propSelecionarCliente(this.value)"></select>
+            <span class="note">Este processo tem itens de mais de um cliente. Fornecedor e desembaraço são um pedido só; cada cliente recebe sua própria proposta.</span>
           </div>
         </div>
       </div>
@@ -4849,25 +4861,77 @@ function renderProposta() {
 
 }
 
+// Clientes distintos dos itens do processo (trim, sem vazios, ordem de 1ª aparição).
+function _propClientesDistintos(proc) {
+  const seen = new Set(), out = [];
+  for (const it of (proc.itens || [])) {
+    const c = (it.cliente || '').trim();
+    if (c && !seen.has(c)) { seen.add(c); out.push(c); }
+  }
+  return out;
+}
+
 function propSelecionarProcesso(id) {
   const form = document.getElementById('prop-form');
-  if (!id) { _propProcesso = null; form.style.display = 'none'; return; }
+  const cardCli = document.getElementById('prop-cliente-card');
+  if (!id) { _propProcesso = null; _propClienteSel = null; form.style.display = 'none'; if (cardCli) cardCli.style.display = 'none'; return; }
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   _propProcesso = todos.find(p => String(p.id) === String(id)) || null;
-  if (!_propProcesso) { form.style.display = 'none'; return; }
+  if (!_propProcesso) { form.style.display = 'none'; if (cardCli) cardCli.style.display = 'none'; return; }
+
+  // Processo com itens de 2+ clientes → seletor de cliente (venda segregada).
+  // 0 ou 1 cliente → comportamento atual (sem seletor).
+  const clientes = _propClientesDistintos(_propProcesso);
+  if (clientes.length >= 2) {
+    _propClienteSel = clientes[0];
+    if (cardCli) {
+      cardCli.style.display = 'block';
+      const sel = document.getElementById('prop-cliente-sel');
+      sel.innerHTML = clientes.map(c => `<option value="${_cmdEsc(c)}">${_cmdEsc(c)}</option>`).join('');
+      sel.value = _propClienteSel;
+    }
+  } else {
+    _propClienteSel = null;
+    if (cardCli) cardCli.style.display = 'none';
+  }
+  _propCarregar();
+}
+
+// Troca o cliente no modo multi-cliente: recarrega herança/restore daquele cliente.
+function propSelecionarCliente(cliente) {
+  if (!_propProcesso) return;
+  _propClienteSel = (cliente || '').trim() || null;
+  _propCarregar();
+}
+
+// Carrega a tela para o processo (e cliente, se multi): restaura a proposta salva
+// desse cliente ou, na ausência, herda do processo. Modo multi filtra os itens do
+// cliente e usa sempre o rateio via pvUnitCalcMap (cálculo sobre o processo inteiro).
+function _propCarregar() {
   const proc = _propProcesso, g = proc.dados_gerais || {};
   const hoje = new Date().toISOString().slice(0, 10);
   const set = (k, v) => { const e = document.getElementById(k); if (e) e.value = v; };
+  const salva = _propClienteSel ? (proc.propostas && proc.propostas[_propClienteSel]) : proc.proposta;
 
-  // Proposta já salva no processo → restaura tudo dela (itens/grupos/pagamento
-  // inclusive). Sem proposta salva → herança dos dados do processo.
-  if (proc.proposta) {
-    propRestaurarEstado(proc.proposta);
+  if (salva) {
+    propRestaurarEstado(salva);
+  } else if (_propClienteSel) {
+    // MULTI-CLIENTE: só os itens do cliente; PV via rateio do processo inteiro.
+    const mapa = pvUnitCalcMap(proc);
+    _propItens = (proc.itens || [])
+      .filter(it => (it.cliente || '').trim() === _propClienteSel)
+      .filter(it => it.descricao || it.codigo || it.quantidade > 0)
+      .map(it => {
+        const pv = pvUnitUSD(it, mapa);
+        return { codigo: it.codigo || '', produto: it.descricao || it.codigo || '', quantidade: it.quantidade != null ? it.quantidade : '',
+                 unidade: it.unidade || '', pvUnitarioUSD: pv > 0 ? Math.round(pv * 10000) / 10000 : '' };
+      });
+    if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
+    _propGruposNomes = {};
+    set('prop-cliente', _propClienteSel);
+    propPreencherCabecalhoPadrao(proc, hoje, set);
   } else {
-    // PVs: do processo (vindos da demanda vinculada). Sem pvItens → itens do
-    // processo com PV pela precedência única dos documentos (pvUnitUSD /
-    // pvUnitCalcMap, compartilhada com Pedido de Embarque e Fluxo de Caixa).
-    // 4 casas decimais, como o PE exibe (evita divergência de centavos no total).
+    // CLIENTE ÚNICO: comportamento atual (pvItens da demanda ou pvUnitCalcMap).
     if (Array.isArray(proc.pvItens) && proc.pvItens.length) {
       const unidades = (proc.itens || []).map(it => it.unidade || '');
       const codigos = (proc.itens || []).map(it => it.codigo || '');
@@ -4886,26 +4950,30 @@ function propSelecionarProcesso(id) {
     }
     if (!_propItens.length) _propItens = [{ codigo: '', produto: '', quantidade: '', unidade: '', pvUnitarioUSD: '' }];
     _propGruposNomes = {};
-
     set('prop-cliente', g.cliente || '');
-    set('prop-numero', proc.numero || '');
-    set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
-    // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
-    // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
-    const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
-    const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
-    set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
-    set('prop-cambioref', ''); set('prop-dataref', hoje);
-    set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
-    set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
-    set('prop-pgmodalidade', 'avista'); set('prop-pgparcelas', 2);
-    set('prop-pgperiod', 'mensal'); set('prop-pgdias1a', 30);
+    propPreencherCabecalhoPadrao(proc, hoje, set);
   }
 
-  form.style.display = 'block';
+  document.getElementById('prop-form').style.display = 'block';
   propTogglePagamento();
   propRenderItens();
   propRecalc();
+}
+
+// Campos padrão do cabeçalho/sinal/condições na herança (comum a único e multi).
+function propPreencherCabecalhoPadrao(proc, hoje, set) {
+  set('prop-numero', proc.numero || '');
+  set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
+  // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
+  // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
+  const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
+  const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
+  set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
+  set('prop-cambioref', ''); set('prop-dataref', hoje);
+  set('prop-diasantes', 20); set('prop-frete', 2200); set('prop-prazo', 60);
+  set('prop-modalidade', 'o container de 40hc'); set('prop-obs', '');
+  set('prop-pgmodalidade', 'avista'); set('prop-pgparcelas', 2);
+  set('prop-pgperiod', 'mensal'); set('prop-pgdias1a', 30);
 }
 
 function propRenderItens() {
@@ -5079,19 +5147,28 @@ function propRestaurarEstado(e) {
   set('prop-pgdias1a', pg.dias_1a_parcela != null ? pg.dias_1a_parcela : 30);
 }
 
-// Persiste a fatia `proposta` no processo (padrão _procSetStatus: merge por id
+// Persiste a fatia da proposta no processo (padrão _procSetStatus: merge por id
 // no servidor via _apiSalvarProcessos, sem clobber das demais seções).
+// Multi-cliente → proc.propostas[cliente] (não clobbera os demais clientes).
+// Cliente único → proc.proposta (compat com propostas já salvas).
 function propSalvar(silent) {
   if (!_propProcesso) { if (!silent) toast('Selecione um processo.'); return false; }
   const estado = _propColetarEstado();
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   const idx = todos.findIndex(p => String(p.id) === String(_propProcesso.id));
   if (idx < 0) { if (!silent) toast('Processo não encontrado — salve o processo primeiro.'); return false; }
-  todos[idx].proposta = estado;
+  if (_propClienteSel) {
+    if (!todos[idx].propostas || typeof todos[idx].propostas !== 'object') todos[idx].propostas = {};
+    todos[idx].propostas[_propClienteSel] = estado;
+    if (!_propProcesso.propostas || typeof _propProcesso.propostas !== 'object') _propProcesso.propostas = {};
+    _propProcesso.propostas[_propClienteSel] = estado;                // memória consistente
+  } else {
+    todos[idx].proposta = estado;
+    _propProcesso.proposta = estado;                                 // memória consistente
+  }
   todos[idx].atualizado_em = new Date().toISOString();
   localStorage.setItem('pilar_processos', JSON.stringify(todos));  // cache local
   _apiSalvarProcessos(todos);                                      // MERGE por id no servidor
-  _propProcesso.proposta = estado;                                 // memória consistente
   if (!silent) toast('✓ Proposta salva no processo.');
   return true;
 }
