@@ -94,7 +94,8 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
   notasFiscais: [ {tipo,numero,data} ],
   pagamentos_fornecedor: [ { id, descricao, percentual, valor_usd, data_prevista,
                              data_realizada, cambio, valor_reais, status ('previsto'|'pago'|'atrasado'), usd_manual } ],
-  recebimentos_cliente:  [ { ...análogo, status ('previsto'|'recebido'|'atrasado') } ],
+  recebimentos_cliente:  [ { ...análogo, status ('previsto'|'recebido'|'atrasado'),
+                             cliente? } ],  // cliente opcional: parcela de um cliente; vazio/ausente = processo inteiro
   numerario_despachante: [ ... ],
   resultado: { fob_total_usd, cif_total_brl, custo_final_total, nf_total_brl, lucro_brl, margem_pct, ... },
   pvItens?, demandaId?,  // quando o processo nasceu de uma demanda
@@ -267,10 +268,25 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     troca o cliente e recarrega. **Persistência:** multi salva em **`proc.propostas[cliente]`**
     (merge no objeto — salvar BARRIGA não clobbera JUMA); cliente único segue em
     `proc.proposta` (compat total). O `.docx` leva só os itens/grupos/valores do cliente
-    e o nome do arquivo usa o cliente selecionado (`… - BARRIGA.docx`). **Fase 2
-    (pendente):** segregar os *recebimentos do cliente* por cliente no processo — hoje
-    `recebimentos_cliente` é único; a proposta por cliente já está pronta para casar com
-    isso quando implementado.
+    e o nome do arquivo usa o cliente selecionado (`… - BARRIGA.docx`). No modo multi, o
+    **câmbio do sinal** herda da 1ª parcela DO cliente selecionado (fallback: 1ª parcela
+    "todos" → fiscal/DI). **Fase 3 (pendente):** Pedido de Embarque por cliente (hoje o PE
+    lê `recs[0]/recs[1]` do processo inteiro — ver limitação abaixo).
+  - **Recebimentos do Cliente por cliente [Fase 2]** (Seção 6 do Novo/Editar Processo):
+    cada parcela de `recebimentos_cliente` tem `cliente?` opcional (vazio/ausente = processo
+    inteiro; nada é migrado). Coluna **"Cliente"** (select: clientes de `proc.itens` +
+    "— todos —") aparece só quando há **2+ clientes distintos**. A **base do %** é a NF do
+    cliente da parcela (`_fcNfClienteUSD`, soma qtd×PV via `pvUnitUSD/pvUnitCalcMap` —
+    mesma de `fcNfTotalUSD`); parcela "todos" usa a NF total. Rótulo da seção mostra os
+    subtotais ("Total NF: USD X — BARRIGA: USD Y · JUMA: USD Z"). **Conferência de 100%
+    por grupo** (`fcAtualizarFootRec`): cada cliente deve fechar 100% da sua NF;
+    `fcRedistribuirRecebimentos` redistribui dentro de cada grupo. Consolidados (Fluxo de
+    Caixa `fcConsolidadoEventos`, Relatório Geral `parcRows`) exibem "— <cliente>" na
+    descrição quando presente (sem mudança de cálculo). **Cliente único → coluna some,
+    comportamento e valores idênticos.**
+    - **Limitação conhecida (Fase 3):** o **Pedido de Embarque** ainda NÃO é por cliente —
+      `peSelecionar` lê `recs[0]`/`recs[1]` do processo inteiro, ignorando `cliente` da
+      parcela. Segregar o PE por cliente é a Fase 3.
   - **Pagamento do saldo — à vista x a prazo** (seção *Sinal*): select
     `prop-pgmodalidade`; a prazo mostra Nº de parcelas (**≥1**), periodicidade
     (mensal/quinzenal) e **Dias para 1ª parcela (após faturamento)** (`prop-pgdias1a`,

@@ -1520,7 +1520,7 @@ function renderNovoProcesso(proc, seed) {
           </div>
           <div style="overflow-x:auto">
             <table class="items-tbl" style="font-size:13px">
-              <thead><tr>
+              <thead id="fc-rec-thead"><tr>
                 <th>Descrição</th><th>%</th>
                 <th style="text-align:right">Valor USD</th>
                 <th>Câmbio Spot</th>
@@ -3053,7 +3053,7 @@ function fcConsolidadoEventos() {
           !!p.data_realizada || p.status === 'pago', proc.id));
     (proc.recebimentos_cliente || []).forEach(r =>
       add(r.data_realizada || r.data_prevista, proc.numero, nome,
-          `Receb. ${r.descricao || 'cliente'}`, 'entrada', r.valor_reais,
+          `Receb. ${r.descricao || 'cliente'}${r.cliente ? ' — ' + r.cliente : ''}`, 'entrada', r.valor_reais,
           !!r.data_realizada || r.status === 'recebido', proc.id));
     const nums = proc.numerario_despachante || [];
     if (nums.length) {
@@ -3328,9 +3328,22 @@ function fcNfTotalUSD() {
   // Fixo, vem dos ITENS — NÃO de nf_total_brl ÷ câmbio cliente (conceito errado).
   // Precedência única dos documentos (pvUnitUSD / pvUnitCalcMap — mesma da
   // Proposta e do Pedido de Embarque), para que documento e tela nunca divirjam.
+  return _fcNfClienteUSD('');
+}
+
+// NF em USD de um cliente (soma qtd × PV dos itens dele). Cliente vazio = NF total.
+// Rateio via pvUnitCalcMap é sobre o processo inteiro (mapa casado por referência).
+function _fcNfClienteUSD(cliente) {
   const mapa = pvUnitCalcMap(_fcProcesso);
-  return (_fcProcesso?.itens || []).reduce((s, it) =>
-    s + (parseFloat(it.quantidade) || 0) * pvUnitUSD(it, mapa), 0);
+  const c = (cliente || '').trim();
+  return (_fcProcesso?.itens || [])
+    .filter(it => !c || (it.cliente || '').trim() === c)
+    .reduce((s, it) => s + (parseFloat(it.quantidade) || 0) * pvUnitUSD(it, mapa), 0);
+}
+
+// Base do % de uma parcela: NF do cliente da parcela, ou NF total se "todos".
+function _fcNfBaseParcela(r) {
+  return _fcNfClienteUSD(r && r.cliente ? String(r.cliente).trim() : '');
 }
 
 function fcRenderRecebimentos() {
@@ -3339,16 +3352,39 @@ function fcRenderRecebimentos() {
 
   const nfTotalUSD = fcNfTotalUSD();
   const n          = _fcRecebimentos.length || 1;
+  const clientes   = _propClientesDistintos(_fcProcesso);
+  const multi      = clientes.length >= 2;
+
+  // Cabeçalho dinâmico: coluna Cliente só no modo multi.
+  const thead = document.getElementById('fc-rec-thead');
+  if (thead) thead.innerHTML = `<tr>
+    <th>Descrição</th>${multi ? '<th>Cliente</th>' : ''}<th>%</th>
+    <th style="text-align:right">Valor USD</th><th>Câmbio Spot</th>
+    <th style="text-align:right">Valor R$</th><th>Data Prevista</th>
+    <th>Status</th><th>Ações</th></tr>`;
+
+  // Rótulo NF: total + subtotais por cliente (modo multi).
   const nlEl = document.getElementById('fc-rec-nf-label');
-  if (nlEl) nlEl.textContent = nfTotalUSD > 0 ? `Total NF: USD ${fmtN(nfTotalUSD)}` : '';
+  if (nlEl) {
+    if (nfTotalUSD <= 0) nlEl.textContent = '';
+    else if (multi) nlEl.textContent = `Total NF: USD ${fmtN(nfTotalUSD)} — ` +
+      clientes.map(c => `${c}: USD ${fmtN(_fcNfClienteUSD(c))}`).join(' · ');
+    else nlEl.textContent = `Total NF: USD ${fmtN(nfTotalUSD)}`;
+  }
 
   tbody.innerHTML = _fcRecebimentos.map((r, i) => {
     const statusSel = ['previsto','recebido','atrasado'].map(s =>
       `<option${r.status===s?' selected':''}>${s}</option>`).join('');
     const pct = ((r.percentual ?? 1/n) * 100).toFixed(1);
+    const cliCell = multi ? `<td><select style="width:104px;padding:4px 6px"
+        oninput="fcChangeRecebimento(${i},'cliente',this.value)">
+        <option value=""${!r.cliente?' selected':''}>— todos —</option>
+        ${clientes.map(c => `<option value="${esc(c)}"${(r.cliente||'')===c?' selected':''}>${esc(c)}</option>`).join('')}
+      </select></td>` : '';
     return `<tr style="${r.status==='recebido'?'opacity:.75':''}">
       <td><input value="${esc(r.descricao)}" style="width:110px"
         oninput="fcChangeRecebimento(${i},'descricao',this.value)"></td>
+      ${cliCell}
       <td style="white-space:nowrap">
         <input type="number" id="fc-rec-pct-${i}" value="${pct}" min="0" max="100" step="1" style="width:52px"
           oninput="fcChangeRecebimento(${i},'percentual',this.value)">%
@@ -3375,31 +3411,40 @@ function fcRenderRecebimentos() {
         <button class="btn btn-s btn-sm" style="color:#c62828" onclick="fcRemoveRecebimento(${i})">✕</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhum recebimento</td></tr>';
+  }).join('') || `<tr><td colspan="${multi?9:8}" style="text-align:center;padding:16px;color:var(--cinza-med)">Nenhum recebimento</td></tr>`;
   fcAtualizarFootRec();
 }
 
 function fcAtualizarFootRec() {
   const tfoot = document.getElementById('fc-rec-tfoot');
   if (!tfoot) return;
-  let totPct=0, totUSD=0, totBRL=0;
-  _fcRecebimentos.forEach(r => {
-    totPct += r.percentual || 0;
-    totUSD += r.valor_usd  || 0;
-    totBRL += r.valor_reais|| 0;
-  });
-  const pctOk = Math.abs(totPct - 1) < 0.005;
+  const multi = _propClientesDistintos(_fcProcesso).length >= 2;
+  const ncols = multi ? 9 : 8;
+  let totUSD=0, totBRL=0;
+  _fcRecebimentos.forEach(r => { totUSD += r.valor_usd || 0; totBRL += r.valor_reais || 0; });
+
+  // Conferência de 100% POR GRUPO de cliente (parcelas "todos" → grupo vazio).
+  const grupos = {};
+  _fcRecebimentos.forEach(r => { const c=(r.cliente||'').trim(); grupos[c]=(grupos[c]||0)+(r.percentual||0); });
+  const off = Object.keys(grupos).filter(c => Math.abs(grupos[c] - 1) >= 0.005);
+  const pctOk = off.length === 0;
+  const totPct = _fcRecebimentos.reduce((s,r)=>s+(r.percentual||0),0);
+  // No modo multi as bases diferem por cliente → o % total não é somável; mostra a
+  // conferência por cliente. No modo único mantém o comportamento atual.
+  const pctCell = multi
+    ? `<td colspan="2" style="padding:7px 8px;font-weight:400;opacity:.75">por cliente</td>`
+    : `<td style="padding:7px 8px;${!pctOk?'color:#C62828;':''}">${fmtN(totPct*100,1)}%${!pctOk?' ⚠':''}</td>`;
   tfoot.innerHTML = `
     <tr style="background:var(--cinza-light);font-weight:700;font-size:13px">
       <td style="padding:7px 8px">TOTAL</td>
-      <td style="padding:7px 8px;${!pctOk?'color:#C62828;':''}">${fmtN(totPct*100,1)}%${!pctOk?' ⚠':''}</td>
+      ${pctCell}
       <td style="text-align:right;padding:7px 8px">USD ${fmtN(totUSD)}</td>
       <td></td>
       <td style="text-align:right;padding:7px 8px;color:var(--turquesa-dark)">R$ ${fmtN(totBRL)}</td>
       <td colspan="3"></td>
     </tr>
-    ${!pctOk ? `<tr><td colspan="8" style="background:#FFF8E1;color:#C62828;font-size:11px;padding:5px 8px">
-      ⚠ Parcelas somam ${fmtN(totPct*100,1)}% — devem totalizar 100%.
+    ${!pctOk ? `<tr><td colspan="${ncols}" style="background:#FFF8E1;color:#C62828;font-size:11px;padding:5px 8px">
+      ⚠ ${off.map(c => `${c || 'todos'}: ${fmtN(grupos[c]*100,1)}%`).join(' · ')} — cada cliente deve totalizar 100% da sua NF.
     </td></tr>` : ''}`;
 }
 
@@ -3408,7 +3453,7 @@ function fcChangeRecebimento(i, campo, valor) {
   if (!r) return;
   if (campo === 'percentual') {
     r.percentual  = parseFloat(valor) / 100 || 0;
-    r.valor_usd   = parseFloat((fcNfTotalUSD() * r.percentual).toFixed(2));
+    r.valor_usd   = parseFloat((_fcNfBaseParcela(r) * r.percentual).toFixed(2));
     r.usd_manual  = false;
     r.valor_reais = parseFloat((r.valor_usd * (r.cambio||0)).toFixed(2));
     const uEl = document.getElementById(`fc-rec-usd-${i}`);
@@ -3417,11 +3462,12 @@ function fcChangeRecebimento(i, campo, valor) {
     if (bEl) bEl.textContent = 'R$ '  + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
   } else if (campo === 'valor_usd') {
-    // Vínculo bidirecional: digitar o USD recalcula o % sobre o TOTAL NF (mercadoria).
-    const nfTotalUSD = fcNfTotalUSD();
+    // Vínculo bidirecional: digitar o USD recalcula o % sobre a NF-base da parcela
+    // (NF do cliente da parcela, ou NF total quando "todos").
+    const base = _fcNfBaseParcela(r);
     r.valor_usd   = parseFloat(valor) || 0;
     r.usd_manual  = true;
-    r.percentual  = nfTotalUSD > 0 ? r.valor_usd / nfTotalUSD : 0;
+    r.percentual  = base > 0 ? r.valor_usd / base : 0;
     r.valor_reais = parseFloat((r.valor_usd * (r.cambio||0)).toFixed(2));
     const uEl = document.getElementById(`fc-rec-usd-${i}`);
     const pEl = document.getElementById(`fc-rec-pct-${i}`);
@@ -3430,6 +3476,15 @@ function fcChangeRecebimento(i, campo, valor) {
     if (pEl) pEl.value = (r.percentual * 100).toFixed(1);  // atualiza % na tela sem re-render (não rouba foco)
     if (bEl) bEl.textContent = 'R$ ' + fmtN(r.valor_reais);
     fcAtualizarFootRec(); fcRenderResumo();
+  } else if (campo === 'cliente') {
+    // Trocar o cliente muda a NF-base → recalcula o USD pelo % (salvo se manual)
+    // e re-renderiza (subtotais/label/conferência mudam).
+    r.cliente = (valor || '').trim();
+    const base = _fcNfBaseParcela(r);
+    if (r.usd_manual) r.percentual = base > 0 ? r.valor_usd / base : 0;
+    else r.valor_usd = parseFloat((base * (r.percentual || 0)).toFixed(2));
+    r.valor_reais = parseFloat((r.valor_usd * (r.cambio||0)).toFixed(2));
+    fcRenderRecebimentos(); fcRenderResumo();
   } else if (campo === 'cambio') {
     r.cambio      = parseFloat(valor) || 0;
     r.valor_reais = parseFloat((r.valor_usd * r.cambio).toFixed(2));
@@ -3443,14 +3498,21 @@ function fcChangeRecebimento(i, campo, valor) {
 
 function fcRedistribuirRecebimentos() {
   if (!_fcRecebimentos.length) return;
-  const n          = _fcRecebimentos.length;
-  const nfTotalUSD = fcNfTotalUSD();
   const camCliente = _fcProcesso?.cambios?.cliente?.taxa || 0;
-  const parteP     = parseFloat((1 / n).toFixed(6));
-  _fcRecebimentos.forEach((r, i) => {
-    r.percentual  = i < n - 1 ? parteP : parseFloat((1 - parteP * (n - 1)).toFixed(6));
-    r.valor_usd   = parseFloat((nfTotalUSD * r.percentual).toFixed(2));
-    r.valor_reais = parseFloat((r.valor_usd * (r.cambio || camCliente || 0)).toFixed(2));
+  // Redistribui igualmente DENTRO de cada grupo de cliente (parcelas "todos" =
+  // grupo vazio), cada grupo fechando 100% da NF do seu cliente. Cliente único
+  // = um só grupo contra a NF total (comportamento anterior, diff zero).
+  const grupos = {};
+  _fcRecebimentos.forEach((r, idx) => { const c=(r.cliente||'').trim(); (grupos[c]=grupos[c]||[]).push(idx); });
+  Object.keys(grupos).forEach(c => {
+    const idxs = grupos[c], n = idxs.length, base = _fcNfClienteUSD(c);
+    const parteP = parseFloat((1 / n).toFixed(6));
+    idxs.forEach((idx, k) => {
+      const r = _fcRecebimentos[idx];
+      r.percentual  = k < n - 1 ? parteP : parseFloat((1 - parteP * (n - 1)).toFixed(6));
+      r.valor_usd   = parseFloat((base * r.percentual).toFixed(2));
+      r.valor_reais = parseFloat((r.valor_usd * (r.cambio || camCliente || 0)).toFixed(2));
+    });
   });
 }
 
@@ -4483,7 +4545,7 @@ function relGerarDetalhado() {
     `<div class="rel-row"><span>${lbl}</span><span class="rel-val">${val}</span></div>`;
 
   const parcRows = (arr) => (arr || []).map(p => `<tr>
-      <td>${esc(p.descricao || '—')}</td>
+      <td>${esc((p.descricao || '—') + (p.cliente ? ' — ' + p.cliente : ''))}</td>
       <td class="r">${fmtN((p.percentual || 0) * 100, 1)}%</td>
       <td class="r">USD ${fmtN(p.valor_usd || 0, 2)}</td>
       <td class="r">${fmtN(p.cambio || 0, 4)}</td>
@@ -4965,8 +5027,14 @@ function propPreencherCabecalhoPadrao(proc, hoje, set) {
   set('prop-numero', proc.numero || '');
   set('prop-qtdcont', (proc.frete && proc.frete.containers) || 1); set('prop-tipocont', '40HC');
   // Câmbio do sinal: 1ª parcela de Recebimentos do Cliente, fallback câmbio
-  // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar).
-  const sinalRec = (proc.recebimentos_cliente || [])[0] || null;
+  // fiscal/DI — mesma regra do Pedido de Embarque (peSelecionar). No modo
+  // multi-cliente, herda da 1ª parcela DO cliente selecionado (fallback: 1ª
+  // parcela "todos" → fiscal/DI).
+  const recs = proc.recebimentos_cliente || [];
+  const sinalRec = _propClienteSel
+    ? (recs.find(r => (r.cliente || '').trim() === _propClienteSel)
+       || recs.find(r => !(r.cliente || '').trim()) || null)
+    : (recs[0] || null);
   const cambioSinal = sinalRec?.cambio || proc.cambios?.fiscal?.taxa || proc.cambios?.di?.taxa || '';
   set('prop-pctsinal', 20); set('prop-cambio', cambioSinal); set('prop-datasinal', hoje); set('prop-datavenc', '');
   set('prop-cambioref', ''); set('prop-dataref', hoje);
