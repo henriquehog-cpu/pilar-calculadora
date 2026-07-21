@@ -395,6 +395,24 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
 evento; numerário = 1 consolidado/processo), usando `data_realizada` se houver, senão
 `data_prevista`. Alimenta a linha do tempo e o `fcExportarExcel`.
 
+### Régua de datas derivadas (`_derivarOperacional` / `_derivarCaixa` / numerário)
+Derivação estimada de `data_prevista`, usada por `npDerivarDatas` (tela, sobre inputs +
+`_fc*`) e por `derivarDatasProcesso` (objeto processo). Modo `'vazios'` só completa
+vazias; `'tudo'` re-deriva as derivadas. Âncoras nunca mudam (`data_pedido`,
+`prev_embarque` preenchido) e `data_realizada` nunca é tocada.
+- **Operacional** (`_derivarOperacional`, muta `dados_gerais`): `prev_embarque` = âncora
+  ou `d0+50`; `prev_chegada_porto` = embarque+40; `prev_chegada_cliente` = porto+15.
+- **Pagamentos** (`_derivarCaixa`): última parcela `d0+60`, anteriores `d0+2`.
+- **Recebimentos** (`_derivarCaixa`): **última parcela (saldo) = `prev_chegada_porto − 20`**
+  ("saldo até 20 dias antes do desembarque"); sem porto → fallback `d0+70`. Demais
+  (sinal/intermediárias) = `d0+10`. `_derivarCaixa` recebe `porto` além de `d0`.
+- **Numerário**: **`data_prevista = prev_chegada_porto − 5`** (5 dias antes de atracar);
+  sem porto → fallback `d0+86`. Aplicado nos dois pontos (`_fcNumPag` em `npDerivarDatas`
+  e `numerario_despachante` em `derivarDatasProcesso`).
+- **Guarda de status:** mesmo em `'tudo'`, parcela/numerário liquidado NÃO tem
+  `data_prevista` re-derivada — só `'previsto'`/`'atrasado'`. Predicado `_fcFinalizado`
+  (`'pago'` p/ pagamentos e numerário, `'recebido'` p/ recebimentos).
+
 ### Módulo de câmbio (memorando) — 2A/2B/2C
 - **2A (gerar PDF, leitura):** `mcAbrirParcela(i)` garante `id` estável na parcela e abre
   `mcAbrir` com **só aquela parcela**. `mcBuildMemorando(proc)` monta `_mcMemorando`

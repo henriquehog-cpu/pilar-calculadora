@@ -2294,9 +2294,11 @@ function npDerivarDatas(modo) {
   set('np-porto',    g.prev_chegada_porto);
   set('np-chegada',  g.prev_chegada_cliente);
 
-  // Caixa: parcelas + numerário (data_realizada nunca tocado).
-  _derivarCaixa(_fcPagamentos, _fcRecebimentos, d0, modo);
-  if (modo === 'tudo' || _fcVazia(_fcNumPag.data_prevista)) _fcNumPag.data_prevista = addDias(d0, 86);
+  // Caixa: parcelas + numerário (data_realizada nunca tocado). Âncora do saldo/
+  // numerário = prev_chegada_porto já derivado (g), com fallback d0+70 / d0+86.
+  _derivarCaixa(_fcPagamentos, _fcRecebimentos, d0, modo, g.prev_chegada_porto);
+  if (_fcNumPag.status !== 'pago' && (modo === 'tudo' || _fcVazia(_fcNumPag.data_prevista)))
+    _fcNumPag.data_prevista = _fcVazia(g.prev_chegada_porto) ? addDias(d0, 86) : addDias(g.prev_chegada_porto, -5);
   fcRenderPagamentos();
   fcRenderRecebimentos();
   fcRenderNumerario();
@@ -3782,29 +3784,51 @@ function _derivarOperacional(g, d0, modo) {
   if (tudo || _fcVazia(g.prev_chegada_cliente)) g.prev_chegada_cliente = addDias(g.prev_chegada_porto, 15);
 }
 
+// Parcela/numerário já liquidado nunca tem a data_prevista re-derivada (nem em
+// 'tudo'): 'pago' (pagamentos/numerário) ou 'recebido' (recebimentos). Só
+// 'previsto'/'atrasado' são derivados. data_realizada nunca é tocada.
+const _fcFinalizado = st => st === 'pago' || st === 'recebido';
+
 // Régua de CAIXA (muta arrays). Pagamentos por ordem: última D+60, anteriores D+2.
-// Recebimentos por ordem: última D+70, anteriores D+10. Nunca toca data_realizada.
-// 'vazios' só completa vazias; 'tudo' re-deriva todas as data_prevista derivadas.
-function _derivarCaixa(pags, recs, d0, modo) {
+// Recebimentos: ÚLTIMA parcela (saldo) = prev_chegada_porto − 20 (saldo até 20 dias
+// antes do desembarque); sem porto → fallback d0+70. Demais (sinal/intermediárias)
+// = d0+10. Nunca toca data_realizada nem re-deriva parcela finalizada (_fcFinalizado).
+// 'vazios' só completa vazias; 'tudo' re-deriva as data_prevista derivadas.
+function _derivarCaixa(pags, recs, d0, modo, porto) {
   if (!d0) return;
   const tudo = modo === 'tudo';
   const np = (pags || []).length;
-  (pags || []).forEach((p, i) => { if (tudo || _fcVazia(p.data_prevista)) p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2); });
+  (pags || []).forEach((p, i) => {
+    if (_fcFinalizado(p.status)) return;
+    if (tudo || _fcVazia(p.data_prevista)) p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2);
+  });
   const nr = (recs || []).length;
-  (recs || []).forEach((r, i) => { if (tudo || _fcVazia(r.data_prevista)) r.data_prevista = addDias(d0, i === nr - 1 ? 70 : 10); });
+  (recs || []).forEach((r, i) => {
+    if (_fcFinalizado(r.status)) return;
+    if (tudo || _fcVazia(r.data_prevista)) {
+      const ultima = i === nr - 1;
+      r.data_prevista = (ultima && !_fcVazia(porto))
+        ? addDias(porto, -20)                    // saldo: 20 dias antes do desembarque
+        : addDias(d0, ultima ? 70 : 10);         // fallback última sem porto → d0+70; demais → d0+10
+    }
+  });
 }
 
 // Orquestra a derivação completa sobre um OBJETO processo (operacionais + caixa).
-// Numerário: data D+86 em cada item. Retorna false se sem data_pedido.
+// Numerário: prev_chegada_porto − 5 (5 dias antes de atracar); sem porto → d0+86.
+// Não re-deriva numerário 'pago'. Retorna false se sem data_pedido.
 function derivarDatasProcesso(proc, modo) {
   const g = proc && proc.dados_gerais;
   const d0 = g && g.data_pedido;
   if (!d0) return false;
   _derivarOperacional(g, d0, modo);
-  _derivarCaixa(proc.pagamentos_fornecedor, proc.recebimentos_cliente, d0, modo);
+  const porto = g.prev_chegada_porto;   // já derivado por _derivarOperacional
+  _derivarCaixa(proc.pagamentos_fornecedor, proc.recebimentos_cliente, d0, modo, porto);
   const tudo = modo === 'tudo';
   (proc.numerario_despachante || []).forEach(n => {
-    if (tudo || _fcVazia(n.data_prevista)) n.data_prevista = addDias(d0, 86);
+    if (n.status === 'pago') return;
+    if (tudo || _fcVazia(n.data_prevista))
+      n.data_prevista = _fcVazia(porto) ? addDias(d0, 86) : addDias(porto, -5);
   });
   return true;
 }
