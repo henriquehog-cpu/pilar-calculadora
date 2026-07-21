@@ -344,10 +344,26 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
   modal add/editar espelhando `npm*`, remover). Persiste em `/api/fornecedores`.
 - **Catálogo** (`renderCatalogo`), **Banco DI** (`renderBancoTabela`), **Configurações** (`renderConfig`).
 
+### Numeração de processo (`PIL-NNN-AAAA`)
+- **`gerarNumero()`** — próximo número do ANO corrente = **MAX(sequencial) + 1** entre
+  os processos cujo `numero` casa `/^PIL-(\d+)-(\d{4})$/` (formatos fora do padrão e de
+  outros anos são ignorados). Sem processos no ano → `001`. **Não usa `length + 1`**:
+  com processos excluídos (lista com buracos) o `length+1` repetia número, e como a
+  edição navega por `numero` (`#/processo/<numero>` → `_procPorNumero` pega o 1º match),
+  abrir um número duplicado carregava os dados do outro processo.
+- **Guarda de unicidade no `npSalvar`** — antes de gravar, se o `numero` digitado já
+  existir em OUTRO processo (id diferente de `_npEditId`), bloqueia com toast
+  ("Número X já usado pelo processo …") e não salva. Cobre criação e edição; editar
+  mantendo o próprio número é permitido (o próprio id é ignorado na checagem).
+- **Diagnóstico no proxy** — `logNumerosDuplicados()` (`painel-proxy.js`) roda no salvar
+  de `pilar_processos` (merge e substituir); NÃO bloqueia, só faz `console.warn` dos
+  números repetidos no `dados.json` (para correção manual de duplicatas legadas em prod).
+
 ### Como um processo é montado/salvo
 - **`npSalvar()`** — monta `dadosForm` (dados_gerais, cambios, frete, custos, itens,
   operacional, `pagamentos_fornecedor: _fcPagamentos`, recebimentos, numerário),
-  calcula `resultado` via `npCalcResultado`, faz upsert por `id` em `pilar_processos`
+  aplica a **guarda de unicidade de `numero`** (acima), calcula `resultado` via
+  `npCalcResultado`, faz upsert por `id` em `pilar_processos`
   (`localStorage.setItem` + `_apiSalvarProcessos`) e **navega para a lista**.
 - **`_procSetStatus(id, status)`** — padrão canônico de "salvar uma fatia do processo"
   SEM navegar: lê `todos`, acha por id, muta só o necessário, `atualizado_em`,

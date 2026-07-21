@@ -291,6 +291,27 @@ function completarNcmAliquotas(processos) {
   }
 }
 
+// ── Diagnóstico: números de processo duplicados ──────────────────────────────
+// NÃO bloqueia nada. Só varre o conjunto que será persistido e loga no console
+// os numeros repetidos (mesmo numero em ids diferentes) para correção manual em
+// produção. O front já usa MAX+1 (gerarNumero) e guarda de unicidade no salvar;
+// este log serve para achar duplicatas que já existiam no dados.json legado.
+function logNumerosDuplicados(processos) {
+  if (!Array.isArray(processos)) return;
+  const cont = new Map();
+  for (const p of processos) {
+    const num = p && p.numero ? String(p.numero).trim() : '';
+    if (!num) continue;
+    if (!cont.has(num)) cont.set(num, []);
+    cont.get(num).push(p && p.id);
+  }
+  const dups = [...cont.entries()].filter(([, ids]) => ids.length > 1);
+  if (dups.length) {
+    console.warn('[PILAR] Números de processo DUPLICADOS no dados.json (corrigir manualmente):');
+    for (const [num, ids] of dups) console.warn(`  ${num} → ids: ${ids.join(', ')}`);
+  }
+}
+
 function mergeFatiaPorId(req, res, chave, label) {
   const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
   readBody(req).then(body => {
@@ -311,6 +332,7 @@ function mergeFatiaPorId(req, res, chave, label) {
     if (substituir) {
       dados[chave] = arr;                       // escape hatch explícito
       salvarDados(dados);
+      if (chave === 'pilar_processos') logNumerosDuplicados(dados[chave]);
       return json(res, 200, { ok: true, modo: 'substituir', total: arr.length });
     }
     // Merge por id: cada item precisa de id estável.
@@ -328,6 +350,7 @@ function mergeFatiaPorId(req, res, chave, label) {
     }
     dados[chave] = [...porId.values()];         // nenhum id omitido é removido
     salvarDados(dados);
+    if (chave === 'pilar_processos') logNumerosDuplicados(dados[chave]);
     json(res, 200, { ok: true, modo: 'merge', total: dados[chave].length, atualizados, adicionados });
   }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
 }

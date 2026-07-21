@@ -1164,10 +1164,24 @@ let _procFiltro = 'ativos'; // lista de processos: 'ativos' | 'finalizados' | 't
 // (mais recentes primeiro). Colunas: 'numero'|'cliente'|'fornecedor'|'data'|'status'|'docs'|'fob'.
 let _procSort = { coluna: null, dir: 'asc' };
 
+// Próximo número do ANO corrente = MAX(sequencial) + 1 entre os processos cujo
+// numero casa /^PIL-(\d+)-(\d{4})$/ (formatos fora do padrão são ignorados).
+// Usar MAX+1 (não length+1) evita repetir número quando há processos excluídos
+// (lista com buracos) — bug que fazia dois processos compartilharem o mesmo
+// numero e, como a edição navega por numero, abrir um carregava o do outro.
 function gerarNumero() {
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
   const ano   = new Date().getFullYear();
-  const seq   = String(todos.length + 1).padStart(3, '0');
+  const re    = /^PIL-(\d+)-(\d{4})$/;
+  let max = 0;
+  for (const p of todos) {
+    const m = re.exec(String(p && p.numero || ''));
+    if (m && parseInt(m[2], 10) === ano) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  const seq = String(max + 1).padStart(3, '0');
   return `PIL-${seq}-${ano}`;
 }
 
@@ -2170,6 +2184,19 @@ function npSalvar() {
   } : {};
 
   const todos = JSON.parse(localStorage.getItem('pilar_processos') || '[]');
+
+  // Guarda de unicidade: o numero não pode colidir com OUTRO processo (id diferente).
+  // Cobre criação (todo processo existente conta) e edição (o próprio processo,
+  // com id === _npEditId, é ignorado → manter o próprio numero é permitido).
+  const numDigitado = String(dadosForm.numero || '').trim();
+  const conflito = todos.find(p =>
+    String(p && p.numero || '').trim() === numDigitado &&
+    String(p && p.id) !== String(_npEditId));
+  if (conflito) {
+    const cli = conflito.dados_gerais?.cliente || conflito.cliente || '';
+    toast(`Número ${numDigitado} já usado pelo processo${cli ? ' de ' + cli : ' de id ' + conflito.id}`);
+    return;
+  }
 
   // Etapa D: "Certificado de Origem" saiu da UI; preserva o dado se o processo já o tinha.
   if (_npEditId) {
