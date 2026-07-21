@@ -364,7 +364,24 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
   operacional, `pagamentos_fornecedor: _fcPagamentos`, recebimentos, numerário),
   aplica a **guarda de unicidade de `numero`** (acima), calcula `resultado` via
   `npCalcResultado`, faz upsert por `id` em `pilar_processos`
-  (`localStorage.setItem` + `_apiSalvarProcessos`) e **navega para a lista**.
+  (`localStorage.setItem` + `_apiSalvarProcessos`) e **permanece no processo**
+  (salvar sem fechar): na edição re-renderiza o detalhe com os dados salvos; na
+  criação abre o detalhe do recém-criado já em modo edição. O re-render usa
+  `renderNovoProcesso(procSalvo)` (proc lido de `todos`), que reancora `_npEditId`
+  (`proc.id`) e recarrega o estado de caixa `_fc*` do salvo via `fcCarregarEstado`
+  (deep-clone) — sem duplicar parcelas nem perder edições não relacionadas. O hash
+  `#/processo/<numero>` é atualizado por `history.replaceState` (não dispara
+  hashchange → sem reload/duplo-render); cobre o rename do `numero` sem deixar
+  processo órfão. Toast **"✓ Salvo"**.
+- **Cópia de item (`_npItensParaCopia`, botão "Copiar pedido")** — clona por whitelist
+  `COPIAR`: `codigo, descricao, ncm, aliquotas, familia, largura_cm, gsm, cor,
+  margem_pct, unidade, cliente` (aliquotas é clonado por valor). `quantidade`/
+  `fob_unit_usd` nascem **zerados** (via `newItemRow`), por design.
+- **Default de margem** — `newItemRow()` cria item novo (à mão) com `margem_pct: 0.06`
+  (**6% = padrão PILAR**). Os fallbacks `?? 0.20` (`calc-processo.js`, display em
+  `s4`) foram **mantidos** de propósito: mudá-los alteraria resultados históricos de
+  itens salvos sem `margem_pct`; alinhar a 0.06 só depois de confirmar (via
+  diagnóstico) que nenhum item em produção está sem o campo.
 - **`_procSetStatus(id, status)`** — padrão canônico de "salvar uma fatia do processo"
   SEM navegar: lê `todos`, acha por id, muta só o necessário, `atualizado_em`,
   `localStorage.setItem` + `_apiSalvarProcessos`, re-renderiza. É o mecanismo reusado
@@ -488,7 +505,8 @@ Consome, **read-only**, endpoints do proxy:
   e cache `pilar_x` populado no boot por `_apiCarregar`. Entra na proteção de backup do deploy.
 - **Gravar uma fatia do processo sem navegar:** usar o padrão **`_procSetStatus`**
   (upsert por id + `_apiSalvarProcessos` + re-render). **Não** chamar `npSalvar` (ele
-  navega para a lista de Processos).
+  salva o processo INTEIRO a partir do formulário e re-renderiza o detalhe — pensado
+  para o botão "Salvar" da tela de Processo, não para uma fatia).
 - **Append-only (`cambios.json`):** o POST anexa UM registro (nunca substitui) — histórico
   de rastreabilidade não pode ser apagado por engano.
 - **Documentos = `window.print()`** no `#or-print-area`; não há lib de PDF. Reusar

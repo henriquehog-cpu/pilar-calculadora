@@ -1189,7 +1189,7 @@ function newItemRow() {
   return { codigo:'', descricao:'', cor:'', cliente:'', quantidade:0, unidade:'PC',
            fob_unit_usd:0, ncm:'', gsm:'', largura_cm:'', tamanho:'',
            peso_liq_unit:0, peso_bruto_unit:0,
-           margem_pct: 0.20, pv_fixo_usd: 0, is_novo: false };
+           margem_pct: 0.06, pv_fixo_usd: 0, is_novo: false };  // 6% = padrão PILAR
 }
 
 function esc(s) { return (s||'').toString().replace(/"/g,'&quot;'); }
@@ -2212,10 +2212,12 @@ function npSalvar() {
     dadosForm.demandaId = _npSeed._demandaId != null ? _npSeed._demandaId : null;
   }
 
+  let procSalvo = null;   // referência ao processo gravado (p/ permanecer nele após salvar)
   if (_npEditId) {
     const idx = todos.findIndex(p => p.id === _npEditId);
     if (idx >= 0) {
       todos[idx] = { ...todos[idx], ...dadosForm, atualizado_em: new Date().toISOString() };
+      procSalvo = todos[idx];
     }
   } else {
     const novo = {
@@ -2227,6 +2229,7 @@ function npSalvar() {
     // Automático na criação: deriva só as datas OPERACIONAIS vazias (caixa é lazy).
     if (novo.dados_gerais?.data_pedido) derivarDatasProcesso(novo, 'vazios');
     todos.push(novo);
+    procSalvo = novo;
   }
 
   localStorage.setItem('pilar_processos', JSON.stringify(todos));
@@ -2246,10 +2249,30 @@ function npSalvar() {
     toast(`⚠ ${semAliq} item(s) com NCM sem alíquotas cadastradas. O cálculo de II pode estar incorreto.`);
   }
 
-  const link = Array.from(document.querySelectorAll('.nav-link'))
-    .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
-  if (link) navTo(link, renderProcessos);
-  else renderProcessos();
+  // Salvar SEM fechar: permanecer no processo.
+  // - Edição: re-renderiza o detalhe com os dados salvos.
+  // - Criação: abre o detalhe do recém-criado, agora em modo edição.
+  // renderNovoProcesso(procSalvo) reancora _npEditId (proc.id) e recarrega o estado
+  // de caixa (_fc*) a partir do salvo via fcCarregarEstado (deep-clone) → sem
+  // duplicar parcelas nem perder edições não relacionadas.
+  // O hash é atualizado por replaceState (não dispara hashchange → sem reload nem
+  // duplo-render); cobre o caso de o usuário ter renomeado o numero (novo hash) e
+  // não deixa processo órfão, pois o re-render lê o proc salvo direto de `todos`.
+  if (procSalvo) {
+    const numeroSalvo = procSalvo.numero || '';
+    if (numeroSalvo && typeof history !== 'undefined' && history.replaceState) {
+      history.replaceState(null, '', '#/processo/' + encodeURIComponent(numeroSalvo));
+    }
+    _setActiveNav('renderNovoProcesso');
+    renderNovoProcesso(procSalvo);
+    toast('✓ Salvo');
+  } else {
+    // Fallback defensivo (processo não localizado após salvar): volta à lista.
+    const link = Array.from(document.querySelectorAll('.nav-link'))
+      .find(el => el.textContent.includes('Processos') && !el.textContent.includes('Novo'));
+    if (link) navTo(link, renderProcessos);
+    else renderProcessos();
+  }
 }
 
 // Derivação completa de datas (operacional + caixa) na tela de Processo — IN-MEMORY.
@@ -2582,7 +2605,10 @@ function _procSetStatus(id, status) {
 // PURA: copia só os campos de produto (sem qtd/FOB, que nascem 0 via newItemRow);
 // aliquotas é clonado para não referenciar o original. Não muta a origem.
 function _npItensParaCopia(itens) {
-  const COPIAR = ['codigo', 'descricao', 'ncm', 'aliquotas', 'familia', 'largura_cm', 'gsm', 'cor'];
+  // Herda também margem_pct (senão a cópia voltava ao default), unidade (senão
+  // voltava a "PC") e cliente (senão perdia o cliente do item). Qtd/FOB seguem
+  // zerados por design (nascem 0 via newItemRow).
+  const COPIAR = ['codigo', 'descricao', 'ncm', 'aliquotas', 'familia', 'largura_cm', 'gsm', 'cor', 'margem_pct', 'unidade', 'cliente'];
   return (Array.isArray(itens) ? itens : []).map(it => {
     const novo = newItemRow();   // quantidade:0, fob_unit_usd:0, etc.
     COPIAR.forEach(k => {
