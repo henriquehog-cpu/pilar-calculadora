@@ -2303,9 +2303,20 @@ function npDerivarDatas(modo) {
   fcRenderRecebimentos();
   fcRenderNumerario();
 
-  toast(modo === 'tudo'
-    ? 'Datas recalculadas (estimadas). Revise e clique Salvar Alterações.'
-    : 'Datas vazias preenchidas (estimadas). Revise e clique Salvar Alterações.');
+  // Resumo (cosmético): data de saldo resultante por cliente (dá pista mesmo quando
+  // o recálculo é idempotente). Saldo = última parcela de cada grupo de cliente
+  // (mesmo agrupamento de _derivarCaixa). 1 grupo → só a data, sem rótulo.
+  const ddmm = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? `${m[3]}/${m[2]}` : '—'; };
+  const saldoPorGrupo = {};
+  _fcRecebimentos.forEach(r => { saldoPorGrupo[(r.cliente || '').trim()] = r.data_prevista; });
+  const grupos = Object.keys(saldoPorGrupo);
+  let saldosTxt = '';
+  if (grupos.length === 1) saldosTxt = ddmm(saldoPorGrupo[grupos[0]]);
+  else if (grupos.length > 1) saldosTxt = grupos.map(c => `${c || 'todos'} ${ddmm(saldoPorGrupo[c])}`).join(', ');
+
+  toast((modo === 'tudo' ? 'Datas recalculadas (estimadas).' : 'Datas vazias preenchidas (estimadas).')
+    + (saldosTxt ? ` Saldo(s): ${saldosTxt}.` : '')
+    + ' Revise e clique Salvar Alterações.');
 }
 
 // ── Modal de cadastro de alíquotas ─────────────────────────────────────────
@@ -3790,9 +3801,13 @@ function _derivarOperacional(g, d0, modo) {
 const _fcFinalizado = st => st === 'pago' || st === 'recebido';
 
 // Régua de CAIXA (muta arrays). Pagamentos por ordem: última D+60, anteriores D+2.
-// Recebimentos: ÚLTIMA parcela (saldo) = prev_chegada_porto − 20 (saldo até 20 dias
-// antes do desembarque); sem porto → fallback d0+70. Demais (sinal/intermediárias)
-// = d0+10. Nunca toca data_realizada nem re-deriva parcela finalizada (_fcFinalizado).
+// Recebimentos: o "saldo" é detectado POR CLIENTE — a ÚLTIMA parcela de CADA grupo
+// de cliente (mesmo critério de agrupamento de fcAtualizarFootRec/fcRedistribuir:
+// (r.cliente||'').trim(); "todos"/vazio = grupo próprio, ordem do array preservada)
+// = prev_chegada_porto − 20 (saldo até 20 dias antes do desembarque); sem porto →
+// fallback d0+70. Demais parcelas do grupo (sinal/intermediárias) = d0+10. Assim os
+// saldos de TODOS os clientes acompanham o embarque, não só a última linha global.
+// Nunca toca data_realizada nem re-deriva parcela finalizada (_fcFinalizado).
 // 'vazios' só completa vazias; 'tudo' re-deriva as data_prevista derivadas.
 function _derivarCaixa(pags, recs, d0, modo, porto) {
   if (!d0) return;
@@ -3802,14 +3817,16 @@ function _derivarCaixa(pags, recs, d0, modo, porto) {
     if (_fcFinalizado(p.status)) return;
     if (tudo || _fcVazia(p.data_prevista)) p.data_prevista = addDias(d0, i === np - 1 ? 60 : 2);
   });
-  const nr = (recs || []).length;
+  // Índice da última parcela de cada grupo de cliente (= saldo daquele cliente).
+  const ultimoDoGrupo = {};
+  (recs || []).forEach((r, i) => { ultimoDoGrupo[(r.cliente || '').trim()] = i; });
   (recs || []).forEach((r, i) => {
     if (_fcFinalizado(r.status)) return;
     if (tudo || _fcVazia(r.data_prevista)) {
-      const ultima = i === nr - 1;
-      r.data_prevista = (ultima && !_fcVazia(porto))
-        ? addDias(porto, -20)                    // saldo: 20 dias antes do desembarque
-        : addDias(d0, ultima ? 70 : 10);         // fallback última sem porto → d0+70; demais → d0+10
+      const ehSaldo = i === ultimoDoGrupo[(r.cliente || '').trim()];
+      r.data_prevista = (ehSaldo && !_fcVazia(porto))
+        ? addDias(porto, -20)                    // saldo do cliente: 20 dias antes do desembarque
+        : addDias(d0, ehSaldo ? 70 : 10);        // fallback saldo sem porto → d0+70; demais → d0+10
     }
   });
 }

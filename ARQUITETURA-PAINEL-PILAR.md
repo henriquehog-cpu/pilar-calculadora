@@ -403,9 +403,18 @@ vazias; `'tudo'` re-deriva as derivadas. Âncoras nunca mudam (`data_pedido`,
 - **Operacional** (`_derivarOperacional`, muta `dados_gerais`): `prev_embarque` = âncora
   ou `d0+50`; `prev_chegada_porto` = embarque+40; `prev_chegada_cliente` = porto+15.
 - **Pagamentos** (`_derivarCaixa`): última parcela `d0+60`, anteriores `d0+2`.
-- **Recebimentos** (`_derivarCaixa`): **última parcela (saldo) = `prev_chegada_porto − 20`**
-  ("saldo até 20 dias antes do desembarque"); sem porto → fallback `d0+70`. Demais
-  (sinal/intermediárias) = `d0+10`. `_derivarCaixa` recebe `porto` além de `d0`.
+- **Recebimentos** (`_derivarCaixa`): o **"saldo" é POR CLIENTE** — a **última parcela de
+  CADA grupo de cliente** = `prev_chegada_porto − 20` ("saldo até 20 dias antes do
+  desembarque"); sem porto → fallback `d0+70`. Demais parcelas do grupo (sinal/
+  intermediárias) = `d0+10`. Agrupamento por `(r.cliente||'').trim()` (parcelas
+  "todos"/cliente vazio = grupo próprio), o **mesmo** critério de `fcAtualizarFootRec`/
+  `fcRedistribuirRecebimentos`. Assim os saldos de **todos** os clientes acompanham o
+  embarque, não só a última linha global do array (corrige o bug em que só um cliente
+  ancorava no porto e os demais ficavam presos em `d0+10`). Cliente único/sem cliente
+  = um único grupo → idêntico ao comportamento anterior. `_derivarCaixa` recebe `porto`
+  além de `d0`. O toast de "Recalcular tudo" (`npDerivarDatas`) mostra a(s) data(s) de
+  saldo por cliente (ex.: "Saldo(s): BARRIGA 10/10, JUMA 09/10.") — pista útil quando o
+  recálculo é idempotente.
 - **Numerário**: **`data_prevista = prev_chegada_porto − 5`** (5 dias antes de atracar);
   sem porto → fallback `d0+86`. Aplicado nos dois pontos (`_fcNumPag` em `npDerivarDatas`
   e `numerario_despachante` em `derivarDatasProcesso`).
