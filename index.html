@@ -263,6 +263,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <input type="number" id="comissao" value="2" step="0.1" min="0" max="100" oninput="calcAll()">
       </div>
       <div class="field">
+        <label>Regime Tributário</label>
+        <select id="regime" onchange="calcAll()">
+          <option value="presumido">Lucro Presumido</option>
+          <option value="real">Lucro Real</option>
+        </select>
+        <span class="note">Presumido não credita importação; IRPJ/CSLL sobre base presumida</span>
+      </div>
+      <div class="field">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
           <input type="checkbox" id="difal_sem_ie" onchange="difalToggle();calcAll()">
           <span>Cliente sem inscrição estadual</span>
@@ -574,6 +582,7 @@ function getSimState() {
     frete_total:   n('frete_total'),
     n_containers:  n('n_containers'),
     comissao:      n('comissao'),
+    regime:        getRegime(),
     c_siscomex:    n('c_siscomex'),
     c_despachante: n('c_despachante'),
     c_agente:      n('c_agente'),
@@ -610,6 +619,9 @@ function applySimState(state) {
                           ? state.n_containers
                           : ((state.items || []).reduce((s, it) => s + (parseFloat(it.cont) || 0), 0) || 1));
   set('comissao',       state.comissao);
+  // Regime: sim legada (sem o campo) → 'real' para reproduzir o resultado original
+  // (o motor anterior creditava importação e apurava IRPJ/CSLL sobre lucro efetivo).
+  set('regime',         state.regime || 'real');
   set('c_siscomex',     state.c_siscomex);
   set('c_despachante',  state.c_despachante);
   set('c_agente',       state.c_agente);
@@ -905,6 +917,11 @@ function today() {
 // ============================================================
 function n(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 
+// Regime tributário atual da calculadora. Default 'presumido' (empresa opera nesse
+// regime); simulações legadas sem o campo são tratadas como 'real' no applySimState
+// para preservar seus resultados (diff zero). 'real' reproduz o motor anterior.
+function getRegime() { return document.getElementById('regime')?.value || 'presumido'; }
+
 function fmt(v, decimals = 2) {
   if (!isFinite(v) || isNaN(v)) return '—';
   return v.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -1006,7 +1023,8 @@ function totalCF() {
 // ============================================================
 // CORE CALCULATIONS
 // ============================================================
-function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
+function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct, regime) {
+  regime = regime || getRegime();          // 'real' (default histórico) | 'presumido'
   const aliq = itemAliq[id] || defaultAliq();
   const qtd  = parseFloat(document.getElementById('qtd_' + id)?.value) || 0;
   const fob  = parseFloat(document.getElementById('fob_' + id)?.value) || 0;
@@ -1063,10 +1081,12 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   //     Col45 = CIF + II + IPI + PIS_imp + COFINS_imp + todos_op + cred_PIS(neg) + cred_COFINS(neg)
   //     = CIF + II + todos_op (PIS/COFINS se cancelam; IPI também se creditável)
   //     oplogItem É incluído no custo unitário (não excluir)
+  //     PRESUMIDO: não há crédito de importação — PIS/COFINS/IPI ficam no custo
+  //     (espelho da planilha: (-) CRÉDITOS S/ INSUMOS K42 = 0).
   const credIPI    = ipi;
   const credPIS    = pisImp;
   const credCOFINS = cofImp;
-  const credTotal  = credIPI + credPIS + credCOFINS;
+  const credTotal  = (regime === 'presumido') ? 0 : (credIPI + credPIS + credCOFINS);
 
   // 14-15. Custo Importação Final e Unitário (igual à col45 e col46 da planilha)
   //        oplogItem INCLUIDO (planilha inclui oplog no custo unitário)
@@ -1097,9 +1117,13 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
       const _cofV   = _bcV * aliq.cof_venda;
       const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;  // [B] oplog já incluído no custoImpUnit
       const _o26    = pv - _o24;                             // lucro unitário antes IR
-      const _csll   = Math.max(0, _o26) * 0.09;             // base linearizada p/ convergência
-      const _ir     = Math.max(0, _o26) * 0.15;
-      const _irAd   = Math.max(0, _o26 * qtd - 60000) * 0.10 / qtd;  // threshold 60k
+      // Base do IRPJ/CSLL por unidade: REAL = lucro efetivo (o26); PRESUMIDO = 8% do PV
+      // (base presumida = 8% da receita bruta; por unidade = pv×8%). CSLL usa a mesma
+      // base de 8% (fiel à planilha, não 12%). Threshold do adicional: R$60k total.
+      const _baseU  = (regime === 'presumido') ? (pv * 0.08) : Math.max(0, _o26);
+      const _csll   = _baseU * 0.09;                       // base linearizada p/ convergência
+      const _ir     = _baseU * 0.15;
+      const _irAd   = Math.max(0, _baseU * qtd - 60000) * 0.10 / qtd;  // threshold 60k
       const _cnota  = _o24 + _csll + _ir + _irAd;
       const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
       if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
@@ -1120,14 +1144,19 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct) {
   const o24 = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
   // [C] O26 = lucro unitário antes IR; base = o26 × qtd (lucro bruto total do item)
   const o26       = pv - o24;
-  const baseTotal = Math.max(0, o26 * qtd);
+  // [C] Base do IRPJ/CSLL (total do item):
+  //   REAL      → lucro efetivo o26×qtd (comportamento histórico)
+  //   PRESUMIDO → 8% da receita bruta (pv×qtd); CSLL na mesma base de 8% (fiel à planilha)
+  const baseTotal = (regime === 'presumido')
+                      ? (pv * qtd * 0.08)
+                      : Math.max(0, o26 * qtd);
 
   const csll   = Math.max(0, baseTotal) * 0.09;               // [C]
   const ir     = Math.max(0, baseTotal) * 0.15;               // [C]
   // [D] Adicional IR: threshold R$ 60.000 trimestral (total do item, não por unidade)
   const irAdic = Math.max(0, baseTotal - 60000) * 0.10;
 
-  // [E] lucroLiq = lucro real (O26×qty) − impostos sobre base
+  // [E] lucroLiq = lucro efetivo (o26×qtd) − impostos apurados (na base do regime)
   const lucroLiqTotal = o26 * qtd - csll - ir - irAdic;
   const lucroUnit     = lucroLiqTotal / qtd;
   const margemReal    = pv > 0 ? lucroUnit / pv : 0;
@@ -1483,8 +1512,8 @@ function itemHTML(id) {
           <table class="rt">
             <tr><td>Comissão de Vendas</td><td id="r_com_${id}">—</td></tr>
             <tr><td>IPI Venda (por fora)</td><td id="r_ipV_${id}">—</td></tr>
-            <tr><td>PIS Venda (1,65% × BC)</td><td id="r_piV_${id}">—</td></tr>
-            <tr><td>COFINS Venda (7,60% × BC)</td><td id="r_coV_${id}">—</td></tr>
+            <tr><td>PIS Venda (0,65% × BC)</td><td id="r_piV_${id}">—</td></tr>
+            <tr><td>COFINS Venda (3,00% × BC)</td><td id="r_coV_${id}">—</td></tr>
             <tr><td>ICMS Efetivo (Reg. Espec. MG)</td><td id="r_icE_${id}">—</td></tr>
             <tr><td>CSLL (9%)</td><td id="r_csl_${id}">—</td></tr>
             <tr><td>IR (15%)</td><td id="r_ir_${id}">—</td></tr>

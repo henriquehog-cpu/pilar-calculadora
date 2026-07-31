@@ -438,8 +438,31 @@ vazias; `'tudo'` re-deriva as derivadas. Âncoras nunca mudam (`data_pedido`,
   editável, sem trava).
 
 ### Calculadora (`index.html`)
-Página standalone de precificação por item, usando `Calc` (`calc.js`). Lê `?seed=` para
-pré-preencher a partir de uma demanda e grava simulações (via `/api/simulacoes`).
+Página standalone de precificação por item. O motor fiscal é **inline** no próprio
+`index.html` (`calcItem`, `calcAll`), não o `Calc` de `calc.js` (esse é do painel). Lê
+`?seed=` para pré-preencher a partir de uma demanda e grava simulações (via
+`/api/simulacoes`).
+
+**Regime tributário (parâmetro do motor — Fase 1):** `calcItem(id, …, regime)` aceita
+`regime` (`'real'` | `'presumido'`), lido do toggle `#regime` no cabeçalho via
+`getRegime()`. Default de nova simulação = `'presumido'` (regime real da empresa);
+simulação legada sem o campo → `'real'` no `applySimState` (preserva o resultado
+original — diff zero). Persistido em `getSimState().regime`. Diferenças vs. Lucro Real:
+- **Presumido NÃO credita importação:** `credTotal = 0` (PIS/COFINS/IPI de importação
+  ficam no custo). No Real, `credTotal = IPI+PIS+COFINS` de importação (comportamento
+  histórico, inalterado). ICMS-imp é informativo nos dois (não entra no custo).
+- **IRPJ/CSLL sobre base presumida:** base = **8% da receita bruta** (`pv×qtd×0,08`);
+  IRPJ 15%, adicional 10% sobre o que excede R$60.000, **CSLL 9% sobre a mesma base de
+  8%** (fiel à planilha do contador `referencia-presumido.xlsx`, não 12%). No Real, a
+  base é o lucro efetivo (`o26×qtd`), inalterada.
+- **PIS/COFINS de venda:** **0,65% / 3%** (cumulativo) em **ambos** os regimes — o motor
+  já aplicava essas alíquotas (vindas do catálogo NCM), independentemente das labels
+  antigas da tela que diziam "1,65%/7,6%" (corrigidas).
+
+Validação cent-a-cent contra `referencia-presumido.xlsx` (aba `CALCULO GERAL`): base
+presumida 44.482,15, IRPJ 6.672,32, CSLL 4.003,39, adicional 0 — batem. Real com
+diff zero (só ramos guardados por `regime==='presumido'`). **`calc.js`/`calc-processo.js`
+(painel) seguem só Lucro Real — regime no painel/processo é Fase 2.**
 
 **Cotação / PDF (client-side):** `showCotacao()` monta a tela `#cotacao-sec` (container
 `.cot-wrap#cot-content`, largura de projeto **1020px**) com Opção 1 (à vista) / Opção 2
