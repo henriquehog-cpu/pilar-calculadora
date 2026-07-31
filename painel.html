@@ -910,6 +910,14 @@ function renderConfig() {
               <label>Porto Padrão</label>
               <input type="text" id="cfg-porto" value="${e_(d.porto)}">
             </div>
+            <div class="field">
+              <label>Regime Tributário Padrão</label>
+              <select id="cfg-regime">
+                <option value="presumido"${(d.regime || 'presumido') === 'presumido' ? ' selected' : ''}>Lucro Presumido</option>
+                <option value="real"${d.regime === 'real' ? ' selected' : ''}>Lucro Real</option>
+              </select>
+              <span class="note" style="font-size:11px;color:var(--cinza-med)">Usado como padrão em novos processos</span>
+            </div>
           </div>
         </div>
       </div>
@@ -940,7 +948,10 @@ function salvarConfig() {
   const cfg = JSON.parse(localStorage.getItem('pilar_config') || '{}');
   cfg.omie    = { app_key: val('cfg-app-key'), app_secret: val('cfg-app-secret') };
   cfg.empresa = { razao: val('cfg-razao'), cnpj: val('cfg-cnpj'), email: val('cfg-email'), site: val('cfg-site') };
-  cfg.defaults = { despachante: parseFloat(val('cfg-despachante')) || 2500, porto: val('cfg-porto') };
+  cfg.defaults = { ...(cfg.defaults || {}),
+    despachante: parseFloat(val('cfg-despachante')) || 2500,
+    porto: val('cfg-porto'),
+    regime: (val('cfg-regime') === 'real') ? 'real' : 'presumido' };
   localStorage.setItem('pilar_config', JSON.stringify(cfg));
 
   // feedback visual no botão
@@ -1133,8 +1144,8 @@ async function sincronizarOmie(onProgresso) {
     ipi:              parseFloat(p.perc_ipi) / 100 || 0,
     pis_importacao:   0.021,
     cofins_importacao:0.1065,
-    pis_venda:        0.0165,
-    cofins_venda:     0.076,
+    pis_venda:        0.0065,   // venda cumulativa (Presumido) — harmonizado Fase 2
+    cofins_venda:     0.03,     // (era 1,65%/7,6%)
     icms_intra:       0.14,  icms_inter:       0.04,
     reg_espec_intra:  0.14,  reg_espec_inter:  0.015,
     origem:           'omie'
@@ -1259,6 +1270,11 @@ function renderNovoProcesso(proc, seed) {
   const _isNovo   = !proc;
   const _fref     = JSON.parse(localStorage.getItem('pilar_config') || '{}').frete_referencia?.atual || null;
   const _freteIni = freteInicialNovoProcesso(_isNovo, fr.valor_usd, _fref);
+  // Regime: processo NOVO herda o padrão global (pilar_config.defaults.regime, default
+  // 'presumido'); ao EDITAR, usa o do processo — legado sem o campo → 'real' (preserva
+  // o resultado histórico, coerente com o fallback do motor).
+  const _cfgRegime  = JSON.parse(localStorage.getItem('pilar_config') || '{}').defaults?.regime || 'presumido';
+  const _regimeProc = proc ? (g.regime || 'real') : _cfgRegime;
   _npNfSeq   = (base?.notasFiscais || []).length; // ids das linhas novas começam após as existentes
   const inco = g.incoterm || 'FOB';
   const titulo    = proc ? 'Editar Processo' : 'Novo Processo';
@@ -1317,6 +1333,14 @@ function renderNovoProcesso(proc, seed) {
           <div style="max-width:320px">
             <div class="field"><label>Prev. Chegada Cliente</label>
               <input id="np-chegada" type="date" value="${g.prev_chegada_cliente||''}"></div>
+          </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--cinza-light);max-width:320px">
+            <div class="field"><label>Regime Tributário</label>
+              <select id="np-regime" onchange="npRecalcular()">
+                <option value="presumido"${_regimeProc === 'presumido' ? ' selected' : ''}>Lucro Presumido</option>
+                <option value="real"${_regimeProc === 'real' ? ' selected' : ''}>Lucro Real</option>
+              </select>
+            </div>
           </div>
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--cinza-light)">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
@@ -2144,7 +2168,8 @@ function npSalvar() {
       prev_chegada_porto:   val('np-porto'),
       prev_chegada_cliente: val('np-chegada'),
       cliente_sem_ie:       !!document.getElementById('np-cliente-sem-ie')?.checked,
-      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18
+      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18,
+      regime:               (val('np-regime') === 'real') ? 'real' : 'presumido'
     },
     cambios: {
       di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
@@ -2405,8 +2430,8 @@ function npSalvarAliquotas(i) {
   it.aliquotas = {
     ...prev,
     ...novas,
-    pis_venda:    prev.pis_venda    != null ? prev.pis_venda    : 0.0165,
-    cofins_venda: prev.cofins_venda != null ? prev.cofins_venda : 0.076
+    pis_venda:    prev.pis_venda    != null ? prev.pis_venda    : 0.0065,
+    cofins_venda: prev.cofins_venda != null ? prev.cofins_venda : 0.03
   };
 
   // 2. Propaga ao banco de produtos (todos com o mesmo NCM) + 4. POST /api/produtos
@@ -2650,7 +2675,8 @@ function npBuildProcessoAtual() {
   return {
     dados_gerais: {
       cliente_sem_ie:       !!document.getElementById('np-cliente-sem-ie')?.checked,
-      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18
+      aliq_interna_destino: parseFloat(val('np-aliq-interna')) || 18,
+      regime:               (val('np-regime') === 'real') ? 'real' : 'presumido'
     },
     cambios: {
       di:      { taxa: parseFloat(val('np-cambio-di'))      || 0 },
@@ -2826,9 +2852,13 @@ function npRecalcular() {
   // ── Resumo do processo ──────────────────────────────────────────────────
   if (!s4r) return;
   const ri = res.imp_imp;
+  const _regLbl = res.regime === 'presumido' ? 'Lucro Presumido' : 'Lucro Real';
   s4r.innerHTML = `
     <div class="card" style="margin-bottom:20px">
-      <div class="card-hd">Resumo do Processo</div>
+      <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Resumo do Processo</span>
+        <span style="font-size:12px;font-weight:600;color:var(--turquesa-dark);background:var(--turquesa-light,#e0f2f1);padding:2px 10px;border-radius:12px">Regime: ${_regLbl}</span>
+      </div>
       <div class="card-bd">
         <div class="sum-grid">
           <div class="sum-item">
@@ -2902,11 +2932,15 @@ function npRenderResumoFiscal(proc, res) {
   const oplog       = (cd.operador_logistico || 0) * cont;
   const fretRod     = (cd.frete_rodoviario   || 0) * cont;
 
-  // Créditos recuperáveis (Lucro Real): IPI/PIS/COFINS de importação
-  const credPIS = fi.pis || 0, credCOF = fi.cofins || 0, credIPI = fi.ipi || 0;
+  // Créditos recuperáveis SÓ no Lucro Real. No Presumido, PIS/COFINS/IPI de importação
+  // ficam no custo (não creditam) → créditos = 0 e custo bruto = custo final.
+  const _presumido = res.regime === 'presumido';
+  const credPIS = _presumido ? 0 : (fi.pis || 0);
+  const credCOF = _presumido ? 0 : (fi.cofins || 0);
+  const credIPI = _presumido ? 0 : (fi.ipi || 0);
   const credTotal  = credPIS + credCOF + credIPI;
   const custoFinal = res.custo_final_total || 0;
-  const custoBruto = custoFinal + credTotal;   // bruto = final + créditos
+  const custoBruto = custoFinal + credTotal;   // bruto = final + créditos (0 no presumido)
 
   // Venda
   const irTotal     = (v.ir || 0) + (v.ir_adicional || 0);
@@ -2925,7 +2959,10 @@ function npRenderResumoFiscal(proc, res) {
 
   s5.innerHTML = `
     <div class="card" style="margin-bottom:20px">
-      <div class="card-hd tq">📊 5 — Resumo Fiscal</div>
+      <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+        <span>📊 5 — Resumo Fiscal</span>
+        <span style="font-size:12px;font-weight:600">${_presumido ? 'Lucro Presumido' : 'Lucro Real'}</span>
+      </div>
       <div class="card-bd">
         ${titl('Importação')}
         ${row('CIF Total USD',     U(cifUSD))}
@@ -7037,7 +7074,7 @@ function catProcessarXlsx(input) {
         peso_bruto_unit: parseFloat(get(row, 'peso_bruto').replace(',', '.')) || 0,
         ii: 0, ipi: 0,
         pis_importacao: 0.021, cofins_importacao: 0.1065,
-        pis_venda: 0.0165, cofins_venda: 0.076,
+        pis_venda: 0.0065, cofins_venda: 0.03,
         icms_intra: 0.14, icms_inter: 0.04,
         reg_espec_intra: 0.14, reg_espec_inter: 0.015,
         menor_fob: null,
@@ -7298,8 +7335,8 @@ function _aliquotasPorNCM(ncm) {
     ipi:               ref.ipi               || 0,
     pis_importacao:    ref.pis_importacao    || 0.021,
     cofins_importacao: ref.cofins_importacao || 0.1065,
-    pis_venda:         ref.pis_venda         || 0.0165,
-    cofins_venda:      ref.cofins_venda      || 0.076,
+    pis_venda:         ref.pis_venda         || 0.0065,
+    cofins_venda:      ref.cofins_venda      || 0.03,
     icms_intra:        ref.icms_intra        || 0.14,
     icms_inter:        ref.icms_inter        || 0.04,
     reg_espec_intra:   ref.reg_espec_intra   || 0.14,
@@ -7324,8 +7361,8 @@ function npAcSelect(i, acId, idx) {
     ipi:               p.ipi               || 0,
     pis_importacao:    p.pis_importacao    || 0.021,
     cofins_importacao: p.cofins_importacao || 0.1065,
-    pis_venda:         p.pis_venda         || 0.0165,
-    cofins_venda:      p.cofins_venda      || 0.076,
+    pis_venda:         p.pis_venda         || 0.0065,
+    cofins_venda:      p.cofins_venda      || 0.03,
     icms_intra:        p.icms_intra        || 0.14,
     icms_inter:        p.icms_inter        || 0.04,
     reg_espec_intra:   p.reg_espec_intra   || 0.14,
@@ -7533,8 +7570,8 @@ function _migrarAliquotasProcessos(procs) {
     ipi:               src.ipi               || 0,
     pis_importacao:    src.pis_importacao    || src.pis    || 0.021,
     cofins_importacao: src.cofins_importacao || src.cofins || 0.1065,
-    pis_venda:         src.pis_venda          || 0.0165,
-    cofins_venda:      src.cofins_venda       || 0.076,
+    pis_venda:         src.pis_venda          || 0.0065,
+    cofins_venda:      src.cofins_venda       || 0.03,
     icms_intra:        src.icms_intra         || 0.14,
     icms_inter:        src.icms_inter         || 0.04,
     reg_espec_intra:   src.reg_espec_intra    || 0.14,
@@ -8809,8 +8846,8 @@ function wizAliquotasDaFamilia(familia, ncm) {
     ipi:               ref.ipi               || 0,
     pis_importacao:    ref.pis_importacao    || 0.021,
     cofins_importacao: ref.cofins_importacao || 0.1065,
-    pis_venda:         ref.pis_venda         || 0.0165,
-    cofins_venda:      ref.cofins_venda      || 0.076,
+    pis_venda:         ref.pis_venda         || 0.0065,
+    cofins_venda:      ref.cofins_venda      || 0.03,
     icms_intra:        ref.icms_intra        || 0.14,
     icms_inter:        ref.icms_inter        || 0.04,
     reg_espec_intra:   ref.reg_espec_intra   || 0.14,
@@ -8821,7 +8858,7 @@ function wizAliquotasDaFamilia(familia, ncm) {
   if (porNcm) return porNcm;
   return {
     ii:0.162, ipi:0, pis_importacao:0.021, cofins_importacao:0.1065,
-    pis_venda:0.0165, cofins_venda:0.076,
+    pis_venda:0.0065, cofins_venda:0.03,
     icms_intra:0.14, icms_inter:0.04,
     reg_espec_intra:0.14, reg_espec_inter:0.015
   };

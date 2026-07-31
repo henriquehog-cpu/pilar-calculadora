@@ -27,6 +27,9 @@ function npCalcResultado(proc) {
   if (!taxaCalc) return null;
 
   const comissaoPct = proc.custos_defaults?.comissao_pct ?? 0.02;
+  // Regime tributário do processo. Fallback 'real' p/ processos legados sem o campo
+  // (preserva a lógica fiscal anterior — diff zero no que toca a crédito/IRPJ/CSLL).
+  const regime      = proc.dados_gerais?.regime === 'presumido' ? 'presumido' : 'real';
   const freteUSD    = proc.frete?.valor_usd  || 0;
   const containers  = proc.frete?.containers || 1;
   const freteProcUSD = freteUSD * containers; // frete total do processo = por-container × nº containers (= calculadora)
@@ -47,7 +50,7 @@ function npCalcResultado(proc) {
     const ctx  = {
       fobTotalUSD,
       freteUSD:    freteProcUSD * prop,     // frete (por-container × containers) rateado por FOB do item
-      taxaCalc, taxaCliente, comissaoPct,
+      taxaCalc, taxaCliente, comissaoPct, regime,
       custos: {
         siscomex:    d.siscomex    || 192.79, // calc.js já rateia internamente por prop
         despachante: d.despachante || 2500,   // idem
@@ -81,6 +84,16 @@ function npCalcResultado(proc) {
     totCom       += r.com * r.qtd;
   });
 
+  // Adicional de IR no PRESUMIDO: apurado UMA vez sobre a base presumida AGREGADA do
+  // processo (8% da receita total), não item a item (somar o teto de R$60k por item
+  // subestimaria o adicional). No real, mantém a soma dos irAdic por item.
+  if (regime === 'presumido') {
+    const basePresumidaProc = totPVBRL * 0.08;
+    const adicProc = Math.max(0, basePresumidaProc - 60000) * 0.10;
+    totLucro  -= adicProc;   // itens vieram com irAdic=0 → deduz o adicional agregado do lucro
+    totIRAdic  = adicProc;
+  }
+
   const cifRS    = fobTotalUSD * taxaCalc + freteProcUSD * taxaCalc;
   const totImpImp = totII + totPIS + totCOF + totIPI + totSisc + totAfrmm + totDifFrete;
   // Soma direta dos custos operacionais dos defaults (despachante fixo + por container)
@@ -99,6 +112,7 @@ function npCalcResultado(proc) {
   const margem    = totPVBRL > 0 ? lucroFinal / totPVBRL : 0;
 
   return {
+    regime,
     fob_total_usd: fobTotalUSD,
     cif_total_brl: cifRS,
     imp_imp: { ii: totII, pis: totPIS, cofins: totCOF, ipi: totIPI,
@@ -146,9 +160,13 @@ function impostosPosVenda(proc) {
     const fi = res.imp_imp || {}, v = res.imp_venda || {};
     const dICMS = vencMesSeguinte(entrega, 8);   // ICMS dia 8 do mês seguinte
     const dFed  = vencMesSeguinte(entrega, 26);  // federais dia 26 do mês seguinte
-    const pisLiq = (v.pis    || 0) - (fi.pis    || 0);
-    const cofLiq = (v.cofins || 0) - (fi.cofins || 0);
-    const ipiLiq = (v.ipi    || 0) - (fi.ipi    || 0);
+    // Crédito de importação só existe no Lucro Real. No Presumido, PIS/COFINS/IPI de
+    // importação ficaram no custo (não creditam) → o líquido a recolher é o valor CHEIO
+    // de venda, sem abater o de importação.
+    const cred = res.regime === 'presumido' ? { pis: 0, cofins: 0, ipi: 0 } : fi;
+    const pisLiq = (v.pis    || 0) - (cred.pis    || 0);
+    const cofLiq = (v.cofins || 0) - (cred.cofins || 0);
+    const ipiLiq = (v.ipi    || 0) - (cred.ipi    || 0);
     const irpj   = (v.ir     || 0) + (v.ir_adicional || 0);
     // ICMS sempre (1,5%, sem crédito)
     out.push({ imposto: 'ICMS', label: 'ICMS (1,5%)', valor: (v.icms || 0), data: dICMS, estimativa: false });

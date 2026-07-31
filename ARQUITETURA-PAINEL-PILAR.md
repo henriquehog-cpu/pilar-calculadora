@@ -9,7 +9,7 @@
 ## 1. VISÃO GERAL
 
 Sistema web da PILAR Imports para precificação e gestão operacional de importações
-(Lucro Real · MG · venda interestadual). Roda num VPS (Ubuntu, nginx + PM2 em
+(regime Lucro Presumido ou Real · MG · venda interestadual). Roda num VPS (Ubuntu, nginx + PM2 em
 `/opt/pilar-calculadora`), servido pelo próprio proxy Node em `:8080` (`PORT`).
 
 ### Arquivos principais
@@ -461,8 +461,8 @@ original — diff zero). Persistido em `getSimState().regime`. Diferenças vs. L
 
 Validação cent-a-cent contra `referencia-presumido.xlsx` (aba `CALCULO GERAL`): base
 presumida 44.482,15, IRPJ 6.672,32, CSLL 4.003,39, adicional 0 — batem. Real com
-diff zero (só ramos guardados por `regime==='presumido'`). **`calc.js`/`calc-processo.js`
-(painel) seguem só Lucro Real — regime no painel/processo é Fase 2.**
+diff zero (só ramos guardados por `regime==='presumido'`). **Fase 2 levou o regime ao
+motor do processo (`calc.js`/`calc-processo.js`) — ver §5.**
 
 **Cotação / PDF (client-side):** `showCotacao()` monta a tela `#cotacao-sec` (container
 `.cot-wrap#cot-content`, largura de projeto **1020px**) com Opção 1 (à vista) / Opção 2
@@ -486,41 +486,67 @@ serializações do atributo `style`) p/ valores tipo `USD 11.687,86` não quebra
 
 **Fonte única:** `painel/js/calc-processo.js` (`npCalcResultado`) sobre
 `painel/js/calc.js` (`Calc.calcItem`). Consumida IGUAL pelo browser e pelo backend
-(`/api/impostos-posvenda`, resumo diário). Lucro Real · MG · venda interestadual.
+(`/api/impostos-posvenda`, resumo diário). MG · venda interestadual · **regime Real ou
+Presumido** (parâmetro — ver abaixo).
+
+### Regime tributário (Real | Presumido) — Fase 2
+O regime vive em **`proc.dados_gerais.regime`** (`'real'` | `'presumido'`). Default de
+processo NOVO vem do global **`pilar_config.defaults.regime`** (config → "Regime
+Tributário Padrão", default `'presumido'`); processo legado sem o campo → **`'real'`**
+(tanto no motor quanto ao editar na tela — preserva o resultado histórico). `npCalcResultado`
+resolve o regime e o passa a cada `Calc.calcItem` via `ctx.regime`; devolve `res.regime`.
+Diferenças vs. Lucro Real (espelham a Fase 1 da calculadora):
+- **Presumido NÃO credita importação:** `credTotal = 0` (PIS/COFINS/IPI de importação
+  ficam no custo). ICMS-imp segue informativo nos dois.
+- **IRPJ/CSLL sobre base presumida:** por item, `ir = 15%×(pv×qtd×8%)`, `csll = 9%×(pv×qtd×8%)`
+  (CSLL na mesma base de 8%, fiel à planilha, não 12%). O **adicional NÃO é apurado por item**
+  no presumido (`irAdic=0` no item) — é agregado no processo (ver `npCalcResultado`).
+- **PIS/COFINS de venda:** cumulativo **0,65% / 3%** — a partir da Fase 2 o `calcItem`
+  **fixa** essas alíquotas de venda nos DOIS regimes (sobrescreve o 1,65%/7,6% herdado do
+  catálogo Omie), harmonizando com a calculadora. Isso alterou o resultado dos processos
+  Reais existentes (decisão do usuário; **não** é diff-zero para o Real). Import segue por NCM.
 
 ### `Calc.calcItem(item, ctx)` — por item
 **Entradas:** item (`quantidade`, `fob_unit_usd`, `margem_pct`, `pv_fixo_usd?`,
 `aliquotas`) + contexto (`fobTotalUSD`, `freteUSD` rateado, `taxaCalc` fiscal,
-`taxaCliente`, `comissaoPct`, `custos` rateados).
+`taxaCliente`, `comissaoPct`, `custos` rateados, **`regime`** default `'real'`).
 **Calcula:**
 - **CIF** = FOB×taxaCalc + frete R$ do item.
 - **Importação:** II, IPI, PIS-imp, COFINS-imp (sobre CIF); **Total Valor Aduaneiro**;
   Siscomex rateado por FOB; **AFRMM** = 8%×frete R$ + R$20; **Dif. Frete** = 2,5%×frete R$;
-  ICMS-imp informativo (não entra no custo em Lucro Real).
+  ICMS-imp informativo (não entra no custo).
 - **Créditos recuperáveis** (IPI+PIS+COFINS de importação) → **custo final de importação**
-  = custo processo − créditos.
+  = custo processo − créditos. **Presumido: créditos = 0** (import fica no custo).
 - **PV** iterativo (até 300 iterações, convergência < 0,0001) resolvendo comissão, IPI de
-  venda, ICMS efetivo (`reg_espec_inter`), PIS/COFINS de venda, CSLL 9%, IR 15% + adicional
-  10% sobre lucro > R$60.000. Se `pv_fixo_usd` > 0, usa PV manual (sem iterar).
+  venda, ICMS efetivo (`reg_espec_inter`), PIS/COFINS de venda (0,65%/3%), CSLL 9%, IR 15%.
+  Base do IRPJ/CSLL: Real = lucro efetivo; Presumido = 8% do PV. Adicional de IR (10% acima
+  de R$60k) só entra no PV no Real. Se `pv_fixo_usd` > 0, usa PV manual (sem iterar).
 - **Venda** com PV convergido; **lucro líquido** e **margem real** por item.
 
 ### `npCalcResultado(proc)` — agrega o processo
 Ratея frete e custos por-container por `prop = FOB do item / FOB total` (força
 `containers:1` por item — Siscomex/despachante são rateados dentro do `calcItem`), soma os
 itens e monta:
-- `imp_imp` (crédito de importação: ii, pis, cofins, ipi, siscomex, afrmm, dif_frete, total),
+- `regime` (`'real'`|`'presumido'`), `imp_imp` (importação: ii, pis, cofins, ipi, siscomex, afrmm, dif_frete, total),
 - `imp_venda` (débito: icms, ipi, pis, cofins, csll, ir, ir_adicional, comissao),
 - `cif_total_brl`, `custo_final_total`, `custos_op_total`, `nf_total_brl` (venda total),
 - **DIFAL** (Opção B): `nf_total × difalRate(cliente_sem_ie, aliq_interna_destino)` — só
   quando o cliente é sem IE; interna default 18%, interestadual fixa 4%; **absorvido pela
   PILAR** (descontado do lucro, não repassado, não altera PV nem escudo IR/CSLL),
-- `lucro_brl` (= lucro − DIFAL) e `margem_pct`.
+- `lucro_brl` (= lucro − DIFAL − adicional agregado) e `margem_pct`.
+
+**Adicional de IR no Presumido (agregado):** como os itens vêm com `irAdic=0`, após somar
+os itens o `npCalcResultado` apura o adicional UMA vez sobre a base presumida do processo
+inteiro: `adic = 10% × max(0, Σ(pv×qtd)×8% − 60.000)`, gravado em `imp_venda.ir_adicional`
+e deduzido de `lucro_brl`. Somar o teto de R$60k por item subestimaria o adicional. No
+Real mantém a soma dos `irAdic` por item.
 
 ### `impostosPosVenda(proc)` — read-only, NÃO persistido
 Líquido a recolher por processo (débito de venda − crédito de importação; ≤0 omite),
-ICMS efetivo 1,5% sempre, IRPJ/CSLL como estimativa. Vencimentos no **mês seguinte à
-entrega** (`prev_chegada_cliente`): ICMS dia 8, federais dia 26 (`vencMesSeguinte`,
-string-math, dez→jan).
+ICMS efetivo 1,5% sempre, IRPJ/CSLL como estimativa. **No Presumido não há crédito de
+importação** (PIS/COFINS/IPI de venda entram cheios, sem abater o de importação — usa
+`res.regime`). Vencimentos no **mês seguinte à entrega** (`prev_chegada_cliente`): ICMS
+dia 8, federais dia 26 (`vencMesSeguinte`, string-math, dez→jan).
 
 **Validação contra Excel:** a lógica de `calcItem` replica a planilha "TABELA DE PREÇOS —
 MATRIZ — JUROS — LR.xlsx" (CIF, AFRMM 8%+R$20, Dif.Frete 2,5%, custo final col45, PV

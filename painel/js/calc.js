@@ -13,8 +13,8 @@ const Calc = (() => {
       ii: 0, ipi: 0,
       pis_importacao: 0.021,
       cofins_importacao: 0.1065,
-      pis_venda: 0.0165,
-      cofins_venda: 0.076,
+      pis_venda: 0.0065,      // cumulativo (Lucro Presumido) — harmonizado com a calculadora
+      cofins_venda: 0.03,     // (Fase 2); era 1,65%/7,6% não-cumulativo
       icms_intra: 0.14,
       icms_inter: 0.04,
       reg_espec_intra: 0.14,
@@ -45,7 +45,8 @@ const Calc = (() => {
       taxaCalc,       // Câmbio fiscal (base de todos os cálculos)
       taxaCliente,    // Câmbio cliente (PV em USD)
       comissaoPct,    // Comissão de vendas (ex: 0.015)
-      custos          // { siscomex, despachante, agente, armazenagem, capatazia, oplog, frodRodov }
+      custos,         // { siscomex, despachante, agente, armazenagem, capatazia, oplog, frodRodov }
+      regime = 'real' // 'real' (default histórico) | 'presumido'
     } = ctx;
 
     // Normalizador: se faltam alíquotas (ou ii=0), usa os campos planos do item
@@ -56,8 +57,8 @@ const Calc = (() => {
         ipi:               item.ipi               || item.aliquotas?.ipi               || 0,
         pis_importacao:    item.pis_importacao    || item.aliquotas?.pis_importacao    || 0,
         cofins_importacao: item.cofins_importacao || item.aliquotas?.cofins_importacao || 0,
-        pis_venda:         item.pis_venda         || item.aliquotas?.pis_venda         || 0.0165,
-        cofins_venda:      item.cofins_venda      || item.aliquotas?.cofins_venda      || 0.076,
+        pis_venda:         item.pis_venda         || item.aliquotas?.pis_venda         || 0.0065,
+        cofins_venda:      item.cofins_venda      || item.aliquotas?.cofins_venda      || 0.03,
         icms_intra:        item.icms_intra        || item.aliquotas?.icms_intra        || 0.14,
         icms_inter:        item.icms_inter        || item.aliquotas?.icms_inter        || 0.04,
         reg_espec_intra:   item.reg_espec_intra   || item.aliquotas?.reg_espec_intra   || 0.14,
@@ -66,6 +67,11 @@ const Calc = (() => {
     }
 
     const aliq = { ...defaultAliq(), ...(item.aliquotas || {}) };
+    // Harmonização Fase 2: PIS/COFINS de VENDA são cumulativos (Lucro Presumido),
+    // fixos em 0,65%/3% nos DOIS regimes — sobrescreve o que veio do catálogo Omie
+    // (1,65%/7,6% não-cumulativo). As alíquotas de IMPORTAÇÃO continuam vindo do NCM.
+    aliq.pis_venda    = 0.0065;
+    aliq.cofins_venda = 0.03;
     const qtd  = Number(item.quantidade)   || 0;
     const fob  = Number(item.fob_unit_usd) || 0;
     const cont = Number(item.containers)   || 1;
@@ -121,11 +127,12 @@ const Calc = (() => {
     // Custo processo (inclui frete rodo e oplog)
     const custoProcesso = custoDesemb + frodC + oplogC;
 
-    // Créditos recuperáveis (Lucro Real)
+    // Créditos recuperáveis: só no Lucro Real. No Presumido, PIS/COFINS/IPI de
+    // importação NÃO creditam — ficam no custo (credTotal = 0).
     const credIPI    = ipi;
     const credPIS    = pisImp;
     const credCOFINS = cofImp;
-    const credTotal  = credIPI + credPIS + credCOFINS;
+    const credTotal  = (regime === 'presumido') ? 0 : (credIPI + credPIS + credCOFINS);
 
     // Custo final de importação (col45 da planilha)
     const custoImpTotal = custoProcesso - credTotal;
@@ -150,9 +157,12 @@ const Calc = (() => {
         const _cofV   = _bcV * aliq.cofins_venda;
         const _o24    = custoImpUnit + _com + _pisV + _cofV + _icmsEf + _ipiV;
         const _o26    = pv - _o24;
-        const _csll   = Math.max(0, _o26) * 0.09;
-        const _ir     = Math.max(0, _o26) * 0.15;
-        const _irAd   = Math.max(0, _o26 * qtd - 60000) * 0.10 / qtd;
+        // Base do IRPJ/CSLL por unidade: REAL = lucro efetivo; PRESUMIDO = 8% do PV.
+        const _baseU  = (regime === 'presumido') ? (pv * 0.08) : Math.max(0, _o26);
+        const _csll   = _baseU * 0.09;
+        const _ir     = _baseU * 0.15;
+        // Adicional de IR: por item só no real; no presumido é agregado no processo → 0.
+        const _irAd   = (regime === 'presumido') ? 0 : Math.max(0, _baseU * qtd - 60000) * 0.10 / qtd;
         const _cnota  = _o24 + _csll + _ir + _irAd;
         const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
         if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
@@ -170,11 +180,15 @@ const Calc = (() => {
 
     const o24       = custoImpUnit + com + pisV + cofV + icmsEf + ipiV;
     const o26       = pv - o24;
-    const baseTotal = Math.max(0, o26 * qtd);
+    // Base IRPJ/CSLL: REAL = lucro efetivo (o26×qtd); PRESUMIDO = 8% da receita (pv×qtd),
+    // CSLL na mesma base de 8% (fiel à planilha, não 12%).
+    const baseTotal = (regime === 'presumido') ? (pv * qtd * 0.08) : Math.max(0, o26 * qtd);
 
     const csll   = baseTotal * 0.09;
     const ir     = baseTotal * 0.15;
-    const irAdic = Math.max(0, baseTotal - 60000) * 0.10;
+    // Adicional por item SÓ no real; no presumido o adicional é apurado uma vez sobre a
+    // base agregada do processo (npCalcResultado) → irAdic do item = 0.
+    const irAdic = (regime === 'presumido') ? 0 : Math.max(0, baseTotal - 60000) * 0.10;
 
     const lucroLiqTotal = o26 * qtd - csll - ir - irAdic;
     const margemReal    = pv > 0 ? (lucroLiqTotal / qtd) / pv : 0;
@@ -208,6 +222,7 @@ const Calc = (() => {
     const taxaCalc    = Number(cambios.fiscal?.taxa) || Number(cambios.di?.taxa) || 5.80;
     const taxaCliente = Number(cambios.cliente?.taxa) || taxaCalc;
     const comissaoPct = Number(custos_defaults.comissao_pct) || 0.015;
+    const regime      = dados_gerais.regime === 'presumido' ? 'presumido' : 'real';
 
     const freteUSD = Number(frete.valor_usd) || 0;
     const containers = Number(frete.containers) || 1;
@@ -244,7 +259,7 @@ const Calc = (() => {
       const fobItem = (Number(it.quantidade) || 0) * (Number(it.fob_unit_usd) || 0);
       const prop = fobTotalUSD > 0 ? fobItem / fobTotalUSD : 0;
       const ctxItem = {
-        fobTotalUSD, taxaCalc, taxaCliente, comissaoPct,
+        fobTotalUSD, taxaCalc, taxaCliente, comissaoPct, regime,
         freteUSD: freteProcUSD * prop,
         custos: {
           siscomex: custos.siscomex, despachante: custos.despachante,  // cheios (rateados por prop no calcItem)
@@ -286,6 +301,16 @@ const Calc = (() => {
       totalIR       += r.ir;
       totalIRAdic   += r.irAdic;
     });
+
+    // Adicional de IR — PRESUMIDO: apurado UMA vez sobre a base presumida agregada do
+    // processo (8% da receita total), não somando o teto item a item (evita subestimar).
+    // No real, mantém a soma dos irAdic por item já acumulada em totalIRAdic.
+    if (regime === 'presumido') {
+      const basePresumidaProc = totalPVBRL * 0.08;
+      const adicProc = Math.max(0, basePresumidaProc - 60000) * 0.10;
+      totalLucro   -= adicProc;   // itens vieram com irAdic=0 → deduz o adicional agregado
+      totalIRAdic   = adicProc;
+    }
 
     const custoUnitarioBRL = totalQtd > 0 ? custoFinalTotal / totalQtd : 0;
     const custoUnitarioUSD = taxaCalc > 0 ? custoUnitarioBRL / taxaCalc : 0;
