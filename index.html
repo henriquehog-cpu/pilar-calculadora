@@ -1139,7 +1139,9 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct, regim
       const _baseU  = (regime === 'presumido') ? (pv * 0.08) : Math.max(0, _o26);
       const _csll   = _baseU * 0.09;                       // base linearizada p/ convergência
       const _ir     = _baseU * 0.15;
-      const _irAd   = Math.max(0, _baseU * qtd - 60000) * 0.10 / qtd;  // threshold 60k
+      // Adicional de IR: por item SÓ no real (threshold 60k). No presumido é apurado
+      // uma vez sobre a base agregada do processo (calcAll) → 0 aqui.
+      const _irAd   = (regime === 'presumido') ? 0 : Math.max(0, _baseU * qtd - 60000) * 0.10 / qtd;
       const _cnota  = _o24 + _csll + _ir + _irAd;
       const _pvNovo = _cnota / Math.max(0.001, 1 - margem);
       if (Math.abs(_pvNovo - pv) < 0.0001) { pv = _pvNovo; break; }
@@ -1169,8 +1171,11 @@ function calcItem(id, fobTotalProcesso, freteTotalUSD, dolar, comissaoPct, regim
 
   const csll   = Math.max(0, baseTotal) * 0.09;               // [C]
   const ir     = Math.max(0, baseTotal) * 0.15;               // [C]
-  // [D] Adicional IR: threshold R$ 60.000 trimestral (total do item, não por unidade)
-  const irAdic = Math.max(0, baseTotal - 60000) * 0.10;
+  // [D] Adicional IR: threshold R$ 60.000 trimestral (total do item, não por unidade).
+  //     SÓ no Real. No Presumido o adicional é apurado UMA vez sobre a base presumida
+  //     AGREGADA do processo, no calcAll (espelho do npCalcResultado) — somar o teto de
+  //     R$60k item a item subestimaria o adicional. Aqui o item devolve 0.
+  const irAdic = (regime === 'presumido') ? 0 : Math.max(0, baseTotal - 60000) * 0.10;
 
   // [E] lucroLiq = lucro efetivo (o26×qtd) − impostos apurados (na base do regime)
   const lucroLiqTotal = o26 * qtd - csll - ir - irAdic;
@@ -1343,6 +1348,18 @@ function calcAll() {
       t.csll   += r.csll;            t.ir   += r.ir;            t.irAdic += r.irAdic;
     }
   });
+
+  // Adicional de IR no PRESUMIDO: apurado UMA vez sobre a base presumida AGREGADA do
+  // processo (8% da receita total), não item a item — somar o teto de R$60k por item
+  // subestimaria o adicional. Espelho do npCalcResultado (calc-processo.js). Os itens
+  // vieram com irAdic=0 no presumido, então o adicional é deduzido aqui do lucro
+  // agregado (e entra no custo de operação). No REAL nada muda: adicional por item.
+  if (getRegime() === 'presumido') {
+    const adicProc = Math.max(0, sVenda * 0.08 - 60000) * 0.10;
+    sLucro   -= adicProc;
+    sCustoOp += adicProc;
+    t.irAdic  = adicProc;
+  }
 
   // DIFAL: calculado UMA VEZ sobre o TOTAL da venda em R$, descontado cheio do
   // lucro agregado (sem escudo fiscal, sem alterar PV). 0 quando cliente tem IE.

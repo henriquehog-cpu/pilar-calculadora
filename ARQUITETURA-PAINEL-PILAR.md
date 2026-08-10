@@ -16,7 +16,7 @@ Sistema web da PILAR Imports para precificação e gestão operacional de import
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` (~2276 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
+| `index.html` (~2294 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
 | `painel.html` (~6900+ linhas) | **Painel operacional** SPA — todas as telas (Dashboard, Processos, Fluxo de Caixa, Câmbio, Fornecedores, Demanda, documentos, catálogo, config). HTML + CSS + JS inline num arquivo só. |
 | `painel-proxy.js` (~1050 linhas) | **Backend** Node puro (sem framework): serve estáticos, expõe `/api/*`, proxeia Omie e Anthropic, persiste os JSON no servidor. |
 | `painel/js/calc.js` | **Motor fiscal por item** (`Calc.calcItem`, `Calc.calcProcesso`, `Calc.difalRate`). Módulo dual: `require` no Node, global no browser. |
@@ -452,9 +452,20 @@ original — diff zero). Persistido em `getSimState().regime`. Diferenças vs. L
   ficam no custo). No Real, `credTotal = IPI+PIS+COFINS` de importação (comportamento
   histórico, inalterado). ICMS-imp é informativo nos dois (não entra no custo).
 - **IRPJ/CSLL sobre base presumida:** base = **8% da receita bruta** (`pv×qtd×0,08`);
-  IRPJ 15%, adicional 10% sobre o que excede R$60.000, **CSLL 9% sobre a mesma base de
-  8%** (fiel à planilha do contador `referencia-presumido.xlsx`, não 12%). No Real, a
-  base é o lucro efetivo (`o26×qtd`), inalterada.
+  IRPJ 15%, **CSLL 9% sobre a mesma base de 8%** (fiel à planilha do contador
+  `referencia-presumido.xlsx`, não 12%). No Real, a base é o lucro efetivo (`o26×qtd`),
+  inalterada.
+- **Adicional de IR (10% acima de R$60k) — agregado no Presumido:** o `calcItem` devolve
+  `irAdic = 0` no Presumido (tanto no loop iterativo do PV quanto no cálculo final), e o
+  `calcAll` apura o adicional **UMA vez** sobre a base presumida do processo inteiro:
+  `adic = 10% × max(0, Σ(pv×qtd)×8% − 60.000)`, deduzido do lucro agregado (`sLucro`) antes
+  do DIFAL e somado ao Custo Total Operação (`s_custo_op`); vai para a linha **IR** do
+  Resumo Fiscal (`t.irAdic`). Somar o teto de R$60k item a item subestimava o adicional —
+  com 2 itens de R$500k cada, cada um ficava abaixo do teto e o adicional saía **zero**.
+  Espelha exatamente o `npCalcResultado` (§5). **No Real nada muda:** adicional por item,
+  dentro do loop, como sempre. Efeito colateral esperado no Presumido: o `irAdic`/lucro
+  **por item** na tela não incluem o adicional (ele só existe no agregado) — mesmo
+  comportamento do painel.
 - **PIS/COFINS de venda:** **0,65% / 3%** (cumulativo) em **ambos** os regimes — o motor
   já aplicava essas alíquotas (vindas do catálogo NCM), independentemente das labels
   antigas da tela que diziam "1,65%/7,6%" (corrigidas).
@@ -484,13 +495,12 @@ Custo Bruto Total − créditos PIS/COFINS/IPI → Custo Final), Venda (NF Total
 - Créditos zerados no Presumido (⇒ Custo Bruto = Custo Final), igual ao painel.
 - Lucro/Margem são **os mesmos** do Resumo Geral (DIFAL já descontado do lucro agregado).
   Erro de fração de container → `renderResumoFiscal(null)` e o card some, como o resto.
+- No Presumido a linha **IR** já traz o adicional agregado apurado no `calcAll`
+  (`t.irAdic`, ver "Adicional de IR" acima), não a soma dos `irAdic` dos itens (que são 0).
 - Regressão via jsdom: linha a linha vs. soma dos itens, vs. Resumo Geral, nos dois
   regimes, com DIFAL, na trava de container e **confronto com `npCalcResultado`** (mesmos
   inputs, frações de container proporcionais ao FOB → distribuição idêntica à do painel):
-  todos os totais batem. Divergência conhecida e **pré-existente** (do motor, não do
-  render): no Presumido com 2+ itens o painel reapura o **adicional de IR** sobre a base
-  presumida agregada do processo, enquanto o `calcItem` do `index.html` soma o adicional
-  item a item (teto de R$60k por item) — ver §5.
+  todos os totais batem, **inclusive no Presumido** com base agregada acima de R$60k.
 
 **Cotação / PDF (client-side):** `showCotacao()` monta a tela `#cotacao-sec` (container
 `.cot-wrap#cot-content`, largura de projeto **1020px**) com Opção 1 (à vista) / Opção 2
