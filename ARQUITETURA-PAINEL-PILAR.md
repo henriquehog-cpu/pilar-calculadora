@@ -16,7 +16,7 @@ Sistema web da PILAR Imports para precificação e gestão operacional de import
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` (~2071 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
+| `index.html` (~2276 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
 | `painel.html` (~6900+ linhas) | **Painel operacional** SPA — todas as telas (Dashboard, Processos, Fluxo de Caixa, Câmbio, Fornecedores, Demanda, documentos, catálogo, config). HTML + CSS + JS inline num arquivo só. |
 | `painel-proxy.js` (~1050 linhas) | **Backend** Node puro (sem framework): serve estáticos, expõe `/api/*`, proxeia Omie e Anthropic, persiste os JSON no servidor. |
 | `painel/js/calc.js` | **Motor fiscal por item** (`Calc.calcItem`, `Calc.calcProcesso`, `Calc.difalRate`). Módulo dual: `require` no Node, global no browser. |
@@ -463,6 +463,34 @@ Validação cent-a-cent contra `referencia-presumido.xlsx` (aba `CALCULO GERAL`)
 presumida 44.482,15, IRPJ 6.672,32, CSLL 4.003,39, adicional 0 — batem. Real com
 diff zero (só ramos guardados por `regime==='presumido'`). **Fase 2 levou o regime ao
 motor do processo (`calc.js`/`calc-processo.js`) — ver §5.**
+
+**Resumo Fiscal consolidado (`renderResumoFiscal`, container `#rf-calc`):** card abaixo
+do "Resumo Geral do Processo", espelho do **"5 — Resumo Fiscal" do painel**
+(`npRenderResumoFiscal`) — mesmo layout/labels/ordem, mesmas classes `.rf-*` (copiadas do
+`painel.html`) e badge de regime no cabeçalho (LUCRO REAL / LUCRO PRESUMIDO). É **só
+renderização**: `calcItem`/`calcAll` não mudaram e nada aqui realimenta o motor. Blocos:
+Importação (CIF USD/R$, II, IPI, PIS, COFINS, **ICMS-imp informativo** — linha `.rf-info`,
+extra em relação ao painel, explicitamente marcada "fora do custo" — AFRMM, Siscomex,
+Dif. Frete, despachante, agente, armazenagem, capatazia, oplog, frete rodoviário →
+Custo Bruto Total − créditos PIS/COFINS/IPI → Custo Final), Venda (NF Total, ICMS efetivo
+1,5%, PIS, COFINS, CSLL, IR = `ir+irAdic`, Comissão → Total Impostos Venda) e Resultado
+(Receita, Custo Final, DIFAL quando > 0, Lucro, Margem).
+- Os totais são acumulados no loop de `calcAll` a partir do `r` de cada item. Onde o `r`
+  traz valor **unitário** (`icmsEf`, `pisV`, `cofV`, `com`), soma-se `× qtd` — mesmo
+  critério do `npCalcResultado`; `csll`/`ir`/`irAdic` já vêm totais do item.
+- O que não está no `r` é reconstruído com as **mesmas fórmulas do `calcItem`** (AFRMM
+  `0,08×freteRS+20`, Dif. Frete `2,5%`, Siscomex/despachante rateados por FOB via `r.prop`,
+  agente/armazenagem/capatazia/oplog × fração de container do item), sem recalcular imposto.
+- Créditos zerados no Presumido (⇒ Custo Bruto = Custo Final), igual ao painel.
+- Lucro/Margem são **os mesmos** do Resumo Geral (DIFAL já descontado do lucro agregado).
+  Erro de fração de container → `renderResumoFiscal(null)` e o card some, como o resto.
+- Regressão via jsdom: linha a linha vs. soma dos itens, vs. Resumo Geral, nos dois
+  regimes, com DIFAL, na trava de container e **confronto com `npCalcResultado`** (mesmos
+  inputs, frações de container proporcionais ao FOB → distribuição idêntica à do painel):
+  todos os totais batem. Divergência conhecida e **pré-existente** (do motor, não do
+  render): no Presumido com 2+ itens o painel reapura o **adicional de IR** sobre a base
+  presumida agregada do processo, enquanto o `calcItem` do `index.html` soma o adicional
+  item a item (teto de R$60k por item) — ver §5.
 
 **Cotação / PDF (client-side):** `showCotacao()` monta a tela `#cotacao-sec` (container
 `.cot-wrap#cot-content`, largura de projeto **1020px**) com Opção 1 (à vista) / Opção 2

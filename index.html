@@ -78,6 +78,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sum-item.dk{background:var(--cinza)}
 .sum-item.dk .val{color:var(--turquesa)}
 .sum-item.dk .lbl{color:rgba(255,255,255,.6)}
+/* ── Resumo Fiscal — lista linear estilo extrato (espelho do painel) ── */
+.rf-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--cinza-med);margin:18px 0 4px}
+.rf-group-title:first-child{margin-top:0}
+.rf-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:5px 2px;font-size:13px;border-bottom:1px solid #EEF1F2}
+.rf-row .rf-lbl{color:var(--cinza)}
+.rf-row .rf-val{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.rf-sep{border-top:1px solid var(--border);margin:4px 0}
+.rf-bold .rf-lbl,.rf-bold .rf-val{font-weight:700}
+.rf-credit .rf-val{color:#2e7d32}
+.rf-final .rf-lbl,.rf-final .rf-val{font-weight:700;color:var(--turquesa-dark)}
+.rf-pos .rf-lbl,.rf-pos .rf-val{color:#2e7d32}
+.rf-neg .rf-lbl,.rf-neg .rf-val{color:#c62828}
+.rf-info .rf-lbl,.rf-info .rf-val{color:var(--cinza-med);font-style:italic}
 /* buttons */
 .btn{padding:10px 22px;border-radius:6px;border:none;cursor:pointer;font-size:14px;font-weight:600;transition:all .15s}
 .btn-p{background:var(--turquesa);color:#fff}
@@ -418,6 +431,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 </div>
+
+<!-- Resumo Fiscal consolidado (espelho do "5 — Resumo Fiscal" do painel) -->
+<div id="rf-calc"></div>
 
 </div><!-- container -->
 </div><!-- calc-sec -->
@@ -1276,10 +1292,22 @@ function calcAll() {
       .forEach(k => setEl(k, '—'));
     const _db = document.getElementById('s_difal_box');
     if (_db) _db.style.display = 'none';
+    renderResumoFiscal(null);                            // oculta o Resumo Fiscal também
     return;                                              // trava o cálculo
   }
 
   let sFob=0, sCif=0, sImp=0, sCustoImp=0, sVenda=0, sLucro=0, sCustoOp=0;
+
+  // ── Acumuladores do Resumo Fiscal (só RENDERIZAÇÃO — nada aqui realimenta o motor).
+  // Os valores saem do r de cada item; os rateios (Siscomex/Despachante por FOB, custos
+  // por container) repetem EXATAMENTE as fórmulas do calcItem, sem recalcular imposto.
+  const t = {
+    n:0, ii:0, ipi:0, pisImp:0, cofImp:0, icmsImp:0, afrmm:0, siscomex:0, difFrete:0,
+    despachante:0, agente:0, armazenagem:0, capatazia:0, oplog:0, frod:0,
+    icmsEf:0, pisV:0, cofV:0, csll:0, ir:0, irAdic:0, com:0
+  };
+  const cSisc = n('c_siscomex'), cDesp = n('c_despachante'), cAgen = n('c_agente');
+  const cArmz = n('c_armazenagem'), cCapa = n('c_capatazia'), cOplg = n('c_oplog');
 
   itemIds.forEach(id => {
     const r = calcItem(id, fobTotal, freteT, dolar, comPct);
@@ -1292,6 +1320,27 @@ function calcAll() {
       sVenda    += r.pvTotal;
       sLucro    += r.lucroTotal;
       sCustoOp  += r.custoOpTotal;
+
+      // Detalhamento fiscal do item (mesmas fórmulas do calcItem, ver linhas 1054-1069)
+      const contItem = parseFloat(document.getElementById('cont_' + id)?.value) || 1;
+      const freteRSi = r.freteRat * dolar;      // frete R$ do item (= freteRat × dólar)
+      t.n++;
+      t.ii     += r.ii;      t.ipi    += r.ipi;      t.pisImp += r.pisImp;
+      t.cofImp += r.cofImp;  t.icmsImp += r.icmsImp;
+      t.afrmm       += 0.08 * freteRSi + 20;    // 8% do frete R$ do item + R$20 fixo
+      t.difFrete    += freteRSi * 0.025;        // 2,5% do frete R$ do item
+      t.siscomex    += cSisc * r.prop;          // rateio por FOB
+      t.despachante += cDesp * r.prop;          // rateio por FOB
+      t.agente      += cAgen * contItem;        // por container do item
+      t.armazenagem += cArmz * contItem;
+      t.capatazia   += cCapa * contItem;
+      t.oplog       += cOplg * contItem;
+      t.frod        += r.frodTotal;
+      // Venda: icmsEf/pisV/cofV/com são UNITÁRIOS no r → × qtd (critério do npCalcResultado);
+      // csll/ir/irAdic já vêm totais do item.
+      t.icmsEf += r.icmsEf * r.qtd;  t.pisV += r.pisV * r.qtd;  t.cofV += r.cofV * r.qtd;
+      t.com    += r.com    * r.qtd;
+      t.csll   += r.csll;            t.ir   += r.ir;            t.irAdic += r.irAdic;
     }
   });
 
@@ -1315,6 +1364,100 @@ function calcAll() {
     difalBox.style.display = difalTotal > 0 ? '' : 'none';
     setEl('s_difal', fmtBRL(difalTotal));
   }
+
+  // Resumo Fiscal consolidado — mesmos números do Resumo Geral, detalhados.
+  t.cifUSD    = dolar > 0 ? sCif / dolar : 0;
+  t.cifBRL    = sCif;
+  t.custoFinal= sCustoImp;      // já líquido de créditos (calcItem: custoProcesso − credTotal)
+  t.nfTotal   = sVenda;
+  t.difal     = difalTotal;
+  t.lucro     = lucroFinal;     // após DIFAL — idêntico ao Resumo Geral
+  t.margem    = margemMedia;
+  renderResumoFiscal(t.n ? t : null);
+}
+
+// ── Resumo Fiscal consolidado ───────────────────────────────────────────────
+// Espelho do "5 — Resumo Fiscal" do painel (npRenderResumoFiscal): mesmo layout,
+// labels e ordem. SÓ RENDERIZAÇÃO — consome os totais já acumulados no calcAll,
+// não recalcula nada. t === null → some da tela (sem itens ou trava de container).
+function renderResumoFiscal(t) {
+  const el = document.getElementById('rf-calc');
+  if (!el) return;
+  if (!t) { el.innerHTML = ''; return; }
+
+  const R = v => 'R$ '  + fmt(v || 0);
+  const U = v => 'USD ' + fmt(v || 0);
+  const P = v => fmtPct(v || 0);
+
+  // Créditos recuperáveis SÓ no Lucro Real. No Presumido, PIS/COFINS/IPI de importação
+  // ficam no custo (não creditam) → créditos = 0 e custo bruto = custo final.
+  const presumido = getRegime() === 'presumido';
+  const credPIS = presumido ? 0 : t.pisImp;
+  const credCOF = presumido ? 0 : t.cofImp;
+  const credIPI = presumido ? 0 : t.ipi;
+  const custoBruto = t.custoFinal + credPIS + credCOF + credIPI;
+
+  const irTotal     = t.ir + t.irAdic;
+  const totImpVenda = t.icmsEf + t.pisV + t.cofV + t.csll + irTotal + t.com;
+  const sinalCls    = t.lucro >= 0 ? 'rf-pos' : 'rf-neg';
+
+  const row  = (lbl, val, cls = '') =>
+    `<div class="rf-row ${cls}"><span class="rf-lbl">${lbl}</span><span class="rf-val">${val}</span></div>`;
+  const sep  = '<div class="rf-sep"></div>';
+  const titl = x => `<div class="rf-group-title">${x}</div>`;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-hd tq" style="display:flex;justify-content:space-between;align-items:center">
+        <span>📊 Resumo Fiscal</span>
+        <span style="font-size:12px;font-weight:600">${presumido ? 'Lucro Presumido' : 'Lucro Real'}</span>
+      </div>
+      <div class="card-bd">
+        ${titl('Importação')}
+        ${row('CIF Total USD',     U(t.cifUSD))}
+        ${row('CIF Total R$',      R(t.cifBRL))}
+        ${row('II',                R(t.ii))}
+        ${row('IPI Importação',    R(t.ipi))}
+        ${row('PIS Importação',    R(t.pisImp))}
+        ${row('COFINS Importação', R(t.cofImp))}
+        ${row('ICMS Importação (informativo, fora do custo)', R(t.icmsImp), 'rf-info')}
+        ${row('AFRMM',             R(t.afrmm))}
+        ${row('Siscomex',          R(t.siscomex))}
+        ${row('Dif. Frete Intl',   R(t.difFrete))}
+        ${row('Despachante',       R(t.despachante))}
+        ${row('Agente de Cargas',  R(t.agente))}
+        ${row('Armazenagem Porto', R(t.armazenagem))}
+        ${row('Capatazia',         R(t.capatazia))}
+        ${row('Operador Logístico',R(t.oplog))}
+        ${row('Frete Rodoviário',  R(t.frod))}
+        ${sep}
+        ${row('Custo Bruto Total', R(custoBruto), 'rf-bold')}
+        ${row('Crédito PIS',       '− ' + R(credPIS), 'rf-credit')}
+        ${row('Crédito COFINS',    '− ' + R(credCOF), 'rf-credit')}
+        ${row('Crédito IPI',       '− ' + R(credIPI), 'rf-credit')}
+        ${sep}
+        ${row('Custo Final',       R(t.custoFinal), 'rf-final')}
+
+        ${titl('Venda')}
+        ${row('NF Total R$',          R(t.nfTotal))}
+        ${row('ICMS Efetivo (1,5%)',  R(t.icmsEf))}
+        ${row('PIS Venda',            R(t.pisV))}
+        ${row('COFINS Venda',         R(t.cofV))}
+        ${row('CSLL',                 R(t.csll))}
+        ${row('IR',                   R(irTotal))}
+        ${row('Comissão',             R(t.com))}
+        ${sep}
+        ${row('Total Impostos Venda', R(totImpVenda), 'rf-bold')}
+
+        ${titl('Resultado')}
+        ${row('Receita Total R$',  R(t.nfTotal))}
+        ${row('Custo Final Total', R(t.custoFinal))}
+        ${(t.difal > 0) ? row('DIFAL repassado', '− ' + R(t.difal), 'rf-credit') : ''}
+        ${sep}
+        ${row('Lucro R$',  R(t.lucro),  'rf-bold ' + sinalCls)}
+        ${row('Margem %',  P(t.margem), 'rf-bold ' + sinalCls)}
+      </div>
+    </div>`;
 }
 
 function renderItemResult(id, r) {
