@@ -16,7 +16,7 @@ Sistema web da PILAR Imports para precificação e gestão operacional de import
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` (~2294 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
+| `index.html` (~2349 linhas) | **Calculadora** standalone — precificação rápida de itens (usa `Calc` do `calc.js`). Aceita `?seed=` (pré-preenche a partir de uma demanda) e `?demandaId`. |
 | `painel.html` (~6900+ linhas) | **Painel operacional** SPA — todas as telas (Dashboard, Processos, Fluxo de Caixa, Câmbio, Fornecedores, Demanda, documentos, catálogo, config). HTML + CSS + JS inline num arquivo só. |
 | `painel-proxy.js` (~1050 linhas) | **Backend** Node puro (sem framework): serve estáticos, expõe `/api/*`, proxeia Omie e Anthropic, persiste os JSON no servidor. |
 | `painel/js/calc.js` | **Motor fiscal por item** (`Calc.calcItem`, `Calc.calcProcesso`, `Calc.difalRate`). Módulo dual: `require` no Node, global no browser. |
@@ -442,6 +442,23 @@ Página standalone de precificação por item. O motor fiscal é **inline** no p
 `index.html` (`calcItem`, `calcAll`), não o `Calc` de `calc.js` (esse é do painel). Lê
 `?seed=` para pré-preencher a partir de uma demanda e grava simulações (via
 `/api/simulacoes`).
+
+**Filtro das Simulações Salvas (`#sim-filtro`, `_simFiltrar`):** barra de busca no topo
+do `#sim-panel`, ACIMA do `#sim-list` (fora dele de propósito: `renderSimList` só reescreve
+o `#sim-list`, então o foco no campo sobrevive ao `oninput`). **Só front-end** — não
+persiste, não toca em `_simGet`/`_simSalvarServidor` nem no motor.
+- `#sim-busca` (texto, `oninput`) casa, sem acento e sem caixa (`_semAcento`, NFD +
+  `[\u0300-\u036f]`), em **`s.nome`** OU em **qualquer `s.items[].prod`** OU na **data
+  formatada** pt-BR (então `15/06` também casa). Campo a campo, não no texto concatenado.
+- `#sim-data` (`type=date`, `onchange`) casa o **dia local** de `s.ts` (`_simDiaISO`,
+  mesmo fuso do input — sem `toISOString`, que jogaria para UTC).
+- Os dois combinam com **E**; sem nenhum → lista completa, ordem original preservada.
+- `#sim-contador` mostra "N de M simulações"; filtro sem resultado → "Nenhuma simulação
+  encontrada para o filtro" (distinto de "Nenhuma simulação salva.", quando não há nada).
+  Sem simulações, a barra inteira some.
+- `limparFiltroSim()` (botão ✕) zera os dois campos e re-renderiza. `deleteSim`/`loadSim`
+  chamam `renderSimList`, que reaplica o filtro — o estado da busca sobrevive ao
+  fechar/reabrir o painel (fica no DOM, à vista, acima da lista).
 
 **Regime tributário (parâmetro do motor — Fase 1):** `calcItem(id, …, regime)` aceita
 `regime` (`'real'` | `'presumido'`), lido do toggle `#regime` no cabeçalho via

@@ -383,6 +383,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div id="sim-panel" style="display:none;margin-bottom:20px">
   <div class="card">
     <div class="card-hd">📋 Simulações Salvas</div>
+    <!-- Filtro (só de tela — não persiste e não toca na lista salva) -->
+    <div id="sim-filtro" style="padding:14px 20px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <input type="text" id="sim-busca" oninput="renderSimList()"
+             placeholder="🔍 Buscar por cliente, produto ou data..."
+             style="flex:1 1 260px;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza)">
+      <input type="date" id="sim-data" onchange="renderSimList()" title="Filtrar por dia"
+             style="padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--cinza)">
+      <button class="btn btn-s" id="sim-limpar" onclick="limparFiltroSim()" title="Limpar filtro"
+              style="padding:8px 14px;font-size:13px">✕ Limpar</button>
+      <span id="sim-contador" style="font-size:12px;color:var(--cinza-med);margin-left:auto"></span>
+    </div>
     <div class="card-bd" id="sim-list"></div>
   </div>
 </div>
@@ -787,11 +798,56 @@ function toggleSimulacoes() {
   p.style.display = vis ? 'none' : 'block';
 }
 
+// ── Filtro das Simulações Salvas (só de tela: não persiste, não toca no motor) ──
+// Normaliza para busca: sem diacrítico e em minúsculas ("POLIÉSTER" casa "poliester").
+// Irmão do _normProd (casamento de catálogo), separado de propósito: aquele é um
+// `const` declarado ~1000 linhas abaixo e colapsa espaços; este é só para a busca.
+function _semAcento(v) {
+  return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+// Dia local (YYYY-MM-DD) de um timestamp — mesmo fuso do <input type="date">.
+function _simDiaISO(ts) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Texto E data combinam (E). Texto casa em nome (cliente) OU em qualquer produto dos
+// itens OU na data formatada (pt-BR, então "15/06" também casa).
+function _simFiltrar(sims) {
+  const q   = _semAcento(document.getElementById('sim-busca')?.value.trim());
+  const dia = document.getElementById('sim-data')?.value || '';
+  if (!q && !dia) return sims;
+  return sims.filter(s => {
+    if (dia && _simDiaISO(s.ts) !== dia) return false;
+    if (!q) return true;
+    const campos = [s.nome, new Date(s.ts).toLocaleString('pt-BR')]
+      .concat((s.items || []).map(it => it.prod));
+    return campos.some(c => _semAcento(c).includes(q));
+  });
+}
+function limparFiltroSim() {
+  const b = document.getElementById('sim-busca'), d = document.getElementById('sim-data');
+  if (b) b.value = '';
+  if (d) d.value = '';
+  renderSimList();
+  b?.focus();
+}
+
 function renderSimList() {
-  const sims = _simGet();
+  const todas = _simGet();
   const el = document.getElementById('sim-list');
   if (!el) return;
-  if (!sims.length) { el.innerHTML = '<p style="color:#888;font-size:13px">Nenhuma simulação salva.</p>'; return; }
+  // Barra de filtro só faz sentido havendo o que filtrar.
+  const barra = document.getElementById('sim-filtro');
+  if (barra) barra.style.display = todas.length ? '' : 'none';
+  if (!todas.length) { el.innerHTML = '<p style="color:#888;font-size:13px">Nenhuma simulação salva.</p>'; return; }
+
+  const sims = _simFiltrar(todas);
+  setEl('sim-contador', `${sims.length} de ${todas.length} simulaç${todas.length === 1 ? 'ão' : 'ões'}`);
+  if (!sims.length) {
+    el.innerHTML = '<p style="color:#888;font-size:13px">Nenhuma simulação encontrada para o filtro.</p>';
+    return;
+  }
   el.innerHTML = sims.map(s => {
     const dt   = new Date(s.ts).toLocaleString('pt-BR');
     const prods = (s.items||[]).map(it=>it.prod).filter(Boolean).join(', ') || '—';
