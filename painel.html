@@ -5622,10 +5622,11 @@ function peDocHTML(forPrint) {
       <td class="r">${qtdCell}</td>
       <td>${esc(r.it.unidade || 'PC')}</td>
       <td class="r">${fmtN(r.pvUsd, 4)}</td>
+      <td class="r">R$ ${fmtN(r.precoBrl, 4)}</td>
       <td class="r" id="pe-rtu-${i}">USD ${fmtN(r.totUsd, 2)}</td>
       <td class="r" id="pe-rtb-${i}">R$ ${fmtN(r.totBrl, 2)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
+  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:14px;color:#999">Sem itens</td></tr>`;
 
   return `
     <div class="pe-doc" id="pe-doc">
@@ -5681,20 +5682,22 @@ function peDocHTML(forPrint) {
           <col class="col-num"><!-- Qtd Embarcada -->
           <col class="col-num"><!-- Un -->
           <col class="col-num"><!-- Preço Unit USD -->
+          <col class="col-num"><!-- Preço Unit R$ -->
           <col class="col-num"><!-- Total USD -->
           <col class="col-num"><!-- Total R$ -->
         </colgroup>
         <thead><tr>
           <th>Descrição</th>
           <th class="r">Qtd Embarcada</th><th>Un</th>
-          <th class="r">Preço Unit USD</th><th class="r">Total USD</th>
+          <th class="r">Preço Unit USD</th><th class="r">Preço Unit R$</th>
+          <th class="r">Total USD</th>
           <th class="r">Total R$</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
         <tfoot><tr>
           <td style="text-align:right">TOTAL</td>
           <td class="r" id="pe-tot-qtd">${fmtN(d.totQtd, 0)}</td>
-          <td></td><td></td>
+          <td></td><td></td><td></td>
           <td class="r" id="pe-tot-usd">USD ${fmtN(d.totUsd, 2)}</td>
           <td class="r" id="pe-tot-brl">R$ ${fmtN(d.totBrl, 2)}</td>
         </tr></tfoot>

@@ -193,6 +193,14 @@ câmbio NÃO passam por aqui** — têm rotas próprias e são salvos explicitam
     Embarque (`peCompute`) e Fluxo de Caixa (`fcNfTotalUSD`) — documento e tela
     nunca divergem, inclusive em processo manual (PV derivado de FOB+margem).
     Só o PV resultante entra nos documentos — FOB/custo/margem continuam fora.
+  - **Tabela de itens do Pedido de Embarque** (`peDocHTML`/`peLinhasHTML`, 7 colunas):
+    `Descrição | Qtd Embarcada | Un | Preço Unit USD | Preço Unit R$ | Total USD | Total R$`.
+    **Preço Unit R$** = `r.precoBrl` (já calculado em `peCompute`: `pvUsd × cambioMedio`,
+    o câmbio médio ponderado sinal/saldo), exibido com **4 casas** — mesma precisão do
+    Preço Unit USD. É só renderização: o motor (`peCompute`) não mudou. No `tfoot`,
+    Un / Preço Unit USD / Preço Unit R$ ficam vazias (não somam); só Qtd, Total USD e
+    Total R$ totalizam. `peRefreshNumbers` não toca nessa célula — `precoBrl` não
+    depende da qtd digitada. Larguras de impressão: `col-desc` 32% + 6 × `col-num` 10%.
   - **Herança na Proposta** (`propSelecionarProcesso`): com `proc.pvItens`
     (processo nascido de demanda) herda qtd+PV de lá e a **unidade** de
     `proc.itens` (por índice). Sem `pvItens` (processo manual), usa a precedência
