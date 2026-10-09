@@ -312,6 +312,50 @@ function logNumerosDuplicados(processos) {
   }
 }
 
+// ── Merge de PROCESSO por chaves de topo (incidentes PIL-008/010/021) ─────────
+// O sync Handline (OpenClaw) gravava {id,numero,status,dados_gerais} e o merge por
+// id SUBSTITUÍA o processo inteiro → itens/cambios/frete/custos sumiam. Contrato de
+// escrita agora: chave AUSENTE no payload = PRESERVADA do disco; chave presente =
+// substituída (sem deep merge). Save completo do front continua atualizando tudo.
+// Retorna lista de motivos de suspeita (só log — o merge já evita a perda).
+function mesclarProcesso(existente, item) {
+  const suspeitas = [];
+  const nItensAntes = Array.isArray(existente.itens) ? existente.itens.length : 0;
+  if (nItensAntes > 0 && !('itens' in item)) suspeitas.push('payload_sem_itens');
+  else if (nItensAntes > 0 && !(Array.isArray(item.itens) && item.itens.length)) suspeitas.push('itens_zerados_no_payload');
+  return { proc: { ...existente, ...item }, suspeitas };
+}
+
+// ── Log de gravações (logs/gravacoes.jsonl, gitignorado) ───────────────────────
+// Uma linha JSON por escrita em fatia-array: quem (ip/UA), rota e, por id ALTERADO,
+// numero + nChaves/nItens antes→depois. Objetivo: flagrar o próximo encolhimento.
+const GRAV_LOG_FILE = path.join(LOG_DIR, 'gravacoes.jsonl');
+function logGravacao(req, rota, antes, depois, extra) {
+  try {
+    const porId = arr => new Map((Array.isArray(arr) ? arr : []).map(x => [String(x && x.id), x]));
+    const mA = porId(antes), mD = porId(depois);
+    const n = (x, f) => (x == null ? null : f(x));
+    const afetados = [...new Set([...mA.keys(), ...mD.keys()])]
+      .filter(id => JSON.stringify(mA.get(id)) !== JSON.stringify(mD.get(id)))
+      .map(id => {
+        const a = mA.get(id), d = mD.get(id);
+        return {
+          id, numero: (d || a).numero,
+          chaves: [n(a, x => Object.keys(x).length), n(d, x => Object.keys(x).length)],
+          itens:  [n(a, x => Array.isArray(x.itens) ? x.itens.length : 0), n(d, x => Array.isArray(x.itens) ? x.itens.length : 0)],
+        };
+      });
+    if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(GRAV_LOG_FILE, JSON.stringify({
+      ts: new Date().toISOString(),
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+      ua: req.headers['user-agent'] || '',
+      rota: req.method + ' ' + req.url,
+      afetados, ...extra,
+    }) + '\n');
+  } catch {}
+}
+
 function mergeFatiaPorId(req, res, chave, label) {
   const substituir = new URLSearchParams(req.url.split('?')[1] || '').get('modo') === 'substituir';
   readBody(req).then(body => {
@@ -329,9 +373,11 @@ function mergeFatiaPorId(req, res, chave, label) {
       completarNcmAliquotas(arr);                    // Fatia 3: completa ncm/alíquotas faltantes (muta arr, nunca rejeita)
     }
     const dados = lerDados();
+    const antes = dados[chave];
     if (substituir) {
       dados[chave] = arr;                       // escape hatch explícito
       salvarDados(dados);
+      logGravacao(req, chave, antes, arr, { modo: 'substituir', n_payload: arr.length });
       if (chave === 'pilar_processos') logNumerosDuplicados(dados[chave]);
       return json(res, 200, { ok: true, modo: 'substituir', total: arr.length });
     }
@@ -343,13 +389,23 @@ function mergeFatiaPorId(req, res, chave, label) {
     }
     const porId = new Map(dados[chave].map(x => [String(x.id), x]));
     let atualizados = 0, adicionados = 0;
+    const suspeitos = [];
     for (const item of arr) {
       const k = String(item.id);
       if (porId.has(k)) atualizados++; else adicionados++;
-      porId.set(k, item);                       // atualiza no lugar ou adiciona
+      if (chave === 'pilar_processos' && porId.has(k)) {
+        // Processo: merge de chaves de topo (payload parcial não apaga seções).
+        const { proc, suspeitas } = mesclarProcesso(porId.get(k), item);
+        if (suspeitas.length) suspeitos.push({ id: k, numero: proc.numero, suspeitas });
+        porId.set(k, proc);
+      } else {
+        porId.set(k, item);                     // demais fatias: atualiza no lugar ou adiciona
+      }
     }
     dados[chave] = [...porId.values()];         // nenhum id omitido é removido
     salvarDados(dados);
+    if (suspeitos.length) console.warn('[PILAR] Gravação SUSPEITA em processos (merge preservou o disco):', JSON.stringify(suspeitos));
+    logGravacao(req, chave, antes, dados[chave], { modo: 'merge', n_payload: arr.length, ...(suspeitos.length ? { suspeitos } : {}) });
     if (chave === 'pilar_processos') logNumerosDuplicados(dados[chave]);
     json(res, 200, { ok: true, modo: 'merge', total: dados[chave].length, atualizados, adicionados });
   }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
@@ -574,8 +630,19 @@ const server = http.createServer((req, res) => {
         completarNcmAliquotas(data.pilar_processos);                  // Fatia 3 (muta, nunca rejeita)
       }
       // Merge defensivo: base = disco; só as chaves enviadas sobrescrevem.
-      const merged = Object.assign({}, lerDados(), data);
+      const disco  = lerDados();
+      const antes  = disco.pilar_processos;
+      if ('pilar_processos' in data) {
+        // Mesma proteção do POST /api/processos: processo já existente recebe merge de
+        // chaves de topo (objeto parcial não encolhe). O array segue o payload (replace).
+        const porId = new Map(antes.map(p => [String(p.id), p]));
+        data.pilar_processos = data.pilar_processos.map(p =>
+          (p && porId.has(String(p.id))) ? mesclarProcesso(porId.get(String(p.id)), p).proc : p);
+      }
+      const merged = Object.assign({}, disco, data);
       salvarDados(merged);   // escrita atômica (.tmp + rename)
+      if ('pilar_processos' in data)
+        logGravacao(req, 'pilar_processos', antes, merged.pilar_processos, { modo: 'dados', n_payload: data.pilar_processos.length });
       json(res, 200, { ok: true });
     }).catch(() => json(res, 400, { erro: 'JSON inválido' }));
     return;
@@ -741,9 +808,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'DELETE' && url.startsWith('/api/processos/')) {
     const id    = decodeURIComponent(url.slice('/api/processos/'.length));
     const dados = lerDados();
-    const antes = dados.pilar_processos.length;
-    dados.pilar_processos = dados.pilar_processos.filter(p => String(p.id) !== id);
+    const lista = dados.pilar_processos;
+    const antes = lista.length;
+    dados.pilar_processos = lista.filter(p => String(p.id) !== id);
     salvarDados(dados);
+    logGravacao(req, 'pilar_processos', lista, dados.pilar_processos, { modo: 'delete' });
     json(res, 200, { ok: true, removidos: antes - dados.pilar_processos.length });
     return;
   }
@@ -766,9 +835,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'DELETE' && url.startsWith('/api/demandas/')) {
     const id    = decodeURIComponent(url.slice('/api/demandas/'.length));
     const dados = lerDados();
-    const antes = dados.pilar_demandas.length;
-    dados.pilar_demandas = dados.pilar_demandas.filter(d => String(d.id) !== id);
+    const lista = dados.pilar_demandas;
+    const antes = lista.length;
+    dados.pilar_demandas = lista.filter(d => String(d.id) !== id);
     salvarDados(dados);
+    logGravacao(req, 'pilar_demandas', lista, dados.pilar_demandas, { modo: 'delete' });
     json(res, 200, { ok: true, removidos: antes - dados.pilar_demandas.length });
     return;
   }
@@ -792,9 +863,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'DELETE' && url.startsWith('/api/simulacoes/')) {
     const id    = decodeURIComponent(url.slice('/api/simulacoes/'.length));
     const dados = lerDados();
-    const antes = dados.pilar_simulacoes.length;
-    dados.pilar_simulacoes = dados.pilar_simulacoes.filter(s => String(s.id) !== id);
+    const lista = dados.pilar_simulacoes;
+    const antes = lista.length;
+    dados.pilar_simulacoes = lista.filter(s => String(s.id) !== id);
     salvarDados(dados);
+    logGravacao(req, 'pilar_simulacoes', lista, dados.pilar_simulacoes, { modo: 'delete' });
     json(res, 200, { ok: true, removidos: antes - dados.pilar_simulacoes.length });
     return;
   }

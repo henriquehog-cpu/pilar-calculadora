@@ -123,6 +123,22 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
   omitido) das fatias-array do `dados.json`; `?modo=substituir` faz replace total.
   Para `pilar_processos` roda `validarCodigosProcessos` → `gerarCodigosFaltantes` →
   `completarNcmAliquotas` antes de gravar (rejeita código malformado com 400).
+  **Processo já existente → `mesclarProcesso` (merge de chaves de TOPO)**, não replace.
+  Demais fatias (demandas/simulações) seguem replace por item.
+- `mesclarProcesso(existente, item)` — `{ ...existente, ...item }`. **Contrato de escrita
+  parcial de processo:** chave AUSENTE no payload = preservada do disco; chave presente =
+  substituída inteira (sem deep merge — mandar `dados_gerais` parcial ainda troca o objeto
+  `dados_gerais` todo). Consequência: **não dá para remover uma chave de topo via POST**
+  (o front não faz isso). Sinaliza suspeita (`payload_sem_itens` / `itens_zerados_no_payload`)
+  quando o disco tinha itens>0 — só `console.warn` + log; o merge já evita a perda.
+  Origem: incidentes PIL-007/008/010/021 (ago–out/2026) — o sync Handline da Astrid gravava
+  `{id,numero,status,dados_gerais}` e o replace apagava itens/câmbios/custos.
+- `logGravacao(req, rota, antes, depois, extra)` — 1 linha JSON em **`logs/gravacoes.jsonl`**
+  (gitignorado) por escrita em fatia-array: `ts`, `ip` (`x-forwarded-for`), `ua`, `rota`,
+  `modo` (`merge`/`substituir`/`dados`/`delete`), `n_payload`, `suspeitos` e, por id
+  ALTERADO, `numero`, `chaves:[antes,depois]`, `itens:[antes,depois]` (`null` = não existia).
+  Chamado em `mergeFatiaPorId`, no `POST /api/dados` (só quando traz `pilar_processos`) e
+  nos 3 DELETEs. Sem rotação (crescimento pequeno; podar à mão se precisar).
 - `chamarAnthropic(systemPrompt, mensagens)` — POST `api.anthropic.com/v1/messages`
   via HTTPS puro; chave **só** de `process.env.ANTHROPIC_API_KEY` (nunca de arquivo);
   modelo `claude-sonnet-4-6`, `anthropic-version: 2023-06-01`.
@@ -133,13 +149,13 @@ Mesma forma do Omie + `origem:'generico'`. Base de alíquotas por produto/NCM.
 |---|---|
 | `POST /omie` | Proxy da API Omie (resolve CORS); credenciais de `pilar-config.json`. |
 | `GET /api/dados` | Retorna o `dados.json` inteiro. |
-| `POST /api/dados` | **Merge defensivo BLINDADO**: parte do disco e só sobrescreve chaves presentes no payload (chave ausente = preservada); valida tipos; escrita atômica. Evita apagar fatias por omissão. |
+| `POST /api/dados` | **Merge defensivo BLINDADO**: parte do disco e só sobrescreve chaves presentes no payload (chave ausente = preservada); valida tipos; escrita atômica. Evita apagar fatias por omissão. `pilar_processos` presente → o ARRAY é substituído pelo do payload, mas cada processo já existente passa por `mesclarProcesso` (objeto parcial não encolhe). Loga em `gravacoes.jsonl`. |
 | `GET/POST/DELETE /api/produtos-genericos[/:nome]` | Catálogo genérico: GET lê; POST faz merge por nome (`?modo=substituir` com guarda de encolhimento ≥20); DELETE remove 1 por nome. |
 | `GET/POST /api/catalogo-omie` | Catálogo Omie: GET lê; POST substitui o array inteiro. |
 | `GET/POST /api/fornecedores` | **[Fatia 1]** Cadastro: GET lê; POST substitui o array inteiro. |
 | `GET/POST /api/cambios` | **[Fatia 2B]** Histórico de câmbio: GET lê; **POST é APPEND-ONLY** (recebe UM registro, faz `push`, carimba `id`/`criado_em`; nunca sobrescreve). |
 | `GET /api/produtos` | Alias read-only do catálogo genérico (compat). `POST` → 410. |
-| `GET/POST/DELETE /api/processos[/:id]` | GET lista/1; **POST = `mergeFatiaPorId('pilar_processos')`**; DELETE remove 1. |
+| `GET/POST/DELETE /api/processos[/:id]` | GET lista/1; **POST = `mergeFatiaPorId('pilar_processos')`** (merge por id + merge de chaves de topo do processo — POST parcial só atualiza as chaves enviadas); DELETE remove 1. Toda escrita loga em `gravacoes.jsonl`. |
 | `GET/POST/DELETE /api/demandas[/:id]` | Fatia `pilar_demandas` (merge por id). |
 | `GET/POST/DELETE /api/simulacoes[/:id]` | Fatia `pilar_simulacoes` (merge por id). |
 | `GET /api/banco-di` | Lê `banco_di.json` (templates de descrição de DI por família). |
@@ -623,10 +639,17 @@ iterativo, IR adicional > R$60k). O DIFAL Opção B espelha `difalRateAtual()` d
 Consome, **read-only**, endpoints do proxy:
 - `GET /api/resumo-diario` — briefing diário (processos ativos, parcelas/recebimentos próximos).
 - `GET /api/impostos-posvenda` — impostos a recolher (mesma régua da tela).
-- Também **escreve** via `POST /api/processos` (merge por id — payload parcial não apaga o
-  resto) e alimenta o **frete de referência** (`pilar_config.frete_referencia`, tela
+- Também **escreve** via `POST /api/processos` (merge por id + merge de chaves de topo —
+  payload parcial não apaga o resto do processo) e alimenta o **frete de referência** (`pilar_config.frete_referencia`, tela
   read-only "Frete de Referência 40'HC" no painel).
 - O dashboard e o resumo diário filtram `status === 'ativo'` (finalizados somem de ambos).
+- **Sync Handline → Painel** (job cron da OpenClaw, terça 18h SP; script
+  `/root/.openclaw/integrations/sync_handline.py`, só no servidor, fora do repo): lê o
+  relatório de embarque da Handline no Outlook e atualiza `prev_embarque` /
+  `prev_chegada_porto` / `prev_chegada_cliente`. Faz GET de `/api/processos` e reenvia o
+  **processo COMPLETO** com `dados_gerais` alterado (até out/2026 mandava só 4 chaves e,
+  com o replace antigo, zerava o processo). Aceita `--dry-run` (não grava; mostra
+  chaves/itens que enviaria).
 
 ### IA da Nova Demanda / documentos
 `POST /api/ia/chat` com `fluxo ∈ {qualificacao, proposta, extracao}`; system prompts em
@@ -685,3 +708,8 @@ VPS `/opt/pilar-calculadora`, Node + PM2 (`pm2 restart all`), nginx. Mudança s�
 `painel.html`/`index.html` → basta subir o arquivo. Mudança em `painel-proxy.js` (rota nova)
 → subir o proxy **e** reiniciar o PM2. Os `*.json` de dados vivem só no servidor
 (gitignorados) e entram na rotina de backup.
+
+**Backup (`backup_dados.sh`, versionado; cron root `0 */6 * * *`):** copia `dados.json`,
+`produtos_genericos.json` e `catalogo_omie.json` para `backups/` (a cada 6h, retém **28 ≈ 7
+dias**) e, no primeiro run do dia, para `backups/diario/` (retém **30 ≈ 30 dias**).
+`backups/` é gitignorado. Logs de escrita: `logs/gravacoes.jsonl`.
